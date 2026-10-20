@@ -1,0 +1,88 @@
+<!doctype html>
+<!--
+  =============================================================================
+  index.html: the single page of the Valmo Partner Pulse questionnaire.
+
+  WHAT THIS FILE IS
+  Only the empty "frame" of the page: top bar, progress bar, the area where
+  each question appears, and the bottom Back / Next bar. Everything shown
+  inside the frame is drawn by the JavaScript files in js/, using:
+    config/survey.json        questions, areas, chips, rules, colours
+    i18n/strings.json         every word, in all six languages
+    config/whats_changed.json "what changed since last time" (backup copy)
+    config/audio_clips.json   optional pre-recorded read-aloud clips
+
+  YOU SHOULD NOT NEED TO EDIT THIS FILE to change the questionnaire.
+
+  HOW TO OPEN IT LOCALLY
+    python3 scripts/mock_server.py      then click a link it prints
+  (Opening this file directly by double-clicking will NOT work: browsers block
+   a page from reading its config files from disk. It must be served.)
+
+  PRIVACY NOTES
+  - referrer=no-referrer: the link contains the DC id and token; this stops
+    the browser from passing the link on to any other website.
+  - robots noindex: asks search engines never to list this page.
+  =============================================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#4B2E83">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Valmo Partner Pulse</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/app.css">
+  <!-- "defer" = download in parallel, run in this order after the page is parsed -->
+  <script defer src="js/core.js"></script>
+  <script defer src="js/flow.js"></script>
+  <script defer src="js/speech.js"></script>
+  <script defer src="js/voice.js"></script>
+  <script defer src="js/net.js"></script>
+  <script defer src="js/screens.js"></script>
+  <script defer src="js/app.js"></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Yellow strip shown only in test (mock) mode -->
+    <div class="dev-banner" id="dev-banner" hidden></div>
+
+    <header class="topbar">
+      <div class="brand" id="brand">Valmo Partner Pulse</div>
+      <button class="lang-btn" id="lang-btn" type="button" hidden></button>
+    </header>
+
+    <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <!-- Short messages: "No internet right now", "Welcome back" -->
+    <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+    <main class="screen" id="screen">
+      <!-- Shown until the config has loaded (no JavaScript needed for this) -->
+      <div class="boot">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Loading… / लोड हो रहा है…</p>
+      </div>
+    </main>
+
+    <!-- "Please choose an answer" style hints, just above the bottom bar -->
+    <div class="toast" id="toast" role="alert" hidden></div>
+
+    <nav class="navbar" id="navbar" hidden>
+      <button class="btn btn-ghost" id="nav-back" type="button"></button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" id="nav-skip" type="button" hidden></button>
+      <button class="btn btn-primary" id="nav-next" type="button"></button>
+    </nav>
+  </div>
+
+  <noscript>
+    <p style="padding:16px">Please turn on JavaScript to fill in this survey. / यह सर्वे भरने के लिए कृपया JavaScript चालू करें।</p>
+  </noscript>
+</body>
+</html>

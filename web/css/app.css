@@ -1,0 +1,423 @@
+/* =============================================================================
+   app.css: how the form looks. Mobile first: designed for a 360 px wide,
+   low-cost Android phone, and simply centred on bigger screens.
+
+   COLOURS: do not change them here. app.js replaces the --c-* values below
+   with branding.colors from web/config/survey.json as soon as it loads.
+   The values below are only used for the first moment while that loads.
+
+   DESIGN RULES USED
+   - Big tap targets: every button is at least 44-52 px tall.
+   - Phone's own fonts only (no font downloads), so the page stays light and
+     Hindi, Tamil, Telugu, Kannada and Malayalam use the phone's built-in fonts.
+   - NPS numbers all look the same (no red/green), so the colours do not nudge
+     the partner towards an answer.
+   - Respects "reduce motion" accessibility settings.
+   ============================================================================= */
+
+:root {
+  --c-primary: #4B2E83;
+  --c-on-primary: #FFFFFF;
+  --c-bg: #FFFFFF;
+  --c-surface: #F3F0F8;
+  --c-text: #1B1B1F;
+  --c-muted: #5F5E6B;
+  --c-border: #D9D4E3;
+  --c-error: #B3261E;
+  --c-success: #1B7F3B;
+  --tap: 52px;
+  --gap: 10px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* when the browser scrolls something into view (e.g. the text box), keep it
+     clear of the sticky bottom bar */
+  scroll-padding-top: 16px;
+  scroll-padding-bottom: 96px;
+}
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari",
+    "Noto Sans Tamil", "Noto Sans Telugu", "Noto Sans Kannada", "Noto Sans Malayalam", "Nirmala UI",
+    Arial, sans-serif;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+
+.app {
+  max-width: 520px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.icon { width: 24px; height: 24px; flex: none; }
+
+/* ---- Test-mode strip ------------------------------------------------------ */
+.dev-banner {
+  background: #FFF4C2;
+  color: #4A3B00;
+  border-bottom: 1px solid #E8D27A;
+  font-size: 0.8rem;
+  padding: 6px 16px;
+}
+
+/* ---- Top bar + progress --------------------------------------------------- */
+/* The top bar scrolls away with the page: on small phones every pixel of
+   screen is better used by the question. */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 8px;
+  background: var(--c-bg);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-right: 8px;
+  color: var(--c-primary);
+  font-size: 1rem;
+  font-weight: 700;
+}
+.brand img { height: 28px; width: auto; margin-right: 8px; }
+.lang-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1.5px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.lang-btn .icon { width: 20px; height: 20px; margin-right: 6px; color: var(--c-primary); }
+
+.progress {
+  height: 6px;
+  margin: 0 16px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--c-border);
+}
+.progress-fill { height: 100%; width: 0; background: var(--c-primary); transition: width 0.25s ease; }
+
+.notice {
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--c-surface);
+  font-size: 0.9rem;
+}
+.notice.is-warn { background: #FDECEA; color: var(--c-error); }
+
+/* ---- Screen area ---------------------------------------------------------- */
+.screen { flex: 1; padding: 20px 16px 28px; }
+
+.q-head { display: flex; align-items: flex-start; margin-bottom: 18px; }
+.q-title { flex: 1; margin: 0; font-size: 1.3rem; line-height: 1.35; font-weight: 700; outline: none; }
+.speak-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--c-border);
+  border-radius: 50%;
+  background: var(--c-bg);
+  color: var(--c-primary);
+}
+.speak-btn.is-speaking { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-on-primary); }
+
+.area-name { margin: 0 0 2px; color: var(--c-primary); font-size: 1.05rem; font-weight: 700; }
+.area-help { margin: 0 0 14px; color: var(--c-muted); font-size: 0.9rem; }
+.your-rating { margin: 0 0 12px; color: var(--c-muted); font-size: 0.9rem; }
+.sub-title { margin: 24px 0 10px; font-size: 1.05rem; font-weight: 700; }
+.body-text { margin: 0 0 12px; }
+
+/* ---- Answer buttons (shared look) ---------------------------------------- */
+.choice {
+  min-height: var(--tap);
+  padding: 8px 10px;
+  border: 2px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface);
+  text-align: center;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.choice.is-selected { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-on-primary); }
+
+.choice:focus-visible, .btn:focus-visible, .link-btn:focus-visible, .speak-btn:focus-visible,
+.mic-btn:focus-visible, .lang-btn:focus-visible, .icon-btn:focus-visible {
+  outline: 3px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+.link-btn {
+  min-height: 44px;
+  padding: 8px 6px;
+  border: none;
+  background: none;
+  color: var(--c-primary);
+  font-size: 0.95rem;
+  text-decoration: underline;
+}
+
+/* ---- Language picker ------------------------------------------------------ */
+.lang-grid { display: grid; grid-template-columns: 1fr 1fr; grid-gap: var(--gap); gap: var(--gap); }
+.lang-choice { min-height: 72px; font-size: 1.25rem; font-weight: 600; }
+
+/* ---- NPS 0-10 (two rows: 0-5 and 6-10) ------------------------------------ */
+.nps-row { display: grid; grid-gap: 8px; gap: 8px; margin-bottom: 8px; }
+.nps-row-a { grid-template-columns: repeat(6, 1fr); }
+.nps-row-b { grid-template-columns: repeat(5, 1fr); }
+.nps-chip { min-height: 56px; padding: 0; font-size: 1.2rem; font-weight: 700; }
+.nps-ends { display: flex; justify-content: space-between; margin-top: 6px; color: var(--c-muted); font-size: 0.85rem; }
+.nps-ends span { max-width: 48%; }
+.nps-ends span:last-child { text-align: right; }
+
+/* ---- 1-5 faces ----------------------------------------------------------- */
+.faces { display: grid; grid-template-columns: repeat(5, 1fr); grid-gap: 6px; gap: 6px; }
+.face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 92px;
+  padding: 10px 2px 8px;
+}
+.face-emoji { font-size: 2rem; line-height: 1.1; }
+.face-label { margin-top: 4px; color: var(--c-muted); font-size: 0.72rem; line-height: 1.2; word-break: break-word; }
+.face.is-selected .face-label { color: var(--c-on-primary); }
+.faces.compact .face { min-height: 54px; padding: 6px 2px; }
+.faces.compact .face-emoji { font-size: 1.7rem; }
+.na-btn { display: block; margin: 14px auto 0; }
+.srow .na-btn { margin: 2px auto 0; min-height: 40px; font-size: 0.85rem; }
+.na-btn.is-selected { background: var(--c-surface); border-radius: 8px; font-weight: 700; text-decoration: none; }
+
+/* ---- Problem chips -------------------------------------------------------- */
+.chips { display: grid; grid-template-columns: 1fr 1fr; grid-gap: 8px; gap: 8px; }
+.chips.one-col { grid-template-columns: 1fr; }
+.chip {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  text-align: left;
+}
+.chip .icon { display: none; width: 18px; height: 18px; margin-right: 6px; }
+.chip.is-selected .icon { display: inline-block; }
+
+/* ---- Yes / No ------------------------------------------------------------- */
+.yesno { display: grid; grid-template-columns: 1fr 1fr; grid-gap: var(--gap); gap: var(--gap); }
+.yesno .choice { min-height: 72px; font-size: 1.2rem; font-weight: 700; }
+
+/* ---- Support block -------------------------------------------------------- */
+.legend { margin: -6px 0 10px; color: var(--c-muted); font-size: 0.85rem; }
+.srow { padding: 10px 0; border-top: 1px solid var(--c-border); }
+.legend + .srow { border-top: none; }
+.srow-label { margin: 0 0 8px; font-size: 0.98rem; font-weight: 600; }
+.srow.is-missing .srow-label { color: var(--c-error); }
+
+/* ---- What changed --------------------------------------------------------- */
+.wc-list { margin: 0; padding: 0 0 0 1.1em; }
+.wc-list li { margin: 0 0 12px; }
+
+/* ---- "Tell us more": voice note + typing ---------------------------------- */
+.tell { margin-top: 4px; }
+.consent {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1.5px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface);
+}
+.consent p { margin: 0 0 10px; font-size: 0.95rem; }
+.mic-btn {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 2px solid var(--c-primary);
+  border-radius: 999px;
+  background: var(--c-bg);
+  color: var(--c-primary);
+  font-size: 1.05rem;
+  font-weight: 700;
+  /* stop Android's long-press menu / text selection while holding */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+.mic-btn .icon { width: 28px; height: 28px; margin-right: 10px; }
+.mic-btn.is-recording { background: var(--c-error); border-color: var(--c-error); color: #FFFFFF; }
+.mic-btn.is-starting { opacity: 0.7; }
+.rec-status { min-height: 1.4em; margin: 8px 0 0; color: var(--c-muted); font-size: 0.9rem; text-align: center; }
+.rec-status.is-error { color: var(--c-error); }
+.rec-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--c-error);
+  animation: pp-pulse 1s infinite;
+}
+.clip-row {
+  display: flex;
+  align-items: center;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--c-surface);
+}
+.clip-time { flex: 1; margin: 0 10px; font-variant-numeric: tabular-nums; font-size: 0.95rem; }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1.5px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+  font-size: 0.9rem;
+}
+.icon-btn .icon { width: 20px; height: 20px; margin-right: 4px; }
+.type-row { margin-top: 4px; text-align: center; }
+.text-input {
+  width: 100%;
+  min-height: 96px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 2px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-bg);
+  font-size: 1rem;
+  resize: vertical;
+}
+.text-input:focus { outline: none; border-color: var(--c-primary); }
+.hint { margin: 8px 0 0; font-size: 0.9rem; }
+.hint.is-error { color: var(--c-error); }
+
+/* ---- Hint shown just above the bottom bar ("Please choose an answer") ---- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 84px; /* older phones without env() */
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 10;
+  width: calc(100% - 32px);
+  max-width: 488px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--c-text);
+  color: var(--c-bg);
+  font-size: 0.95rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transform: translateX(-50%);
+  pointer-events: none; /* taps go through to whatever is underneath */
+}
+
+/* ---- Bottom bar ----------------------------------------------------------- */
+.navbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg);
+}
+.navbar .spacer { flex: 1; }
+.navbar .btn + .btn { margin-left: 8px; }
+.btn {
+  min-height: var(--tap);
+  padding: 10px 20px;
+  border: 2px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+  font-weight: 700;
+}
+.btn-primary { min-width: 120px; background: var(--c-primary); border-color: var(--c-primary); color: var(--c-on-primary); }
+.btn-primary.is-disabled { opacity: 0.45; }
+.btn-ghost { border-color: transparent; background: none; color: var(--c-muted); }
+
+/* ---- Thank-you and message screens --------------------------------------- */
+.final { padding-top: 16px; text-align: center; outline: none; }
+.final .big-icon { width: 72px; height: 72px; color: var(--c-success); }
+.final .big-icon.is-warn { color: var(--c-error); }
+.final .q-head { justify-content: center; }
+.final .q-title { flex: none; }
+.final p { margin: 0 0 12px; }
+.final .muted { color: var(--c-muted); font-size: 0.95rem; }
+.final .btn { margin-top: 12px; }
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 24px auto;
+  border: 4px solid var(--c-border);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: pp-spin 0.9s linear infinite;
+}
+.boot { padding-top: 40px; color: var(--c-muted); text-align: center; }
+.boot-error { padding-top: 24px; text-align: center; }
+
+/* ---- Language sheet (opens from the top-bar button) ----------------------- */
+.sheet-backdrop {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  border-radius: 18px 18px 0 0;
+  background: var(--c-bg);
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sheet-head .q-title { font-size: 1.15rem; }
+
+@keyframes pp-pulse { 50% { opacity: 0.3; } }
+@keyframes pp-spin { to { transform: rotate(360deg); } }
+
+/* Very narrow phones */
+@media (max-width: 340px) {
+  .chips { grid-template-columns: 1fr; }
+  .face-label { font-size: 0.65rem; }
+  .q-title { font-size: 1.2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

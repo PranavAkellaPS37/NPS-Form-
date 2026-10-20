@@ -1,0 +1,68 @@
+# =============================================================================
+# .gitignore: files git must NEVER commit.
+#
+# Rule #1 of this project: NO real partner data in the repository.
+# So, by default, we ignore every file type that could hold real data
+# (spreadsheets, exports, voice notes, logs, keys). The only exception is
+# the obviously-fake demo data in /sample_data, which is re-allowed at the end.
+#
+# Before every commit you can double-check with:   git status --ignored
+# =============================================================================
+
+# --- Local data written by the mock server, pipeline and dashboard ---------
+local_data/
+data/
+exports/
+logs/
+pipeline/audio/
+pipeline/cache/
+pipeline/review/gold*.csv
+dashboard/cache/
+
+# --- Anything that looks like a data export --------------------------------
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.jsonl
+*.parquet
+*.sqlite
+*.db
+
+# --- Voice recordings (partner voices are personal data) -------------------
+# Note: web/audio/*.mp3 (our own pre-recorded question clips) is NOT ignored.
+*.webm
+*.ogg
+*.opus
+*.m4a
+*.wav
+*.aac
+*.mp4
+*.bin
+
+# --- Secrets: API keys, Google credentials, tokens --------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials*.json
+client_secret*.json
+service_account*.json
+service-account*.json
+token*.json
+.clasprc.json
+
+# --- Python / Node / Mac clutter --------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+.DS_Store
+.streamlit/secrets.toml
+
+# --- Re-allow the FAKE demo data (never put real data in here) --------------
+!sample_data/
+!sample_data/**

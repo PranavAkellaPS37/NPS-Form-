@@ -1,0 +1,132 @@
+{
+  "_help": "Main settings for the Valmo Partner Pulse questionnaire. Keys that start with an underscore (_) are notes for humans; the app ignores them. Every word shown to partners lives in web/i18n/strings.json, not here. After ANY edit, run:  python3 scripts/check_config.py",
+
+  "survey_id": "valmo-partner-pulse",
+  "config_version": "2026-10-19.1",
+  "_config_version_help": "Change this (for example bump the last number) whenever you change questions, areas or chips. Every submission is stamped with it, so the dashboard knows which version of the questionnaire a partner saw.",
+
+  "branding": {
+    "_help": "Colours are hex codes (#RRGGBB). primary = buttons and selected answers. on_primary = text on primary buttons. surface = background of answer buttons. muted = secondary text. border = outlines. error / success = status messages. logo = optional image path inside web/ (for example assets/logo.svg); leave empty to show the product name as text. The product name itself is the string brand.name.",
+    "logo": "",
+    "colors": {
+      "primary": "#4B2E83",
+      "on_primary": "#FFFFFF",
+      "background": "#FFFFFF",
+      "surface": "#F3F0F8",
+      "text": "#1B1B1F",
+      "muted": "#5F5E6B",
+      "border": "#D9D4E3",
+      "error": "#B3261E",
+      "success": "#1B7F3B"
+    }
+  },
+
+  "backend": {
+    "_help": "Where answers are sent. mode = mock -> the local test server on this Mac (python3 scripts/mock_server.py). mode = apps_script -> Google Apps Script (set up in Phase 2; paste its /exec URL into apps_script_url). Adding ?mock=1 to any link forces mock mode. retry_delays_seconds = how long to wait before each automatic re-try when sending fails (after the last one, the partner still has a Retry button). request_timeout_seconds = how long one send may take before it is tried again; bigger sends (voice notes) automatically get more time, assuming the phone uploads at least slow_upload_bytes_per_second (1000 = very weak 2G).",
+    "mode": "mock",
+    "mock_url": "/api",
+    "apps_script_url": "",
+    "request_timeout_seconds": 90,
+    "slow_upload_bytes_per_second": 1000,
+    "retry_delays_seconds": [2, 5, 10, 20, 40, 60, 60, 120, 120, 300]
+  },
+
+  "links": {
+    "_help": "Every real link carries ?dc=<DC_ID>&t=<token>&round=<round_id>. In live mode a link missing any of these shows an 'incomplete link' message. In mock mode the defaults below are used so you can test without a real link.",
+    "mock_defaults": { "dc": "DC-DEMO-001", "round": "DEMO-R1", "t": "" }
+  },
+
+  "languages": [
+    { "code": "en", "bcp47": "en-IN", "native_name": "English" },
+    { "code": "hi", "bcp47": "hi-IN", "native_name": "हिन्दी" },
+    { "code": "ta", "bcp47": "ta-IN", "native_name": "தமிழ்" },
+    { "code": "te", "bcp47": "te-IN", "native_name": "తెలుగు" },
+    { "code": "kn", "bcp47": "kn-IN", "native_name": "ಕನ್ನಡ" },
+    { "code": "ml", "bcp47": "ml-IN", "native_name": "മലയാളം" }
+  ],
+  "_languages_help": "Order = order of buttons on the language screen. code = the key used in strings.json and in ?lang= links. bcp47 = language tag used for the read-aloud voice. native_name = the language's name written in its own script.",
+  "default_language": "en",
+  "fallback_language": "en",
+  "_fallback_language_help": "If a string is missing or still marked [TRANSLATE] for the chosen language, the fallback language's text is shown (and read aloud with the fallback language's voice).",
+
+  "navigation": {
+    "_help": "auto_advance = move to the next screen as soon as a single-answer question is tapped (NPS, faces, yes/no). The short delay lets the partner see what they tapped.",
+    "auto_advance": true,
+    "auto_advance_delay_ms": 350
+  },
+
+  "rating": {
+    "_help": "The 1-5 faces used for area ratings and support ratings, from 1 (worst) to 5 (best). Labels under the faces are strings rating.1 ... rating.5. allow_not_applicable adds a small \"I don't handle this\" option under area ratings (string rating.na); those answers are left out of averages.",
+    "faces": ["😠", "🙁", "😐", "🙂", "😄"],
+    "allow_not_applicable": true
+  },
+
+  "deep_dive": {
+    "_help": "Every area rated at or below threshold gets a 'What is the main problem?' screen with that area's chips, plus an optional voice note or text. when = after_all_ratings asks the problem screens after all six ratings (recommended: partners cannot learn mid-survey that a low score means extra questions). when = immediate asks right after each low rating. require_chip = a chip must be picked before Next. require_detail_if_other = if the partner picks Other, a voice note or text is required.",
+    "threshold": 3,
+    "when": "after_all_ratings",
+    "require_chip": true,
+    "require_detail_if_other": true
+  },
+
+  "functions": [
+    { "id": "losses",      "issues": ["wrong_debit", "no_proof", "dispute_slow", "dispute_rejected", "amount_too_high"] },
+    { "id": "payments",    "issues": ["payout_delayed", "short_payment", "unclear_breakup", "invoice_gst", "incentive_missing"] },
+    { "id": "linehaul",    "issues": ["late_arrival", "trip_missed", "damaged_on_arrival", "short_receipt", "rto_pickup_delay"] },
+    { "id": "consumables", "issues": ["short_supply", "late_supply", "poor_quality", "wrong_charge", "hard_to_request"] },
+    { "id": "orders",      "issues": ["volume_low", "volume_spike", "forecast_wrong", "pincode_mapping", "capacity_mismatch"] },
+    { "id": "app",         "issues": ["app_slow_crash", "scan_issue", "wrong_data", "login_otp", "missing_feature"] }
+  ],
+  "_functions_help": "The areas partners rate, one screen each, in this order. id and issue codes are permanent codes: the sheet, classifier and dashboard use them, so keep them the same from round to round (you may freely reword their labels). Labels live in strings.json as fn.<id>.name, fn.<id>.help and issue.<id>.<code>. An 'Other' chip (code other, string issue.other) is added automatically. Use 4-6 chips per area. To give one area its own threshold add  \"threshold\": 2  next to its id.",
+
+  "support": {
+    "_help": "Shown only to partners who answer Yes to the support question. items = the four things rated 1-5 on one screen (labels: support.<item> in strings.json). allow_comment adds an optional voice/text comment (question string: comment_text).",
+    "items": ["agent_behaviour", "understood_problem", "time_to_resolve", "kept_updated"],
+    "allow_not_applicable": false,
+    "allow_comment": true,
+    "comment_text": "q.support_comment"
+  },
+
+  "voice": {
+    "_help": "Voice notes. gesture = hold (press and hold to record, release to stop) or tap (tap to start, tap again to stop). max_seconds = hard cap per note. min_seconds = shorter notes are thrown away as accidental taps. bitrate = bits per second (16000 keeps a 60 s note around 120 KB). mime_types = audio formats to try, best first. If the phone cannot record or the partner blocks the microphone, the form quietly falls back to typing.",
+    "enabled": true,
+    "gesture": "hold",
+    "max_seconds": 60,
+    "min_seconds": 1,
+    "bitrate": 16000,
+    "mime_types": ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/mp4"]
+  },
+
+  "text": {
+    "_help": "Free-text boxes accept any language or script, including Hindi/Tamil written in English letters. max_chars = maximum length of one answer.",
+    "max_chars": 1500
+  },
+
+  "read_aloud": {
+    "_help": "Speaker button on each question. Uses a pre-recorded clip from config/audio_clips.json if one exists for that text and language, otherwise the phone's built-in voice. The button hides itself when neither is available for the chosen language.",
+    "enabled": true
+  },
+
+  "whats_changed": {
+    "_help": "The 'What changed since last time' screen. Its content comes from the backend (Apps Script in live mode); if the backend does not answer within timeout_seconds, the form uses config/whats_changed.json instead. If neither has items for the round, the screen is skipped.",
+    "timeout_seconds": 4
+  },
+
+  "telemetry": {
+    "_help": "Small 'progress' messages (started / which screen the partner reached) so the dashboard can show drop-off per screen. They never contain answers. The 'opened' message is always sent, even when this is false, because it also checks that the link is genuine.",
+    "enabled": true
+  },
+
+  "flow": [
+    { "id": "language",      "type": "language_picker", "skip_if": "lang_in_url" },
+    { "id": "whats_changed", "type": "whats_changed",   "skip_if": "empty" },
+    { "id": "nps",           "type": "nps_0_10",        "text": "q.nps", "low_label": "nps.low", "high_label": "nps.high", "scale_hint": "nps.scale_hint", "required": true },
+    { "id": "fn_ratings",    "type": "function_ratings" },
+    { "id": "fn_deep_dives", "type": "function_deep_dives" },
+    { "id": "support_gate",  "type": "yes_no",          "text": "q.support_gate", "required": true },
+    { "id": "support",       "type": "support_block",   "text": "q.support_block", "show_if": { "answer": "support_gate", "equals": "yes" } },
+    { "id": "one_fix",       "type": "free_text",       "text": "q.one_fix", "required": false },
+    { "id": "thanks",        "type": "thank_you" }
+  ],
+  "_flow_help": "The screens, in order. id = permanent code for the screen (used in the data). type = what kind of screen. Built-in types: language_picker, whats_changed, function_ratings (one screen per area), function_deep_dives (problem screens for low-rated areas), support_block, thank_you (must be last). Generic types you can add freely: nps_0_10, rating_1_5, yes_no, single_choice (needs \"options\": [codes], labels in strings as choice.<id>.<code>), free_text, info_card (needs \"text\" and optional \"body\"). text = string key of the question. required = false adds a Skip button. show_if = only show this screen when an earlier answer matches, e.g. {\"answer\": \"support_gate\", \"equals\": \"yes\"}. Other tests: not_equals, at_most, at_least, in (a list), answered (true/false); combine with {\"all\": [...]} or {\"any\": [...]}. Area ratings can be tested too, e.g. {\"answer\": \"fn_rating:payments\", \"at_most\": 2}. skip_if: lang_in_url (language screen) or empty (what-changed screen)."
+}

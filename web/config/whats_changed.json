@@ -1,0 +1,38 @@
+{
+  "_help": "Content for the 'What changed since your last feedback' screen, one block per round. The block name must match the round=... value in the partner links. If a round has no items (or is missing), the screen is skipped. Each item needs all six languages; untranslated ones start with [TRANSLATE]. title is optional: leave it null to use the standard title (string wc.title). In live mode (Phase 2) the Google Apps Script serves this content, so you can change it without redeploying the form; this file is the backup. DEMO-R1 is fake test content: never use it for a real round.",
+  "rounds": {
+    "DEMO-R1": {
+      "title": null,
+      "items": [
+        {
+          "en": "[SAMPLE] Debit disputes now get a first reply within 48 hours.",
+          "hi": "[SAMPLE] डेबिट डिस्प्यूट का पहला जवाब अब 48 घंटों में मिलता है।",
+          "ta": "[TRANSLATE] [SAMPLE] Debit disputes now get a first reply within 48 hours.",
+          "te": "[TRANSLATE] [SAMPLE] Debit disputes now get a first reply within 48 hours.",
+          "kn": "[TRANSLATE] [SAMPLE] Debit disputes now get a first reply within 48 hours.",
+          "ml": "[TRANSLATE] [SAMPLE] Debit disputes now get a first reply within 48 hours."
+        },
+        {
+          "en": "[SAMPLE] The payout breakup is now shown line by line in the app.",
+          "hi": "[SAMPLE] पेआउट का ब्रेकअप अब ऐप में अलग-अलग लाइनों में दिखता है।",
+          "ta": "[TRANSLATE] [SAMPLE] The payout breakup is now shown line by line in the app.",
+          "te": "[TRANSLATE] [SAMPLE] The payout breakup is now shown line by line in the app.",
+          "kn": "[TRANSLATE] [SAMPLE] The payout breakup is now shown line by line in the app.",
+          "ml": "[TRANSLATE] [SAMPLE] The payout breakup is now shown line by line in the app."
+        },
+        {
+          "en": "[SAMPLE] You now get an SMS when line haul is delayed.",
+          "hi": "[SAMPLE] लाइन हॉल में देरी की जानकारी अब आपको SMS से मिलती है।",
+          "ta": "[TRANSLATE] [SAMPLE] You now get an SMS when line haul is delayed.",
+          "te": "[TRANSLATE] [SAMPLE] You now get an SMS when line haul is delayed.",
+          "kn": "[TRANSLATE] [SAMPLE] You now get an SMS when line haul is delayed.",
+          "ml": "[TRANSLATE] [SAMPLE] You now get an SMS when line haul is delayed."
+        }
+      ]
+    },
+    "2026-R1": {
+      "title": null,
+      "items": []
+    }
+  }
+}

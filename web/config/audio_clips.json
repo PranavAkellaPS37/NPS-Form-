@@ -1,0 +1,4 @@
+{
+  "_help": "OPTIONAL pre-recorded audio for the read-aloud (speaker) button. Map a string key from web/i18n/strings.json to one mp3 per language, for example  \"q.nps\": { \"hi\": \"audio/hi/q.nps.mp3\", \"ta\": \"audio/ta/q.nps.mp3\" }. Paths are relative to the web/ folder. When a clip exists for a text in the partner's language it is played instead of the phone's built-in voice. Keep clips short and small (mono, 32-48 kbps mp3) because partners are on slow data. Leave clips empty to rely on the phone's voice only.",
+  "clips": {}
+}
