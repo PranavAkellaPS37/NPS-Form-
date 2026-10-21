@@ -5,12 +5,16 @@
 ==============================================================================
 
 WHAT THIS FILE IS FOR
-  The real survey will send its answers to Google Apps Script (set up in
-  Phase 2). Until that exists, this script plays the backend's part on this
-  Mac, so you can take the survey yourself and see exactly what gets saved.
-  It does two jobs at once:
+  The real survey sends its answers to Google Apps Script (the live backend,
+  set up from the Google Sheet control panel). This script plays the
+  backend's part on this Mac instead, so you can take the survey yourself and
+  see exactly what gets saved, without touching anything live.
+  It does three jobs at once:
     1. It shows the survey form (the files in the web/ folder) in your browser.
-    2. It receives the answers at the address /api, checks them and saves
+    2. It hands the form its questionnaire (the "bootstrap" request), built
+       from the files in web/, just as the live backend hands out the version
+       published from the control panel.
+    3. It receives the answers at the address /api, checks them and saves
        them in the local_data/ folder. It follows docs/submission-format.md
        (the agreement between the form and any backend) exactly.
 
@@ -31,6 +35,14 @@ HOW TO RUN IT
     --one-response-per-dc   Tell a DC that already answered this round "already received".
     --fail-rate 0.3         Make 30% of sends fail on purpose (tests the form's retries).
     --slow 3                Wait 3 seconds before answering a send (imitates slow mobile data).
+    --closed-rounds R1,R2   Pretend these rounds are CLOSED, as if closed in the control
+                            panel: new visitors see "This survey has closed"; a partner who
+                            had already started on that phone may finish, and those answers
+                            are saved marked late.
+    --draft-rounds R3       Pretend these rounds are NOT OPEN YET (draft): their links show
+                            "This survey is not open yet" and every message for them is
+                            refused with round_not_open. Preview links still work.
+                            (Every other round counts as open.)
     --data-dir PATH         Save in another folder instead of local_data/.
     --reset                 Delete all saved test answers (asks you to type "yes" first).
   Full explanation of each option:  python3 scripts/mock_server.py --help
@@ -40,6 +52,8 @@ WHAT YOU SEE WHILE IT RUNS (one line per message, for example)
   11:22:30  PING opened  DC-DEMO-001  DEMO-R1  lang=hi  screen=nps  step=2/13  token OK  already submitted: no
   11:23:31  SUBMIT  DC-DEMO-001  DEMO-R1  lang=hi  nps=6  ratings=10  voice notes=2  texts=1  token OK  -> saved
   11:23:40  SUBMIT  DC-DEMO-001  DEMO-R1  sent again (sub_...): already saved, nothing new written
+  11:22:29  GET  bootstrap  round=DEMO-R1 (open)  -> questionnaire 2026-10-19.1, 9 screens, 130 texts, 3 'what changed' item(s)
+    GET bootstrap = the form asking for its questionnaire when a link is opened
     PING     = a progress signal from the form (it never contains answers)
     SUBMIT   = a finished survey
     REFUSED  = the message was not accepted; the line says why
@@ -47,6 +61,10 @@ WHAT YOU SEE WHILE IT RUNS (one line per message, for example)
 
 WHAT IT READS
   web/                           the survey form, sent to the browser unchanged
+  web/config/survey.json,        the questionnaire handed to the form (bootstrap),
+  web/i18n/strings.json,         without the notes for humans and without the
+  web/config/audio_clips.json    settings that say where answers go. Read again on
+                                 every request, so your edits show up without a restart.
   web/config/whats_changed.json  the "What changed" news. It is read again on every
                                  request, so your edits show up without a restart.
   local_data/responses.jsonl     read once at start-up, so a survey that arrives twice
@@ -56,7 +74,8 @@ WHAT IT READS
                                  "mock-dev-secret-not-for-production" is used.
 
 WHAT IT WRITES  (only inside local_data/, which git ignores, so it is never uploaded)
-  local_data/responses.jsonl     one line per finished survey
+  local_data/responses.jsonl     one line per finished survey (marked "late": true when
+                                 it arrived for a round listed in --closed-rounds)
   local_data/events.jsonl        one line per progress signal (opened / started / progress)
   local_data/audio/<round>/<dc>/ one file per voice note
   It never changes anything in web/, docs/ or scripts/.
@@ -110,6 +129,9 @@ from urllib.parse import parse_qs, unquote, urlencode
 # same whichever folder you start it from.
 REPO_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = REPO_DIR / "web"
+SURVEY_FILE = WEB_DIR / "config" / "survey.json"
+STRINGS_FILE = WEB_DIR / "i18n" / "strings.json"
+AUDIO_CLIPS_FILE = WEB_DIR / "config" / "audio_clips.json"
 WHATS_CHANGED_FILE = WEB_DIR / "config" / "whats_changed.json"
 DEFAULT_DATA_DIR = REPO_DIR / "local_data"
 DEFAULT_PORT = 8787
@@ -124,6 +146,11 @@ MAX_BODY_BYTES = 25 * MEGABYTE        # one whole message, voice notes included
 MAX_VOICE_NOTE_BYTES = 5 * MEGABYTE   # one voice note, after decoding
 
 PING_STAGES = ("opened", "started", "progress")
+
+# Settings the form ALWAYS takes from its own copy of survey.json, because it
+# needs them before it can ask for the questionnaire. The live backend never
+# hands them out (docs/control-panel-design.md, section 5), so neither do we.
+FORM_ONLY_BACKEND_SETTINGS = ("mode", "mock_url", "apps_script_url")
 
 # Allowed shapes of IDs. dc and round also become folder names under audio/,
 # so they must not contain "/" and must not be "." or ".." (which mean
@@ -202,6 +229,10 @@ class WhatsChangedProblem(Exception):
     """web/config/whats_changed.json cannot be used. The text says why."""
 
 
+class QuestionnaireFileProblem(Exception):
+    """survey.json or strings.json cannot be used. The text names the file and says why."""
+
+
 class RangeNotSatisfiable(Exception):
     """The browser asked for a part of a file that does not exist."""
 
@@ -218,6 +249,17 @@ class Settings:
     data_dir: Path
     secret: str
     secret_is_default: bool
+    closed_rounds: frozenset = frozenset()   # --closed-rounds
+    draft_rounds: frozenset = frozenset()    # --draft-rounds
+
+    def round_status(self, round_id: str) -> str:
+        """"open", "closed" or "draft", as the control panel's Rounds tab would say.
+        Every round not listed in --closed-rounds or --draft-rounds is open."""
+        if round_id in self.draft_rounds:
+            return "draft"
+        if round_id in self.closed_rounds:
+            return "closed"
+        return "open"
 
 
 @dataclass
@@ -294,6 +336,10 @@ def bad_token_answer() -> dict:
     return {"ok": False, "error": "bad_token"}
 
 
+def round_not_open_answer() -> dict:
+    return {"ok": False, "error": "round_not_open"}
+
+
 # ============================================================================
 # Link tokens (docs/submission-format.md, section 5)
 # ============================================================================
@@ -316,12 +362,16 @@ def token_is_valid(secret: str, message: dict) -> bool:
     return hmac.compare_digest(token.encode("utf-8", "replace"), wanted.encode("ascii"))
 
 
-def demo_link(base_url: str, secret: str, dc: str, lang: str | None, token_dc: str | None = None) -> str:
+def demo_link(base_url: str, secret: str, dc: str, lang: str | None, token_dc: str | None = None,
+              round_id: str = DEMO_ROUND) -> str:
     """A link shaped like the real ones: <base>/?dc=...&t=...&round=...&lang=..."""
-    token = expected_token(secret, token_dc or dc, DEMO_ROUND)
-    query = [("dc", dc), ("t", token), ("round", DEMO_ROUND)]
+    token = expected_token(secret, token_dc or dc, round_id)
+    query = [("dc", dc), ("t", token), ("round", round_id)]
     if lang:
         query.append(("lang", lang))
+    # mock=1: these links must reach THIS test server even after
+    # web/config/survey.json has been switched to the live Google backend.
+    query.append(("mock", "1"))
     return f"{base_url}/?{urlencode(query)}"
 
 
@@ -365,11 +415,30 @@ def check_dc_and_round(message: dict) -> None:
                              'letters, digits, "-", "_" or ".".')
 
 
+# Size caps, the same as apps-script/Code.gs (PP_SRV): a real survey is small,
+# and these stop one partner link from flooding the data with junk.
+MAX_LIST_ITEMS = {"free_text": 64, "ratings": 64, "events": 400}
+MAX_ANSWER_KEYS = 100
+MAX_ANSWERS_CHARS = 200_000          # the whole message without voice notes
+MAX_PING_FIELD_CHARS = {"session_id": 64, "lang": 8, "screen": 80, "at": 40, "mode": 10, "stage": 10}
+MAX_PING_EVENTS = 400
+MAX_PING_CHARS = 60_000
+
+
 def check_ping(message: dict) -> None:
     """Raise BadRequest unless this is a well-formed progress signal."""
     if message.get("stage") not in PING_STAGES:
         raise BadRequest('"stage" must be "opened", "started" or "progress".')
     check_dc_and_round(message)
+    for field, cap in MAX_PING_FIELD_CHARS.items():
+        value = message.get(field)
+        if value is not None and len(str(value)) > cap:
+            raise BadRequest(f'"{field}" is too long.')
+    events = message.get("events")
+    if events is not None and (not isinstance(events, list) or len(events) > MAX_PING_EVENTS):
+        raise BadRequest(f'"events" must be a list of at most {MAX_PING_EVENTS} items.')
+    if len(json.dumps(message, ensure_ascii=False)) > MAX_PING_CHARS:
+        raise BadRequest("The ping is too large.")
 
 
 def check_submit(message: dict) -> list[VoiceNote]:
@@ -390,6 +459,18 @@ def check_submit(message: dict) -> list[VoiceNote]:
     for field in ("ratings", "free_text", "events"):
         if not isinstance(message.get(field), list):
             raise BadRequest(f'"{field}" must be a list ([...]).')
+        if len(message[field]) > MAX_LIST_ITEMS[field]:
+            raise BadRequest(f'"{field}" has {len(message[field])} items; a real survey has at most '
+                             f'{MAX_LIST_ITEMS[field]}.')
+    if len(message["answers"]) > MAX_ANSWER_KEYS:
+        raise BadRequest('"answers" has too many entries.')
+    without_recordings = json.dumps(message, ensure_ascii=False, default=str,
+                                    separators=(",", ":"))
+    recordings = sum(len(item["audio"]["base64"]) for item in message["free_text"]
+                     if isinstance(item, dict) and isinstance(item.get("audio"), dict)
+                     and isinstance(item["audio"].get("base64"), str))
+    if len(without_recordings) - recordings > MAX_ANSWERS_CHARS:
+        raise BadRequest("The answers (without voice notes) are too large.")
     return decode_voice_notes(message["free_text"])
 
 
@@ -507,8 +588,10 @@ class Store:
         with self.lock:
             append_line(self.events_file, line)
 
-    def save_submission(self, message: dict, voice_notes: list[VoiceNote], token_valid: bool) -> SaveResult:
-        """Save a submission, unless its submission_id is saved already (then write nothing)."""
+    def save_submission(self, message: dict, voice_notes: list[VoiceNote], token_valid: bool,
+                        late: bool = False) -> SaveResult:
+        """Save a submission, unless its submission_id is saved already (then write nothing).
+        late = True when the round was already closed (the partner had started before it closed)."""
         submission_id = message["submission_id"]
         dc_round = (message["dc"], message["round"])
         with self.lock:
@@ -517,12 +600,12 @@ class Store:
             received_at = utc_now_iso()
             seen_before = dc_round in self.dc_rounds_answered
             # The stored record is what the form sent, minus the token "t"
-            # (not needed once checked), plus four fields added by the server.
+            # (not needed once checked), plus five fields added by the server.
             record = {key: value for key, value in message.items() if key != "t"}
             files_written: list[Path] = []
             try:
                 record["free_text"] = self._save_voice_notes(message, voice_notes, files_written)
-                record.update(received_at=received_at, token_valid=token_valid,
+                record.update(received_at=received_at, token_valid=token_valid, late=late,
                               server="mock", dc_round_seen_before=seen_before)
                 append_line(self.responses_file, to_json_line(record))
             except OSError:
@@ -611,6 +694,107 @@ def whats_changed_answer(round_id: str) -> dict:
 
 
 # ============================================================================
+# The questionnaire for the form: "bootstrap" (docs/submission-format.md, section 4)
+# ============================================================================
+
+def shown_name(path: Path) -> str:
+    """A file's name as people know it, e.g. web/config/survey.json."""
+    try:
+        return path.relative_to(REPO_DIR).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def read_json_file(path: Path, what: str):
+    """Read one of the form's JSON files, or raise QuestionnaireFileProblem with a plain reason."""
+    name = shown_name(path)
+    try:
+        content = json.loads(path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        raise QuestionnaireFileProblem(f"{name} ({what}) is missing") from None
+    except json.JSONDecodeError as error:
+        raise QuestionnaireFileProblem(f"{name} ({what}) has a mistake on line {error.lineno}, "
+                                       f"column {error.colno} ({error.msg})") from None
+    except (OSError, ValueError) as error:
+        raise QuestionnaireFileProblem(f"{name} ({what}) cannot be read ({error})") from None
+    if not isinstance(content, dict):
+        raise QuestionnaireFileProblem(f"{name} ({what}) is not shaped like {{...}}")
+    return content
+
+
+def survey_as_published(survey: dict) -> dict:
+    """survey.json the way the live backend hands out a published questionnaire:
+    without the notes for humans, and without the settings the form always
+    takes from its own copy (where answers go, and the test-link defaults)."""
+    survey = without_notes(survey)
+    survey.pop("links", None)
+    backend = survey.get("backend")
+    if isinstance(backend, dict):
+        for name in FORM_ONLY_BACKEND_SETTINGS:
+            backend.pop(name, None)
+    return survey
+
+
+def read_audio_clips() -> dict:
+    """The read-aloud clips from web/config/audio_clips.json. The file is
+    optional: if it is missing or broken, there are simply no clips."""
+    if not AUDIO_CLIPS_FILE.exists():
+        return {}
+    try:
+        content = read_json_file(AUDIO_CLIPS_FILE, "read-aloud clips")
+    except QuestionnaireFileProblem as problem:
+        log(f"WARNING  {problem}. The questionnaire is sent without read-aloud clips (they are optional).")
+        return {}
+    clips = content.get("clips")
+    return without_notes(clips) if isinstance(clips, dict) else {}
+
+
+def bootstrap_answer(round_id: str, draft: bool, settings: Settings) -> dict:
+    """The answer to GET /api?action=bootstrap&round=<round_id>[&draft=1]:
+    the questionnaire built from the files in web/, shaped like the live
+    backend's answer. Every file is read again, so edits show up at once.
+    draft=1 (preview links) gets the same content here: on this Mac the files
+    in web/ are both the draft and the published version."""
+    if not round_id:
+        log("REFUSED  GET bootstrap without a round")
+        return bad_request_answer('The "round" is missing. Example: ?action=bootstrap&round=DEMO-R1')
+    if not DC_OR_ROUND_RULE.fullmatch(round_id) or round_id in (".", ".."):
+        log(f'REFUSED  GET bootstrap for an invalid round "{printable(round_id)}"')
+        return bad_request_answer('The "round" is not valid. It must be 1 to 64 characters: '
+                                  'letters, digits, "-", "_" or ".".')
+    try:
+        survey = survey_as_published(read_json_file(SURVEY_FILE, "the questionnaire"))
+        strings = without_notes(read_json_file(STRINGS_FILE, "the texts"))
+        title, items = read_whats_changed(round_id)
+    except QuestionnaireFileProblem as problem:
+        log(f"WARNING  {problem}. The form falls back to its own copy of the files, which has the same "
+            "problem: fix the file and save it; no restart needed. (python3 scripts/check_config.py finds it.)")
+        return server_error_answer(f"{problem}.")
+    except WhatsChangedProblem as problem:
+        log(f"WARNING  web/config/whats_changed.json {problem}. The form falls back to its own copy of the "
+            "files. Fix the file and save it; no restart needed.")
+        return server_error_answer(f"web/config/whats_changed.json {problem}.")
+    status = settings.round_status(round_id)
+    flow = survey.get("flow")
+    screens = len(flow) if isinstance(flow, list) else 0
+    kind = "  (preview of the draft)" if draft else ""
+    log(f"GET  bootstrap{kind}  round={printable(round_id)} ({status})  -> questionnaire "
+        f"{printable(survey.get('config_version', '?'))}, {screens} screens, {len(strings)} texts, "
+        f"{len(items)} 'what changed' item(s)")
+    return {
+        "ok": True,
+        "draft": draft,
+        "round": {"id": round_id, "status": status},
+        "version": None,                           # only the live backend numbers its published versions
+        "config_version": survey.get("config_version"),
+        "survey": survey,
+        "strings": strings,
+        "whats_changed": {"title": title, "items": items},
+        "clips": read_audio_clips(),
+    }
+
+
+# ============================================================================
 # Serving the survey form's files from web/
 # ============================================================================
 
@@ -684,10 +868,22 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path, query = split_request_target(self.path)
-        if is_api_path(path):
-            self.answer_api_get(query)
-        else:
+        if not is_api_path(path):
             self.serve_web_file(path, include_body=True)
+            return
+        try:
+            answer = self.answer_api_get(query)
+        except (ConnectionError, TimeoutError, socket.timeout):
+            raise                              # the phone went away: nobody to answer
+        except Exception:                      # a bug in this script, not a problem with the request
+            with PRINT_LOCK:
+                print(f"{datetime.now():%H:%M:%S}  ERROR  something unexpected went wrong while answering a "
+                      "GET request. The form uses its own copy of the questionnaire meanwhile. Technical "
+                      "details for whoever maintains this script:", flush=True)
+                traceback.print_exc(file=sys.stdout)
+                sys.stdout.flush()
+            answer = server_error_answer("Unexpected problem in the mock server. Please retry.")
+        self.send_json(200, answer)
 
     def do_HEAD(self):
         path, _ = split_request_target(self.path)
@@ -738,21 +934,24 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     # ---- /api -----------------------------------------------------------------
 
-    def answer_api_get(self, query: str) -> None:
-        """GET /api?action=health  or  GET /api?action=whats_changed&round=X"""
+    def answer_api_get(self, query: str) -> dict:
+        """The answer to GET /api?action=health, ?action=bootstrap&round=X[&draft=1] or ?action=whats_changed&round=X"""
         params = parse_qs(query, keep_blank_values=True)
         action = params.get("action", [""])[0]
         if action == "health":
             log("GET  health check")
             answer = {"ok": True, "service": SERVICE_NAME, "mode": "mock", "time": utc_now_iso()}
+        elif action == "bootstrap":
+            answer = bootstrap_answer(params.get("round", [""])[0], params.get("draft", [""])[0] == "1",
+                                      self.server.settings)
         elif action == "whats_changed":
             answer = whats_changed_answer(params.get("round", [""])[0])
         else:
             log(f'REFUSED  GET with unknown action "{printable(action)}"' if action
                 else "REFUSED  GET /api without an action")
-            answer = bad_request_answer('Unknown or missing "action". Use ?action=whats_changed&round=<round> '
-                                        'or ?action=health.')
-        self.send_json(200, answer)
+            answer = bad_request_answer('Unknown or missing "action". Use ?action=bootstrap&round=<round>, '
+                                        '?action=whats_changed&round=<round> or ?action=health.')
+        return answer
 
     def handle_api_post(self) -> tuple[int, dict]:
         """Read one message sent to POST /api and work out the answer.
@@ -780,19 +979,28 @@ class RequestHandler(BaseHTTPRequestHandler):
             return 200, bad_request_answer(str(problem))
 
     def handle_submit(self, message: dict) -> dict:
-        """A finished survey: check it, then save it (once)."""
+        """A finished survey: check it, then save it (once).
+        Same order as the live backend (the message, the token, then the round),
+        except that the voice notes are decoded with the message, before the
+        token (docs/submission-format.md, section 11)."""
         settings, store = self.server.settings, self.server.store
         voice_notes = check_submit(message)
         token_ok = token_is_valid(settings.secret, message)
         if not token_ok and settings.strict:
             log(f"REFUSED  SUBMIT  {message['dc']}  {message['round']}  token WRONG (--strict is on), not saved")
             return bad_token_answer()
+        status = settings.round_status(message["round"])
+        if status == "draft":
+            log(f"REFUSED  SUBMIT  {message['dc']}  {message['round']}  this round is not open yet "
+                "(--draft-rounds): answered round_not_open, not saved")
+            return round_not_open_answer()
+        late = status == "closed"
         try:
-            result = store.save_submission(message, voice_notes, token_ok)
+            result = store.save_submission(message, voice_notes, token_ok, late=late)
         except OSError as error:
             log_save_problem(store.data_dir, error)
             return server_error_answer("The mock server could not save the answers on this computer. Please retry.")
-        log(describe_submission(message, voice_notes, token_ok, result))
+        log(describe_submission(message, voice_notes, token_ok, result, late))
         return {"ok": True, "submission_id": message["submission_id"],
                 "duplicate": result.duplicate, "received_at": result.received_at}
 
@@ -806,6 +1014,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not token_ok and settings.strict:
             log(f"REFUSED  {who}  token WRONG (--strict is on), not saved")
             return bad_token_answer()
+        status = settings.round_status(message["round"])
+        if status == "draft":
+            log(f"REFUSED  {who}  this round is not open yet (--draft-rounds): answered round_not_open, not saved")
+            return round_not_open_answer()
         record = {key: value for key, value in message.items() if key != "t"}
         record.update(received_at=utc_now_iso(), token_valid=token_ok)
         try:
@@ -817,9 +1029,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             log(f"{who}  {describe_ping(message)}  {token_label(token_ok)}")
             return {"ok": True}
         already = settings.one_response_per_dc and store.dc_already_answered(message["dc"], message["round"])
+        closed_note = "  (round closed)" if status == "closed" else ""
         log(f"{who}  {describe_ping(message)}  {token_label(token_ok)}  "
-            f"already submitted: {'yes' if already else 'no'}")
-        return {"ok": True, "token_valid": token_ok, "already_submitted": already}
+            f"already submitted: {'yes' if already else 'no'}{closed_note}")
+        return {"ok": True, "token_valid": token_ok, "already_submitted": already, "round_status": status}
 
     def body_length(self) -> int:
         """Size of the message in bytes, as the browser announced it (0 if it did not say)."""
@@ -922,7 +1135,8 @@ def describe_ping(message: dict) -> str:
     return "  ".join(parts)
 
 
-def describe_submission(message: dict, voice_notes: list[VoiceNote], token_ok: bool, result: SaveResult) -> str:
+def describe_submission(message: dict, voice_notes: list[VoiceNote], token_ok: bool, result: SaveResult,
+                        late: bool = False) -> str:
     """One log line about a submission. Counts only: answers are never printed."""
     who = f"SUBMIT  {message['dc']}  {message['round']}"
     if result.duplicate:
@@ -935,6 +1149,8 @@ def describe_submission(message: dict, voice_notes: list[VoiceNote], token_ok: b
             f"{token_label(token_ok)}  -> saved")
     if not token_ok:
         line += " (lenient mode: marked token_valid=false)"
+    if late:
+        line += "  [round closed: saved, marked late=true]"
     if result.seen_before:
         line += "  [this DC already answered this round; the dashboard keeps the latest]"
     return line
@@ -1018,6 +1234,7 @@ def print_banner(settings: Settings, store: Store, unreadable_lines: list[int]) 
                                        if settings.slow_seconds else "off"))
     say("   Token secret:         " + ("the built-in test secret" if settings.secret_is_default
                                        else "taken from the MOCK_SECRET setting"))
+    print_round_settings(settings)
     print_warnings(settings, unreadable_lines, lan_ip)
     say("")
     say(f" Ready-to-click test links (fake demo DCs, round {DEMO_ROUND}, genuine tokens):")
@@ -1029,12 +1246,37 @@ def print_banner(settings: Settings, store: Store, unreadable_lines: list[int]) 
     say(f"      {demo_link(base_url, settings.secret, BROKEN_LINK_DC, 'en', token_dc=BROKEN_LINK_TOKEN_DC)}")
     say("   The plain address. The form then uses its built-in test DC from web/config/survey.json;")
     say("   it has no token, so with --strict it also shows 'not valid':")
-    say(f"      {base_url}/")
+    say(f"      {base_url}/?mock=1")
+    say("   PREVIEW, as the control panel's Preview button makes it (works for any round, sends")
+    say("   nothing, saves nothing):")
+    say(f"      {base_url}/?{urlencode([('preview', '1'), ('round', DEMO_ROUND), ('lang', 'en'), ('mock', '1')])}")
+    for round_id in sorted(settings.closed_rounds | settings.draft_rounds):
+        say(f"   Round {round_id} ({settings.round_status(round_id)}), demo DC DC-DEMO-001:")
+        say(f"      {demo_link(base_url, settings.secret, 'DC-DEMO-001', 'en', round_id=round_id)}")
     if settings.lan:
         print_phone_notes(settings.port)
     say("")
     say(" Each message from the form appears below as one line. Press Ctrl+C to stop.")
     say(rule)
+
+
+def print_round_settings(settings: Settings) -> None:
+    """Which rounds count as closed / not open yet (--closed-rounds, --draft-rounds)."""
+    if not settings.closed_rounds and not settings.draft_rounds:
+        say("   Round status:         every round is open (to test the others, add --closed-rounds or")
+        say("                         --draft-rounds; see --help)")
+        return
+    label = "   Round status:         "
+    if settings.closed_rounds:
+        say(f"{label}CLOSED: {', '.join(sorted(settings.closed_rounds))}")
+        say("                         new visitors see 'This survey has closed'; partners who had started")
+        say("                         on that phone may finish, and those answers are saved marked late")
+        label = " " * len(label)
+    if settings.draft_rounds:
+        say(f"{label}NOT OPEN YET (draft): {', '.join(sorted(settings.draft_rounds))}")
+        say("                         links show 'This survey is not open yet'; messages are refused")
+        say("                         (round_not_open); preview links still work")
+    say("                         every other round is open")
 
 
 def print_warnings(settings: Settings, unreadable_lines: list[int], lan_ip: str | None) -> None:
@@ -1167,6 +1409,8 @@ examples:
   python3 scripts/mock_server.py --lan                      phones on the same Wi-Fi can open it too
   python3 scripts/mock_server.py --strict                   refuse wrong tokens, like the live system
   python3 scripts/mock_server.py --fail-rate 0.3 --slow 3   bad network: 30% of sends fail, all are slow
+  python3 scripts/mock_server.py --closed-rounds DEMO-R1    the demo round has closed
+  python3 scripts/mock_server.py --draft-rounds DEMO-R1     the demo round is not open yet
   python3 scripts/mock_server.py --reset                    delete all saved test answers (asks first)
 
 Then check it in a second Terminal window with:  python3 scripts/smoke_test.py
@@ -1204,6 +1448,18 @@ def seconds(text: str) -> float:
     return value
 
 
+def round_list(text: str) -> list[str]:
+    """'2026-R1, 2026-R2' -> ['2026-R1', '2026-R2'], each checked like a real round id."""
+    rounds = [part.strip() for part in text.split(",") if part.strip()]
+    if not rounds:
+        raise argparse.ArgumentTypeError("give at least one round id, for example --closed-rounds 2026-R1")
+    for round_id in rounds:
+        if not DC_OR_ROUND_RULE.fullmatch(round_id) or round_id in (".", ".."):
+            raise argparse.ArgumentTypeError(f"'{round_id}' is not a valid round id. Use 1 to 64 letters, digits, "
+                                             "'-', '_' or '.', for example 2026-R1. Separate several with commas.")
+    return rounds
+
+
 def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python3 scripts/mock_server.py",
@@ -1231,6 +1487,15 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--slow", type=seconds, default=0.0, metavar="SECONDS",
                         help="Wait this many seconds before answering each send, to imitate slow mobile data. "
                              "Default: 0.")
+    parser.add_argument("--closed-rounds", type=round_list, action="append", default=None, metavar="R1,R2",
+                        help="Pretend these rounds (comma-separated) are CLOSED, as if closed in the control panel: "
+                             "new visitors see 'This survey has closed'; a partner who had already started on that "
+                             "phone may still finish, and those answers are saved marked late=true.")
+    parser.add_argument("--draft-rounds", type=round_list, action="append", default=None, metavar="R1,R2",
+                        help="Pretend these rounds (comma-separated) are NOT OPEN YET (draft): their links show "
+                             "'This survey is not open yet', and every message for them is refused with "
+                             "round_not_open and not saved. Preview links (?preview=1) still work. "
+                             "Every round not listed in either option is open.")
     parser.add_argument("--data-dir", type=Path, default=None, metavar="PATH",
                         help="Folder to save answers in. Default: "
                              + str(DEFAULT_DATA_DIR).replace("%", "%%"))
@@ -1262,11 +1527,20 @@ def main(argv: list[str] | None = None) -> int:
         say("open the survey, and web/ gets published to GitHub Pages. Choose another folder with --data-dir.")
         return 1
 
+    closed_rounds = frozenset(round_id for group in args.closed_rounds or [] for round_id in group)
+    draft_rounds = frozenset(round_id for group in args.draft_rounds or [] for round_id in group)
+    in_both = sorted(closed_rounds & draft_rounds)
+    if in_both:
+        say(f"A round cannot be both closed and not open yet: {', '.join(in_both)}.")
+        say("Remove it from --closed-rounds or from --draft-rounds, then start the server again.")
+        return 1
+
     secret = os.environ.get("MOCK_SECRET") or DEFAULT_SECRET
     settings = Settings(port=args.port, lan=args.lan, strict=args.strict,
                         one_response_per_dc=args.one_response_per_dc, fail_rate=args.fail_rate,
                         slow_seconds=args.slow, data_dir=data_dir, secret=secret,
-                        secret_is_default=(secret == DEFAULT_SECRET))
+                        secret_is_default=(secret == DEFAULT_SECRET),
+                        closed_rounds=closed_rounds, draft_rounds=draft_rounds)
     store = Store(data_dir)
     try:
         data_dir.mkdir(parents=True, exist_ok=True)

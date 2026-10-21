@@ -2,16 +2,73 @@
    app.js: starts the form and moves between screens.
 
    WHAT HAPPENS WHEN A PARTNER OPENS THE LINK
-   1. Load config/survey.json and i18n/strings.json. If that fails (bad data),
-      show a short "tap to retry" message in English + Hindi.
-   2. Read the link: ?dc=<DC id>&t=<token>&round=<round id>&lang=..&mock=1
+   1. Load only the form's own settings file, config/survey.json (it comes
+      with the form, from GitHub Pages, and says where the backend is). The
+      form's own copy of the texts, i18n/strings.json, is NOT loaded here: it
+      is downloaded only if step 2 gets no usable answer. If the form cannot
+      start (for example a file it needs does not load on bad data), a short
+      "tap to retry" message is shown in English + Hindi.
+   2. Ask the backend for the PUBLISHED questionnaire, in one request (the
+      "bootstrap", docs/submission-format.md section 4). Its answer also says
+      whether the survey round is open, closed, or not open yet (draft).
+      It is only asked when the link is complete (step 3): an incomplete
+      link only gets the "This link is incomplete" message. The form waits
+      at most whats_changed.timeout_seconds + 2 seconds (that setting is read
+      from the form's own copy); a preview waits 20 seconds instead (or
+      timeout_seconds + 2, if that is longer).
+      - Answer received: the published questions, texts, "What changed" items
+        and read-aloud clips are used, and the colours are applied again.
+        Where answers are sent (backend.mode, backend.mock_url,
+        backend.apps_script_url) and the test-link defaults ("links") always
+        stay as in the form's own copy: the form needs them before it can ask.
+      - No answer in time, an error (a refused preview key too), nothing
+        published yet, or an unusable answer: only now is i18n/strings.json
+        downloaded (so a phone never downloads the texts twice), and the
+        form's own copy is used, with config/whats_changed.json and
+        config/audio_clips.json. The round's status is then "unknown" and the
+        survey carries on.
+      - An answer that breaks the form while it starts (a mistake the checks
+        missed): the form's own copy is used instead, the same way.
+      This one request replaces Phase 1's separate "what changed" request.
+   3. Read the link: ?dc=<DC id>&t=<token>&round=<round id>&lang=..&mock=1
       - live mode: a link without dc / t / round shows "This link is incomplete"
       - test mode (?mock=1, or backend.mode = "mock"): missing values come from
         links.mock_defaults, so http://localhost:8787/ just works
-   3. Restore saved progress for this DC + round on this phone, so closing the
+      (The link is read before step 2, because the bootstrap needs the round
+      and is only asked for a complete link. Every other part of steps 3 and
+      4 runs after step 2, because the published questionnaire may have a
+      different list of languages.)
+   4. Restore saved progress for this DC + round on this phone, so closing the
       page and opening the link again continues where the partner left off.
-   4. Fetch the "what changed" content (waits at most whats_changed.timeout_seconds).
-   5. Show the right screen and send an "opened" ping (which also checks the token).
+   5. Round check (docs/control-panel-design.md section 15, item 2):
+      - draft round  -> "This survey is not open yet"
+      - closed round -> "This survey has closed", EXCEPT for a partner who
+        already started on this phone, or finished but whose answers were not
+        sent yet: they may finish, and the backend marks the answers as late
+      - open or unknown -> carry on
+   6. Show the right screen and send an "opened" ping (which also checks the
+      token). If the backend answers "round_not_open", "not open yet" is shown.
+      If the bootstrap did not arrive (status unknown) and the ping says the
+      round is closed, a partner who has not started yet sees "has closed".
+
+   PREVIEW LINKS (?preview=1&round=<round>&pk=<preview key>, made by the
+   control panel)
+   - Show the admins' DRAFT questionnaire (the bootstrap asks with draft=1
+     and the link's private preview key, pk), so changes can be checked
+     before they are published. If the draft does not arrive (or the key is
+     refused), the form's own copy is shown and the PREVIEW strip says so. A
+     preview link without a round is incomplete: no draft is asked for. A
+     draft that arrives but breaks the form gets its own strip text
+     (dev.preview_broken: don't publish it).
+     Any round can be previewed, also a draft round: there is no round check.
+   - A "PREVIEW: answers are not saved" strip is shown, also in live mode.
+   - NOTHING is sent: no pings and no answers. Progress is kept on the phone
+     under its own name (state:preview:<round>:<dc>), never mixed with a real
+     link's, and the "last used language" of real links is left alone.
+   - dc and t are optional (dc defaults to DC-PREVIEW); the round is required.
+   - The last screen says "Preview finished. Nothing was saved." with a
+     "Start again" button (forgets the preview's answers and reloads, which
+     also fetches the latest draft).
 
    MOVING AROUND
    - Next, automatic "next" after a single tap, the Back button, and the
@@ -25,6 +82,10 @@
      "Send now" button, another try when the internet comes back, and another
      the next time the link is opened. Every try reuses the same submission_id,
      so the backend never stores the same answers twice.
+   - "round_not_open" from the backend (the round is a draft): "not open yet"
+     is shown and nothing more is sent during this visit (no retries). The
+     answers stay on the phone and go the next time the link is opened, once
+     the round is open.
    - After a successful send, the answers and voice notes are deleted from the
      phone; only a small "already sent" marker is kept.
    - If the partner closes the page while sending, small answer sets are handed
@@ -39,7 +100,8 @@
      a corrected link, or the server accepting it again, unlocks it.
    - If another tab already sent this link's answers, this tab never undoes it.
 
-   You do not need to edit this file to change the questionnaire.
+   You do not need to edit this file to change the questionnaire: use the
+   control panel (Google Sheet), or web/config + web/i18n for the form's own copy.
    ============================================================================= */
 (function (root) {
   'use strict';
@@ -48,16 +110,29 @@
   var t = PP.t;
   var h = PP.h;
 
-  var APP_VERSION = '0.1.0';
+  var APP_VERSION = '0.2.0';
   var SAFE_ID = /^[A-Za-z0-9_.-]{1,64}$/; // allowed characters in DC ids and round ids
   var TOKEN = /^[A-Za-z0-9_-]{8,128}$/;    // shape of a link token
   var MAX_EVENTS = 300;
   var GUARD_MS = 500;           // ignore taps this soon after a screen appears
   var MAX_BEACON_CHARS = 50000; // answer sets small enough to send while the page closes
+  var PREVIEW_DC = 'DC-PREVIEW'; // the pretend DC of a preview link without dc=
+  var ROUND_STATUSES = ['draft', 'open', 'closed', 'unknown'];
+  // End screens of a visit where no survey could be taken: no progress bar
+  // (a full bar would wrongly suggest "you finished").
+  var NO_PROGRESS_BAR = ['closed', 'not_open', 'incomplete', 'bad_link'];
 
-  var config = null;
+  var config = null;     // the questionnaire in use: the published one, or the form's own copy
+  var published = null;  // what only the published questionnaire brings: { wc, clips } (null = own copy in use)
+  var preview = false;   // ?preview=1: the admins' draft; nothing is ever sent
+  var previewFallback = false; // preview, but the draft did not arrive: showing the form's own copy
+  var draftBroken = false;     // preview: the draft arrived but breaks the form, so the form's own copy is shown
+  var PREVIEW_WAIT_MS = 20000;   // how long a preview waits for the draft
+  var STALE_DAYS = 30;           // unfinished answers untouched this long are deleted from the phone
+  var roundStatus = 'unknown'; // draft | open | closed | unknown (from the bootstrap)
+  var visitEnded = false; // the round is closed / not open: this visit only shows that message, sends nothing
   var state = null;      // everything saved on the phone for this DC + round
-  var ns = '';           // storage name for this link: "<round>:<dc>"
+  var ns = '';           // storage name for this link: "<round>:<dc>" ("preview:<round>:<dc>" in preview)
   var link = { dc: '', t: '', round: '' };
   var mode = 'mock';     // "mock" (test server on the Mac) or "live" (Apps Script)
   var langInUrl = false;
@@ -79,9 +154,10 @@
   var sentElsewhere = false;
   var submit = { status: 'idle', retryIn: 0, retryAt: 0, timer: null, tick: null, inFlight: false, sessionTries: 0 };
   var el = {};
+  var eventsBound = false; // bindEvents() ran (setup() can run twice: see prepare())
 
   /* ---------------------------------------------------------------------------
-     Start-up
+     Start-up, step 1: the form's own copy of the questionnaire
      ------------------------------------------------------------------------- */
   function boot() {
     el = {
@@ -101,39 +177,156 @@
     try { root.history.scrollRestoration = 'manual'; } catch (e) { /* ignore */ }
 
     var params = PP.params();
-    Promise.all([
-      PP.net.getJSON('config/survey.json', 20000),
-      PP.net.getJSON('i18n/strings.json', 20000)
-    ]).then(function (files) {
-      setup(files[0], files[1], params);
-    }).catch(function (err) {
-      if (root.console) console.error('[Partner Pulse] Could not start:', err);
-      showBootError();
+    // Only the small settings file first: it says where the backend is. The
+    // texts come with the published questionnaire; the form's own copy of the
+    // texts (i18n/strings.json) is downloaded only if that does not arrive, so
+    // partners on slow data never download the questionnaire twice.
+    PP.net.getJSON('config/survey.json', 20000).then(function (ownCfg) {
+      return prepare(ownCfg, params);
+    }).catch(bootFailed);
+  }
+
+  function bootFailed(err) {
+    if (root.console) console.error('[Partner Pulse] Could not start:', err);
+    showBootError();
+  }
+
+  /* ---------------------------------------------------------------------------
+     Start-up, step 2: ask the backend for the published questionnaire
+     ------------------------------------------------------------------------- */
+  function prepare(ownCfg, params) {
+    preview = params.preview === '1';
+    config = ownCfg;
+    applyBranding(); // the form's own colours while waiting
+    chooseBackend(ownCfg, params);
+    link = readLink(ownCfg, params);
+
+    // An incomplete link only gets the "link incomplete" message: no need to
+    // ask for the questionnaire. A preview link carries the panel's private
+    // preview key (&pk=...).
+    var asked = linkComplete();
+    var asking = asked ?
+      PP.net.bootstrap(link.round, preview, bootstrapWaitMs(ownCfg), params.pk || '') : Promise.resolve(null);
+    // No published questionnaire (offline, Google slow, nothing published yet,
+    // or a preview key that was refused): use the form's own copy.
+    var useOwnCopy = function () {
+      return PP.net.getJSON('i18n/strings.json', 20000).then(function (ownStrings) {
+        useQuestionnaire(ownCfg, ownStrings);
+        // "Could not load the draft" only if one was asked for and did not arrive
+        previewFallback = preview && asked && !draftBroken;
+        return setup(params); // an unexpected error ends in the "tap to retry" message, never an endless spinner
+      });
+    };
+    // A failed attempt may already have saved this link's progress on the
+    // phone (a screen view): the second attempt starts from what was saved
+    // before it, so nothing is counted twice.
+    var stateKey = 'state:' + (preview ? 'preview:' : '') + link.round + ':' + link.dc;
+    var savedBefore = PP.store.get(stateKey);
+    return asking.then(function (answer) {
+      if (!answer) return useOwnCopy();
+      return Promise.resolve().then(function () {
+        usePublished(ownCfg, answer);
+        return setup(params);
+      }).catch(function (err) {
+        // The published questionnaire breaks the form (for example a mistake
+        // the checks missed): partners still get the form's own copy. In a
+        // preview the strip says the draft itself is broken (dev.preview_broken).
+        if (root.console) console.error('[Partner Pulse] The published questionnaire could not be shown; using the form\'s own copy instead:', err);
+        if (savedBefore) PP.store.set(stateKey, savedBefore);
+        else PP.store.remove(stateKey);
+        published = null;
+        state = null;
+        steps = [];
+        current = null;
+        screen = null;
+        resumed = false;
+        draftBroken = preview;
+        return useOwnCopy();
+      });
     });
   }
 
-  function setup(cfg, strings, params) {
+  /* dc, round and (live) token are usable. A preview never sends anything,
+     so it needs no token; test mode fills in its own. */
+  function linkComplete() {
+    return SAFE_ID.test(link.dc) && SAFE_ID.test(link.round) &&
+      (preview || mode === 'mock' || TOKEN.test(link.t));
+  }
+
+  /* The questionnaire and texts to show from now on (i18n and colours too). */
+  function useQuestionnaire(cfg, strings) {
     config = cfg;
     config.navigation = config.navigation || {};
     PP.i18n.init(strings, cfg.languages, cfg.fallback_language || cfg.default_language || 'en');
     applyBranding();
+  }
 
-    // Test (mock) mode or live mode, and where to send answers
-    var backend = cfg.backend || {};
+  /* Test (mock) mode or live mode, and where to send answers. Always decided
+     by the form's own copy: the published questionnaire never changes it. */
+  function chooseBackend(ownCfg, params) {
+    var backend = ownCfg.backend || {};
     mode = params.mock === '1' ? 'mock' : (backend.mode === 'apps_script' ? 'live' : 'mock');
     PP.net.mode = mode;
     PP.net.endpoint = mode === 'mock' ? absoluteUrl(backend.mock_url || '/api') : (backend.apps_script_url || '');
     if (mode === 'live' && !PP.net.endpoint && root.console) {
       console.error('[Partner Pulse] backend.apps_script_url is empty in config/survey.json');
     }
+  }
 
-    // The link
-    var defaults = (mode === 'mock' && cfg.links && cfg.links.mock_defaults) || {};
-    link = {
+  /* dc, t and round from the link (checked later, in setup).
+     Test mode fills in missing values from links.mock_defaults. A preview
+     needs only the round: dc defaults to DC-PREVIEW and no token is needed,
+     because a preview never sends anything. */
+  function readLink(ownCfg, params) {
+    if (preview) return { dc: params.dc || PREVIEW_DC, t: params.t || '', round: params.round || '' };
+    var defaults = (mode === 'mock' && ownCfg.links && ownCfg.links.mock_defaults) || {};
+    return {
       dc: params.dc || defaults.dc || '',
       t: params.t || defaults.t || '',
       round: params.round || defaults.round || ''
     };
+  }
+
+  /* How long to wait for the published questionnaire before using the form's
+     own copy: whats_changed.timeout_seconds + 2 seconds. */
+  function bootstrapWaitMs(ownCfg) {
+    var s = Number(ownCfg.whats_changed && ownCfg.whats_changed.timeout_seconds);
+    var ms = ((s > 0 ? s : 4) + 2) * 1000;
+    // A preview compiles the draft on the spot, which can take Google longer.
+    return preview ? Math.max(ms, PREVIEW_WAIT_MS) : ms;
+  }
+
+  /* The backend sent the published (or, in preview, the draft) questionnaire. */
+  function usePublished(ownCfg, answer) {
+    var cfg = answer.survey;
+    // Where answers go and the test-link defaults stay as in the form's own
+    // copy (docs/control-panel-design.md section 5: they are never in the Sheet).
+    var ownBackend = ownCfg.backend || {};
+    cfg.backend = Object.assign({}, cfg.backend);
+    ['mode', 'mock_url', 'apps_script_url'].forEach(function (key) {
+      if (key in ownBackend) cfg.backend[key] = ownBackend[key];
+      else delete cfg.backend[key];
+    });
+    if ('links' in ownCfg) cfg.links = ownCfg.links;
+    else delete cfg.links;
+    // Every ping and submission is stamped with the questionnaire really shown.
+    cfg.config_version = cfg.config_version || answer.config_version || null;
+
+    useQuestionnaire(cfg, answer.strings);
+    published = {
+      wc: PP.net.cleanWhatsChanged(answer.whats_changed) || { title: null, items: [] },
+      clips: answer.clips && typeof answer.clips === 'object' ? answer.clips : {}
+    };
+    var status = answer.round && answer.round.status;
+    roundStatus = ROUND_STATUSES.indexOf(status) !== -1 ? status : 'unknown';
+  }
+
+  /* ---------------------------------------------------------------------------
+     Start-up, steps 3 to 6: link, language, saved progress, round check.
+     Returns a promise when it still has to load something (so errors reach bootFailed).
+     ------------------------------------------------------------------------- */
+  function setup(params) {
+    var cfg = config;
     var codes = (cfg.languages || []).map(function (L) { return L.code; });
     var urlLang = String(params.lang || '').toLowerCase();
     langInUrl = codes.indexOf(urlLang) !== -1;
@@ -141,15 +334,14 @@
 
     bindEvents();
 
-    var linkOk = SAFE_ID.test(link.dc) && SAFE_ID.test(link.round) && (mode === 'mock' || TOKEN.test(link.t));
-    if (!linkOk) {
+    if (!linkComplete()) {
       setLang(langInUrl ? urlLang : (codes.indexOf(storedLang) !== -1 ? storedLang : cfg.default_language || 'en'), false);
       showTerminal('incomplete');
       return;
     }
 
-    // Saved progress for this DC + round
-    ns = link.round + ':' + link.dc;
+    // Saved progress for this DC + round (a preview keeps its own, separate copy)
+    ns = (preview ? 'preview:' : '') + link.round + ':' + link.dc;
     state = loadState();
 
     // Language: the partner's own choice > ?lang= in the link > last used > default
@@ -162,23 +354,66 @@
     setLang(lang, false);
     if (langInUrl) state.lang_chosen = true;
 
-    // Read-aloud (pre-recorded clips are optional and load in the background)
-    PP.speech.init(cfg, null);
-    PP.net.getJSON('config/audio_clips.json', 15000).then(PP.speech.setClips, function () { /* optional */ });
+    // Read-aloud: pre-recorded clips come with the published questionnaire;
+    // otherwise the optional config/audio_clips.json loads in the background.
+    if (published) {
+      PP.speech.init(cfg, { clips: published.clips });
+    } else {
+      PP.speech.init(cfg, null);
+      PP.net.getJSON('config/audio_clips.json', 15000).then(PP.speech.setClips, function () { /* optional */ });
+    }
 
     updateChrome();
     if (navigator.onLine === false) showOffline(true);
 
-    // "What changed" content (only needed if that screen is in the flow)
+    if (roundCheckStops()) return;
+
+    if (published) {
+      wc = published.wc;
+      start();
+      return;
+    }
+    // The form's own copy: "what changed" from config/whats_changed.json
+    // (only needed if that screen is in the flow)
     var empty = { title: null, items: [] };
     var needWc = !state.finished && !state.submitted &&
       (cfg.flow || []).some(function (e) { return e.type === 'whats_changed'; });
     var waitMs = ((cfg.whats_changed && Number(cfg.whats_changed.timeout_seconds)) || 4) * 1000;
-    var loading = needWc ? withTimeout(PP.net.loadWhatsChanged(link.round, waitMs), waitMs + 2000, empty) : Promise.resolve(empty);
-    loading.then(function (data) {
+    var loading = needWc ? withTimeout(PP.net.loadStaticWhatsChanged(link.round, waitMs), waitMs + 2000, empty) : Promise.resolve(empty);
+    return loading.then(function (data) {
       wc = data || empty;
       start();
     });
+  }
+
+  /* Step 5: may this visit go ahead in this round? Never checked in preview:
+     admins may preview any round, also one that is not open yet.
+     Returns true when the visit stops here (a message is shown instead). */
+  function roundCheckStops() {
+    if (preview) return false;
+    if (roundStatus === 'draft') {
+      endVisit('not_open');
+      return true;
+    }
+    if (roundStatus === 'closed' && !mayFinishLate()) {
+      endVisit('closed');
+      return true;
+    }
+    return false;
+  }
+
+  /* A closed round still takes answers from a partner who already started on
+     this phone, or who finished but whose answers were not sent yet. */
+  function mayFinishLate() {
+    return hasProgress() || Boolean(state && state.finished && !state.submitted);
+  }
+
+  /* "This survey has closed" / "is not open yet": the visit shows only that
+     message and sends nothing more (no pings, no retries). Anything saved on
+     the phone stays there for the next visit. */
+  function endVisit(status) {
+    visitEnded = true;
+    showTerminal(status);
   }
 
   function start() {
@@ -200,6 +435,7 @@
     } else if (state.finished) {
       // Finished earlier but the answers never reached the server: try again now.
       // (Also after a "not valid" answer: the server checks the token again.)
+      // A finished preview just shows "Preview finished" again.
       rebuildSteps();
       showThanks();
       trySubmit();
@@ -278,6 +514,14 @@
   function loadState() {
     var saved = PP.store.get('state:' + ns);
     if (!saved || saved.v !== 1 || saved.dc !== link.dc || saved.round !== link.round) return newState();
+    // Phones are often shared: half-finished answers (typed complaints, voice
+    // notes) left untouched for STALE_DAYS are deleted rather than kept forever.
+    // Finished surveys still waiting to be sent are always kept.
+    if (!saved.finished && !saved.submitted && isStale(saved.updated_at)) {
+      PP.voice.dropAll(ns);
+      PP.store.remove('state:' + ns);
+      return newState();
+    }
     saved.answers = saved.answers || {};
     saved.texts = saved.texts || {};
     saved.audio = saved.audio || {};
@@ -287,6 +531,11 @@
       resumed = true;
     }
     return saved;
+  }
+
+  function isStale(isoTime) {
+    var t = Date.parse(isoTime || '');
+    return t > 0 && Date.now() - t > STALE_DAYS * 24 * 3600 * 1000;
   }
 
   function hasProgress() {
@@ -312,6 +561,7 @@
         return;
       }
     }
+    state.updated_at = PP.now();
     PP.store.set('state:' + ns, state);
   }
 
@@ -410,6 +660,7 @@
       state: state || { answers: {}, texts: {}, audio: {} },
       wc: wc,
       mode: mode,
+      preview: preview,
       ns: ns,
       submit: submit,
       setAnswer: setAnswer,
@@ -517,7 +768,7 @@
   function setLang(code, byUser) {
     PP.i18n.setLang(code);
     document.documentElement.lang = PP.i18n.bcp47(code);
-    PP.store.set('lang', code);
+    if (!preview) PP.store.set('lang', code); // a preview leaves real links' "last used language" alone
     if (state) {
       state.lang = code;
       if (byUser) state.lang_set_by_user = true;
@@ -597,9 +848,15 @@
     el.langBtn.setAttribute('aria-label', t('ui.language') + ': ' + (L ? L.native_name : PP.i18n.lang));
     el.langBtn.hidden = (config.languages || []).length < 2 || Boolean(current && current.type === 'language_picker');
 
-    if (mode === 'mock') {
+    // The strip at the top: "TEST MODE" (mock mode) or "PREVIEW" (preview
+    // links, in every mode), plus how many texts still wait for a translation.
+    if (preview || mode === 'mock') {
       var missing = PP.i18n.untranslatedCount(PP.i18n.lang);
-      el.devBanner.textContent = t('dev.mock_banner') + (missing ? ' · ' + t('dev.untranslated', { n: missing }) : '');
+      el.devBanner.textContent = t(preview ? 'dev.preview_banner' : 'dev.mock_banner') +
+        (previewFallback ? ' · ' + t('dev.preview_fallback') : '') +
+        (draftBroken ? ' · ' + t('dev.preview_broken') : '') +
+        (missing ? ' · ' + t('dev.untranslated', { n: missing }) : '');
+      el.devBanner.classList.toggle('is-preview', preview);
       el.devBanner.hidden = false;
     } else {
       el.devBanner.hidden = true;
@@ -610,6 +867,7 @@
   }
 
   function updateProgress() {
+    el.progress.hidden = Boolean(current && current.type === 'thank_you' && NO_PROGRESS_BAR.indexOf(submit.status) !== -1);
     var pct = 100;
     if (current && current.type !== 'thank_you' && steps.length > 1) {
       var idx = Math.max(0, PP.flow.indexOf(steps, current.id));
@@ -711,7 +969,8 @@
     focusTitle();
   }
 
-  /* Messages that end the visit: incomplete link, invalid link, already received. */
+  /* Messages that end the visit: incomplete link, invalid link, already
+     received, survey closed, survey not open yet. */
   function showTerminal(status) {
     clearTimeout(advanceTimer);
     runCleanups();
@@ -741,6 +1000,12 @@
       collapsingHistory = true;
       try { root.history.go(-navDepth); } catch (e) { collapsingHistory = false; }
     }
+    if (preview) {
+      // A preview never sends anything: just say so.
+      submit.status = 'preview';
+      renderCurrent();
+      return;
+    }
     submit.status = 'sending';
     renderCurrent();
     // Wait for any voice note still being saved, then send.
@@ -752,6 +1017,7 @@
     submit.retryIn = retryIn || 0;
     if (status !== 'failed') clearInterval(submit.tick);
     if (current && current.type === 'thank_you' && screen && screen.update) screen.update(submit);
+    updateProgress();
   }
 
   function buildPayload() {
@@ -776,6 +1042,11 @@
 
   function trySubmit() {
     if (!state || state.submitted || submit.inFlight) return;
+    if (preview) {
+      setSubmitStatus('preview', 0); // nothing is ever sent from a preview
+      return;
+    }
+    if (visitEnded) return; // the round is not open: "not open yet" stays on screen
     clearTimeout(submit.timer);
     clearInterval(submit.tick);
     submit.inFlight = true;
@@ -803,6 +1074,12 @@
       } else if (res && res.error === 'bad_token') {
         markBadLink();
         setSubmitStatus('bad_link', 0);
+      } else if (res && res.error === 'round_not_open') {
+        // The round is a draft (not started, or moved back by the admins).
+        // Final for this visit: no retries. The answers stay on the phone
+        // and are sent the next time the link is opened, once it is open.
+        visitEnded = true;
+        setSubmitStatus('not_open', 0);
       } else if (res && res.error === 'bad_request') {
         if (root.console) console.error('[Partner Pulse] The backend rejected the answers:', res.message);
         setSubmitStatus('error', 0);
@@ -816,6 +1093,7 @@
   }
 
   function scheduleRetry() {
+    if (visitEnded) return; // the "opened" ping already said the round is not open
     var delays = (config.backend && config.backend.retry_delays_seconds) || [5, 15, 30, 60];
     var i = submit.sessionTries - 1;
     if (i >= delays.length) {
@@ -861,12 +1139,17 @@
     setSubmitStatus('done', 0);
   }
 
-  /* Test mode only: forget this phone's answers for this link and start again. */
+  /* Test mode and preview only: forget this phone's answers for this link and
+     start again. (In preview this also fetches the latest draft.) */
   function startOver() {
+    clearTimeout(saveTimer);
     if (ns) {
       PP.voice.dropAll(ns);
       PP.store.remove('state:' + ns);
     }
+    // Forget them in memory too: the page saves its answers when it is left
+    // (pagehide), which would otherwise write them straight back during the reload.
+    state = null;
     try { root.location.reload(); } catch (e) { /* ignore */ }
   }
 
@@ -897,14 +1180,18 @@
     };
   }
 
-  /* Always sent (even with telemetry off), because it also checks the link. */
+  /* Always sent (even with telemetry off), because it also checks the link.
+     Never sent from a preview. */
   function pingOpened() {
-    if (!PP.net.endpoint) return;
+    if (preview || !PP.net.endpoint) return;
     var body = pingBody('opened');
     body.client = clientInfo(false);
     PP.net.postJSON(body, 15000).then(function (res) {
       if (!res || !state || state.submitted) return;
-      if (res.ok === false && res.error === 'bad_token') {
+      if (res.ok === false && res.error === 'round_not_open') {
+        // A draft round (the bootstrap did not arrive, so step 5 could not tell).
+        endVisit('not_open');
+      } else if (res.ok === false && res.error === 'bad_token') {
         markBadLink();
         if (!state.finished) showTerminal('bad_link'); // a finished survey shows its own sending status
       } else if (res.ok && state.bad_link) {
@@ -913,6 +1200,11 @@
         state.bad_token = null;
         save();
         if (!state.finished) showInitialScreen();
+      } else if (res.ok && res.round_status === 'closed' && roundStatus === 'unknown' && !mayFinishLate()) {
+        // The bootstrap did not arrive, so step 5 could not tell: the round
+        // has closed and this partner has not started yet.
+        roundStatus = 'closed';
+        endVisit('closed');
       } else if (res.ok && res.already_submitted && !state.finished && !hasProgress()) {
         showTerminal('already');
       }
@@ -923,13 +1215,15 @@
     if (!state || state.started_at) return;
     state.started_at = PP.now();
     save();
-    if (telemetryOn()) PP.net.beacon(pingBody('started'));
+    if (telemetryOn() && !preview) PP.net.beacon(pingBody('started'));
   }
 
   /* The partner switched apps or closed the page: remember where they were. */
   function onHide() {
     save();
-    if (!state || state.submitted) return;
+    // Nothing is sent from a preview, nor after "closed" / "not open yet"
+    // (a progress ping from that message screen would look like an unsent survey).
+    if (preview || visitEnded || !state || state.submitted) return;
     if (Date.now() - lastProgressPing < 10000) return;
     lastProgressPing = Date.now();
     if (state.finished) {
@@ -968,6 +1262,8 @@
      Small helpers
      ------------------------------------------------------------------------- */
   function bindEvents() {
+    if (eventsBound) return;
+    eventsBound = true;
     el.next.addEventListener('click', onNext);
     el.skip.addEventListener('click', function () { if (current && state) goNext(); });
     el.back.addEventListener('click', onBack);

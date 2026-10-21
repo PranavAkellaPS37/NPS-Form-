@@ -26,7 +26,8 @@ WHAT IT READS (it never changes any file)
     web/i18n/strings.json           every on-screen text, in every language
     web/config/whats_changed.json   content of the "What changed" screen
     web/config/audio_clips.json     optional pre-recorded read-aloud clips
-                                    (and it checks that each clip file exists)
+                                    (and that each clip file inside web/ exists;
+                                    a clip or logo may also be an https:// address)
     web/index.html, web/css/, web/js/
                                     the form itself, to measure the page
                                     weight and to see which texts its code
@@ -106,6 +107,12 @@ FAKE_ID_RE = re.compile(r"DEMO|TEST|FAKE|SAMPLE|SMOKE", re.IGNORECASE)
 
 BACKEND_MODES = ["mock", "apps_script"]
 APPS_SCRIPT_PREFIX = "https://script.google.com/"
+# A logo or a read-aloud clip may also be a secure web address: the same rule as
+# the control panel's check (apps-script/Model.gs, PP_mdlLogoProblem_).
+HTTPS_ADDRESS_RE = re.compile(r"^https://\S+$", re.IGNORECASE)
+OTHER_ADDRESS_RE = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)   # http:, data:, javascript: ...
+# Round names: the control panel's rule (Model.gs PP_MDL_ROUND_RE_, Panel.html ROUND_RE).
+ROUND_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 DEEP_DIVE_WHEN = ["after_all_ratings", "immediate"]
 VOICE_GESTURES = ["hold", "tap"]
 
@@ -146,6 +153,9 @@ FIXED_STRING_KEYS = """
     submit.retrying_in submit.retry_now submit.error submit.bad_link
     already.title already.body link.bad_title link.incomplete resume.notice
     net.offline dev.mock_banner dev.untranslated dev.start_over
+    round.closed_title round.closed_body round.not_open_title round.not_open_body
+    dev.preview_banner dev.preview_done
+    q.tell_more_required ui.start_again dev.preview_fallback dev.preview_broken
 """.split()
 
 # A text that still starts with this tag is shown in the fallback language.
@@ -311,10 +321,23 @@ def actual_spelling(base: Path, rel: str):
     return "/".join(found)
 
 
-def web_file_problem(root: Path, rel: str):
+def picture_or_clip_problem(root: Path, value: str, example: str):
+    """A logo or clip is either a secure web address (https://..., which the
+    phone downloads from there) or a file inside web/. Same rule as the control
+    panel's check. Returns a plain-English problem, or None when all is well."""
+    if re.search(r"\s", value):
+        return f'"{value}" must not contain spaces.'
+    if HTTPS_ADDRESS_RE.match(value):
+        return None
+    if OTHER_ADDRESS_RE.match(value):
+        return (f'"{value}" must be an https:// address (a secure web address), or a file path inside the '
+                f"web folder, {example}.")
+    return web_file_problem(root, value, example)
+
+
+def web_file_problem(root: Path, rel: str, example: str = 'for example "audio/hi/q.nps.mp3"'):
     """Check that a path written in the settings points at a real file inside
     web/. Returns a plain-English problem, or None when all is well."""
-    example = 'for example "audio/hi/q.nps.mp3"'
     if rel.startswith("/") or "\\" in rel or "://" in rel or ".." in PurePosixPath(rel).parts:
         return (f'"{rel}" must be a path inside the web folder, written with forward slashes '
                 f"and without a leading / or .., {example}.")
@@ -688,9 +711,10 @@ def check_branding(branding, root: Path, r: Report) -> None:
     if logo in (None, ""):
         return
     if not isinstance(logo, str):
-        r.error(SURVEY_FILE, 'branding > logo must be a file path in double quotes (inside web/), or "" for no logo.')
+        r.error(SURVEY_FILE, 'branding > logo must be an https:// address or a file path inside web/, in double '
+                             'quotes, or "" for no logo.')
         return
-    problem = web_file_problem(root, logo)
+    problem = picture_or_clip_problem(root, logo, 'for example "assets/logo.svg"')
     if problem:
         r.error(SURVEY_FILE, f"branding > logo: {problem}")
 
@@ -1642,9 +1666,10 @@ def check_one_round(round_id: str, block, info: SurveyInfo, r: Report):
     if is_demo:
         r.warn(WHATS_CHANGED_FILE, f"{where} is fake test content (its name contains DEMO). Never use it "
                                    "as the round in real partner links.")
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", round_id):
-        r.warn(WHATS_CHANGED_FILE, f"{where}: use only letters, digits, - and _ in round names, so they "
-                                   "work in links (round=...).")
+    if not ROUND_ID_RE.fullmatch(round_id):
+        r.error(WHATS_CHANGED_FILE, f"{where} has a name that is not allowed. Use 1 to 64 letters, digits, - or _ "
+                                    '(no spaces or dots), exactly as in the partner links, for example "2026-R1". '
+                                    "The control panel uses the same rule.")
     if not isinstance(block, dict):
         r.error(WHATS_CHANGED_FILE, f'{where} must be a group like {{"title": null, "items": [...]}}.')
         return None
@@ -1734,12 +1759,15 @@ def check_audio_clips(data: dict, info: SurveyInfo, strings, root: Path, r: Repo
 
 def check_clip_file(path, where: str, root: Path, r: Report) -> None:
     if not is_text(path):
-        r.error(AUDIO_FILE, f'{where} must be a file path in double quotes, like "audio/hi/q.nps.mp3".')
+        r.error(AUDIO_FILE, f'{where} must be a file path or an https:// address in double quotes, like '
+                            '"audio/hi/q.nps.mp3".')
         return
-    problem = web_file_problem(root, path)
+    problem = picture_or_clip_problem(root, path, 'for example "audio/hi/q.nps.mp3"')
     if problem:
         r.error(AUDIO_FILE, f"{where}: {problem}")
         return
+    if HTTPS_ADDRESS_RE.match(path):
+        return  # a web address: its file and size can't be checked from here
     if not path.lower().endswith(".mp3"):
         r.warn(AUDIO_FILE, f'{where}: "{path}" is not an .mp3 file. MP3 plays on every phone; other formats may not.')
     size = (root / "web" / path).stat().st_size

@@ -103,12 +103,12 @@
   },
 
   "read_aloud": {
-    "_help": "Speaker button on each question. Uses a pre-recorded clip from config/audio_clips.json if one exists for that text and language, otherwise the phone's built-in voice. The button hides itself when neither is available for the chosen language.",
+    "_help": "Speaker button on each question. Uses a pre-recorded clip if one exists for that text and language, otherwise the phone's built-in voice. The button hides itself when neither is available for the chosen language. In live mode the clips come with the published questionnaire (the Sheet's Audio clips tab, published from the control panel); config/audio_clips.json is used only when that doesn't arrive in time, and by the local test server.",
     "enabled": true
   },
 
   "whats_changed": {
-    "_help": "The 'What changed since last time' screen. Its content comes from the backend (Apps Script in live mode); if the backend does not answer within timeout_seconds, the form uses config/whats_changed.json instead. If neither has items for the round, the screen is skipped.",
+    "_help": "The 'What changed since last time' screen. In live mode its content comes with the published questionnaire (control panel, Rounds), in the form's first request; the form waits at most timeout_seconds + 2 seconds for it, then uses its own copy, including config/whats_changed.json (the local test server uses that file too). If there are no items for the round, the screen is skipped.",
     "timeout_seconds": 4
   },
 

@@ -66,13 +66,21 @@ button { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-colo
 
 .icon { width: 24px; height: 24px; flex: none; }
 
-/* ---- Test-mode strip ------------------------------------------------------ */
+/* ---- Test-mode strip (yellow) and preview strip (blue) --------------------- */
 .dev-banner {
   background: #FFF4C2;
   color: #4A3B00;
   border-bottom: 1px solid #E8D27A;
   font-size: 0.8rem;
   padding: 6px 16px;
+}
+/* Preview links (?preview=1): a different colour, so an admin never mixes up
+   "previewing the draft" with "testing on the Mac". */
+.dev-banner.is-preview {
+  background: #E3F0FF;
+  color: #0B3A6E;
+  border-bottom-color: #A9CBF5;
+  font-weight: 700;
 }
 
 /* ---- Top bar + progress --------------------------------------------------- */
@@ -150,6 +158,9 @@ button { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-colo
 .area-help { margin: 0 0 14px; color: var(--c-muted); font-size: 0.9rem; }
 .your-rating { margin: 0 0 12px; color: var(--c-muted); font-size: 0.9rem; }
 .sub-title { margin: 24px 0 10px; font-size: 1.05rem; font-weight: 700; }
+/* A smaller heading with its own speaker ("Tell us more", the support comment). */
+.q-head.sub-head { margin: 24px 0 10px; align-items: center; }
+.sub-head .sub-title { flex: 1; margin: 0; }
 .body-text { margin: 0 0 12px; }
 
 /* ---- Answer buttons (shared look) ---------------------------------------- */
@@ -369,6 +380,7 @@ button { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-colo
 .final { padding-top: 16px; text-align: center; outline: none; }
 .final .big-icon { width: 72px; height: 72px; color: var(--c-success); }
 .final .big-icon.is-warn { color: var(--c-error); }
+.final .big-icon.is-info { color: var(--c-primary); } /* "closed" / "not open yet": nothing wrong */
 .final .q-head { justify-content: center; }
 .final .q-title { flex: none; }
 .final p { margin: 0 0 12px; }

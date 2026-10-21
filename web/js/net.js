@@ -11,14 +11,38 @@
    reads the text as JSON.
 
    WHAT IS IN HERE
+   - net.bootstrap(round, draft, ms, previewKey)
+                            : ONE request (GET ?action=bootstrap&round=..) that
+                              asks the backend for the PUBLISHED questionnaire:
+                              questions, texts, "what changed" for this round,
+                              read-aloud clips, and the round's status (open,
+                              closed, or draft = not open yet). With draft = true
+                              (preview) it asks for the admins' unpublished draft
+                              instead (&draft=1), and sends previewKey, the
+                              private preview key from the preview link, as
+                              &pk=...: the live backend hands out the draft only
+                              with the right key.
+                              Never fails: it gives null when the backend is slow
+                              (more than ms milliseconds), down, says nothing is
+                              published yet, refuses the preview key, or sends
+                              something unusable (and at once when no backend
+                              address is set). app.js then uses the form's own
+                              copy (web/config, web/i18n).
    - net.postJSON(body)     : send a message and read the JSON reply (with a time
                               limit that grows with the size of the message)
    - net.beacon(body)       : fire-and-forget message that survives the page closing
                               (used for pings, and for small answer sets when the
                               partner closes the page while they are being sent)
-   - net.loadWhatsChanged() : content for the "What changed" screen: asks the
-                              backend first, falls back to config/whats_changed.json
+   - net.loadStaticWhatsChanged(round, ms)
+                            : the form's own copy of the "What changed" content
+                              (config/whats_changed.json). Only used when the
+                              bootstrap did not work.
+   - net.cleanWhatsChanged(block): tidies one round's "What changed" block
    - net.getJSON(url)       : load a config file
+
+   WHAT IT SENDS: only what docs/submission-format.md describes. It never
+   sends cookies (credentials: "omit"), so a partner's Google login is never
+   involved.
 
    Retrying failed submissions (with growing waits) is handled in app.js.
    ============================================================================= */
@@ -59,6 +83,62 @@
         return res.json();
       });
   };
+
+  /* ---------------------------------------------------------------------------
+     The published questionnaire ("bootstrap", docs/submission-format.md).
+     The time limit covers the WHOLE download, not just the first byte: on
+     slow data a 50 KB answer that has started but crawls along must not keep
+     the partner waiting, because the form's own copy works just as well.
+     ------------------------------------------------------------------------- */
+  net.bootstrap = function (round, draft, timeoutMs, previewKey) {
+    if (!net.endpoint) return Promise.resolve(null);
+    var url = net.endpoint + (net.endpoint.indexOf('?') === -1 ? '?' : '&') +
+      'action=bootstrap&round=' + encodeURIComponent(round) +
+      (draft ? '&draft=1&pk=' + encodeURIComponent(previewKey || '') : '');
+    var controller = root.AbortController ? new AbortController() : null;
+    return new Promise(function (resolve) {
+      var done = false;
+      var finish = function (value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      var timer = setTimeout(function () {
+        if (controller) controller.abort(); // stop downloading: the form's own copy is used instead
+        finish(null);
+      }, timeoutMs);
+      var opts = { method: 'GET', credentials: 'omit', cache: 'no-store' };
+      if (controller) opts.signal = controller.signal;
+      fetch(url, opts).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      }).then(function (answer) {
+        if (usableBootstrap(answer)) {
+          finish(answer);
+        } else {
+          if (root.console && answer && answer.error) {
+            console.warn('[Partner Pulse] The backend has no questionnaire for us (' + answer.error +
+              '); using the copy in the form instead.');
+          }
+          finish(null);
+        }
+      }, function () { finish(null); });
+    });
+  };
+
+  /* Only use an answer that really contains a questionnaire. Anything else
+     (an error such as "not_published", a Google error page, a half-broken
+     answer) means: use the form's own copy. */
+  function usableBootstrap(answer) {
+    if (!answer || answer.ok !== true) return false;
+    var survey = answer.survey;
+    var strings = answer.strings;
+    return Boolean(survey && typeof survey === 'object' &&
+      Array.isArray(survey.flow) && survey.flow.length &&
+      Array.isArray(survey.languages) && survey.languages.length &&
+      strings && typeof strings === 'object' && !Array.isArray(strings));
+  }
 
   /* POST a message as text/plain and read the JSON reply.
      timeoutMs = the normal time limit. Big messages (voice notes on slow data)
@@ -118,26 +198,21 @@
 
   net.beacon = function (body) { return net.beaconText(JSON.stringify(body)); };
 
-  /* Content for the "What changed since your last feedback" screen.
-     Always resolves (never fails): { title: null | {en:..}, items: [ {en:..}, ... ] } */
-  net.loadWhatsChanged = function (round, timeoutMs) {
+  /* One round's "What changed" block, tidied: { title: null | {en:..}, items: [ {en:..}, ... ] }.
+     Returns null when the block is missing or not shaped like that. */
+  net.cleanWhatsChanged = function (block) {
+    if (!block || !Array.isArray(block.items)) return null;
+    return { title: block.title || null, items: block.items.filter(function (it) { return it && typeof it === 'object'; }) };
+  };
+
+  /* The form's own copy of the "What changed" content (config/whats_changed.json),
+     used only when the published questionnaire did not arrive.
+     Always resolves (never fails); an unknown round gives no items. */
+  net.loadStaticWhatsChanged = function (round, timeoutMs) {
     var empty = { title: null, items: [] };
-    var clean = function (block) {
-      if (!block || !Array.isArray(block.items)) return null;
-      return { title: block.title || null, items: block.items.filter(function (it) { return it && typeof it === 'object'; }) };
-    };
-    var fromFile = function () {
-      return net.getJSON('config/whats_changed.json', timeoutMs).then(function (file) {
-        return clean(file && file.rounds && file.rounds[round]) || empty;
-      }, function () { return empty; });
-    };
-    if (!net.endpoint) return fromFile();
-    var url = net.endpoint + (net.endpoint.indexOf('?') === -1 ? '?' : '&') +
-      'action=whats_changed&round=' + encodeURIComponent(round);
-    return net.getJSON(url, timeoutMs, 'no-store').then(function (res) {
-      var block = res && res.ok ? clean(res) : null;
-      return block || fromFile();
-    }, fromFile);
+    return net.getJSON('config/whats_changed.json', timeoutMs).then(function (file) {
+      return net.cleanWhatsChanged(file && file.rounds && file.rounds[round]) || empty;
+    }, function () { return empty; });
   };
 
 }(typeof window !== 'undefined' ? window : globalThis));

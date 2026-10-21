@@ -1,0 +1,59 @@
+/* =============================================================================
+   real_model.js: loads the REAL apps-script/Model.gs into Node, so the bench
+   uses the same catalogue, import, normaliser, validator, compiler and
+   translation helpers as the live Sheet. TEST TOOLING ONLY.
+
+   Model.gs is pure logic except PP_readModel / PP_writeModel (Sheets), which
+   the bench never calls. Returns null when Model.gs is missing or fails to
+   load, so the bench falls back to its own stand-in (fake_backend.js).
+   ============================================================================= */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+function loadRealModel(repo) {
+  const file = path.join(repo, 'apps-script', 'Model.gs');
+  if (!fs.existsSync(file)) return null;
+  const context = vm.createContext({
+    console: { log() {}, info() {}, warn() {}, error() {} },   // keep the bench output quiet
+    Date, JSON, Math, Object, Array, String, Number, Boolean, RegExp, Error, isNaN, parseInt, parseFloat
+  });
+  try {
+    vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: 'Model.gs' });
+  } catch (e) {
+    console.error('[bench] Model.gs did not load, using the stand-in:', e.message);
+    return null;
+  }
+  const need = ['PP_SETTINGS_SCHEMA', 'PP_SCREEN_TYPES', 'PP_FORM_TEXT_KEYS', 'PP_importStatic', 'PP_normalizeModel',
+    'PP_applyTranslationHelpers', 'PP_validate', 'PP_compile', 'PP_compileForCompare', 'PP_modelFromPublished',
+    'PP_liveIds', 'PP_exportStatic'];
+  const missing = need.filter((name) => vm.runInContext('typeof ' + name, context) === 'undefined');
+  if (missing.length) {
+    console.error('[bench] Model.gs lacks', missing.join(', '), '- using the stand-in.');
+    return null;
+  }
+  // Values cross the vm boundary as JSON copies, like google.script.run.
+  const call = (name) => (...args) => {
+    context.__args = JSON.parse(JSON.stringify(args));
+    const out = vm.runInContext(name + '.apply(null, __args)', context);
+    return out === undefined ? undefined : JSON.parse(JSON.stringify(out));
+  };
+  const value = (name) => JSON.parse(JSON.stringify(vm.runInContext(name, context)));
+  return {
+    SETTINGS_SCHEMA: value('PP_SETTINGS_SCHEMA'),
+    SCREEN_TYPES: value('PP_SCREEN_TYPES'),
+    FORM_TEXT_KEYS: value('PP_FORM_TEXT_KEYS'),
+    importStatic: call('PP_importStatic'),
+    normalizeModel: call('PP_normalizeModel'),
+    applyTranslationHelpers: call('PP_applyTranslationHelpers'),
+    validate: call('PP_validate'),
+    compile: call('PP_compile'),
+    compileForCompare: call('PP_compileForCompare'),
+    modelFromPublished: call('PP_modelFromPublished'),
+    liveIds: call('PP_liveIds'),
+    exportStatic: call('PP_exportStatic')
+  };
+}
+
+module.exports = { loadRealModel };

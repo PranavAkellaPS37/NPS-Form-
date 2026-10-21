@@ -1,0 +1,14 @@
+# =============================================================================
+# scripts/requirements.txt: what the Python scripts in this folder need.
+#
+# Nothing to install. Every script here (mock_server.py, smoke_test.py,
+# check_config.py, strings_csv.py, generate_links.py) uses only Python 3.11
+# or newer and its standard library, which comes with Python.
+#
+# This file exists because the project asks for one requirements.txt in each
+# Python folder. Running
+#     python3 -m pip install -r scripts/requirements.txt
+# from the project folder installs nothing and is safe.
+#
+# To check your Python version, run:  python3 --version   (3.11 or newer)
+# =============================================================================

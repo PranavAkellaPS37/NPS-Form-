@@ -7,9 +7,13 @@ What this folder is for
   speaker button plays them instead of the phone's built-in voice.
 
 How it works
-  web/config/audio_clips.json says which clip belongs to which text and
-  which language. The form downloads a clip only when a partner taps the
-  speaker button, so clips never slow down opening the form.
+  The mp3 files live here and are published with the form. Which clip
+  belongs to which text and language is listed in the Google Sheet (the
+  "Audio clips" tab) and reaches phones when someone presses Publish in the
+  control panel. web/config/audio_clips.json is the backup copy of that
+  list, used when Google is slow and by the local test server. The form
+  downloads a clip only when a partner taps the speaker button, so clips
+  never slow down opening the form.
 
 What reads these files
   The form, in the partner's browser.
@@ -70,7 +74,9 @@ Run every command from the project folder: open Terminal and run `cd ~/NPSF` fir
    ```
 
    What it does: creates the folder `web/audio/hi`. If it already exists, nothing happens. Then save the file there as `q.nps.mp3`.
-5. **List it in [`web/config/audio_clips.json`](../config/audio_clips.json).** Fill in the `clips` part. Keep the `_help` line above it as it is. Paths start inside `web/`, so **do not** write `web/` at the start:
+5. **List it, in two places.**
+   - **The live list, in the Google Sheet.** Open the **Audio clips** tab and add one row per clip: **key** `q.nps`, **lang** `hi`, **url** `audio/hi/q.nps.mp3`. (The control panel has no clip editor yet, so this is the one tab you edit directly.) Then press **Publish** in the control panel. Phones get the clip the next time they open their link, once the mp3 itself is online (step 8).
+   - **The backup copy, in [`web/config/audio_clips.json`](../config/audio_clips.json).** The form uses it when Google is slow, and the local test server always uses it. Either download it from the control panel (**Publish > Backup copy in GitHub**, then put it in `web/config/`), or fill in the `clips` part by hand. Keep the `_help` line above it as it is. Paths start inside `web/`, so **do not** write `web/` at the start:
 
    ```json
    "clips": {
@@ -88,7 +94,8 @@ Run every command from the project folder: open Terminal and run `cd ~/NPSF` fir
 
    What it does: checks every settings file, including that every clip listed in `audio_clips.json` really exists.
    **You should see** "All good". A missing clip is reported by name. If that happens, check the spelling, the language folder and the path.
-7. **Hear it.** Start the test server (`python3 scripts/mock_server.py`) and open `localhost:8787` in a new Incognito window in Chrome (Cmd+Shift+N). Pick the language, go to that question, and tap the speaker button.
+7. **Hear it on this Mac.** Start the test server (`python3 scripts/mock_server.py`) and open `localhost:8787` in a new Incognito window in Chrome (Cmd+Shift+N). Pick the language, go to that question, and tap the speaker button.
+8. **Put it online.** Save the change to GitHub (commit and push, as in the main README): GitHub Pages then publishes the mp3 with the form. Open a test link on a phone and tap the speaker button.
 
 ## Recommended format
 
@@ -129,8 +136,8 @@ The form downloads a clip **only when a partner taps the speaker button**. Clips
 
 ## When a text changes
 
-- **If you reword a text** in `strings.json`, record its clips again. Otherwise the old clip keeps saying the old words.
-- **To remove a clip,** first delete its entry from `audio_clips.json`, then delete the file. If you do it the other way round, `check_config.py` reports a missing file until you fix the list.
+- **If you reword a text** (in the control panel, or in `strings.json`), record its clips again. Otherwise the old clip keeps saying the old words.
+- **To remove a clip,** first delete its row in the Sheet's **Audio clips** tab and Publish, and delete its entry from `audio_clips.json`. Then delete the file. If you do it the other way round, phones look for a file that is gone (they fall back to the phone's voice), and `check_config.py` reports a missing file until you fix the list.
 
 ## Safety
 
@@ -144,6 +151,6 @@ The form downloads a clip **only when a partner taps the speaker button**. Clips
 | What you see | What to do |
 |---|---|
 | `check_config.py` says a clip is missing | Check the spelling of the file and folder, and that the path in `audio_clips.json` starts with `audio/`, not `web/audio/`. |
-| The speaker still uses the phone's voice | Check that the key and the language code in `audio_clips.json` match the text and the language you picked. Then reload with Cmd+Shift+R. |
+| The speaker still uses the phone's voice | Check that the key and the language code match the text and the language you picked: in the Sheet's **Audio clips** tab (then Publish again), and in `audio_clips.json` for the test server. Check that the mp3 is pushed to GitHub. Then reload with Cmd+Shift+R. |
 | The clip does not play | Make sure it really is an mp3, not a renamed `.m4a`. Export it again as mp3. |
 | The clip is too big | Export it again at 32 kbps, mono, and trim the silence. |

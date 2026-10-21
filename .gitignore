@@ -53,6 +53,10 @@ service_account*.json
 service-account*.json
 token*.json
 .clasprc.json
+# clasp's link to one person's Apps Script project (the optional developer
+# route in apps-script/README.md keeps it outside this folder). Not a
+# password, but personal to each admin: never upload it if one appears here.
+.clasp.json
 
 # --- Python / Node / Mac clutter --------------------------------------------
 __pycache__/
@@ -63,6 +67,24 @@ node_modules/
 .DS_Store
 .streamlit/secrets.toml
 
+# --- Developer tests (tests/): what the suites write while they run ---------
+# Screenshots, the test server's fake data, reports and downloads. Made
+# again on every run, so never committed. (tests/node_modules/ is covered by
+# node_modules/ above.)
+tests/e2e/shots/
+tests/e2e/data-*/
+tests/gas-harness/out/
+tests/panel/shots/
+tests/panel/downloads/
+tests/model/checkcopy/
+tests/model/strict/run-*/
+
 # --- Re-allow the FAKE demo data (never put real data in here) --------------
 !sample_data/
 !sample_data/**
+
+# --- Claude Code: personal settings and the status-page guard ---------------
+# Local to Pranav's Mac (hooks that keep the colleague status page updated,
+# and its activity log). Never committed.
+.claude/settings.local.json
+.claude/status/

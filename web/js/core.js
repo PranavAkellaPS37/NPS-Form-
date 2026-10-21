@@ -7,10 +7,12 @@
                     the survey then simply keeps answers in memory.
    - PP.now       : current time as text, e.g. "2026-10-19T11:22:33.456Z" (UTC)
    - PP.randomId  : random ids like "sub_5c1d9e0f7a2b4c83"
-   - PP.params    : reads ?dc=...&t=...&round=...&lang=...&mock=1 from the link
+   - PP.params    : reads ?dc=...&t=...&round=...&lang=...&mock=1 (and &preview=1
+                    for the control panel's preview links) from the link
    - PP.h         : tiny helper that builds page elements from code
    - PP.icon      : the few small icons the form uses (drawn in code, no downloads)
-   - PP.i18n/PP.t : looks up words in web/i18n/strings.json for the chosen language
+   - PP.i18n/PP.t : looks up words for the chosen language (the published texts,
+                    or the form's own copy web/i18n/strings.json)
 
    HOW THE FILES FIT TOGETHER (index.html loads them in this order)
      core.js    -> helpers (this file)
@@ -22,7 +24,8 @@
      app.js     -> starts everything and moves between screens
 
    You never need to edit this file to change the questionnaire: questions,
-   languages, colours and rules all live in web/config/ and web/i18n/.
+   languages, colours and rules live in the control panel (Google Sheet),
+   and in web/config/ + web/i18n/ for the form's own copy.
 
    COMPATIBILITY: written for old Android phones too (Chrome 61+), so it avoids
    newer JavaScript shortcuts such as ?. and ??.
@@ -91,7 +94,7 @@
   };
 
   /* ---------------------------------------------------------------------------
-     Link parameters (?dc=...&t=...&round=...&lang=...&mock=1)
+     Link parameters (?dc=...&t=...&round=...&lang=...&mock=1&preview=1)
      ------------------------------------------------------------------------- */
   PP.params = function () {
     var out = {};
@@ -160,7 +163,11 @@
     warn: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
     globe: 'M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z',
     keyboard: 'M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z',
-    close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'
+    close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+    // a clock: "this survey is not open yet"
+    schedule: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM12.5 7H11v6l5.25 3.15.75-1.23-4.5-2.67z',
+    // a crossed-out calendar: "this survey has closed"
+    eventBusy: 'M9.31 17l2.44-2.44L14.19 17l1.06-1.06-2.44-2.44 2.44-2.44L14.19 10l-2.44 2.44L9.31 10l-1.06 1.06 2.44 2.44-2.44 2.44L9.31 17zM19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z'
   };
 
   PP.icon = function (name, extraClass) {

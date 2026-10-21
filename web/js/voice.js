@@ -20,7 +20,8 @@
    - It is sent inside the submission (docs/submission-format.md) and deleted
      from the phone after a successful send.
 
-   Settings (web/config/survey.json -> "voice"): enabled, gesture, max_seconds,
+   Settings ("voice" in the questionnaire: control panel > Settings > Voice
+   notes, or web/config/survey.json): enabled, gesture, max_seconds,
    min_seconds, bitrate, mime_types. Nothing here needs editing.
    ============================================================================= */
 (function (root) {

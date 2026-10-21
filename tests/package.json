@@ -1,0 +1,19 @@
+{
+  "name": "partner-pulse-developer-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Developer tests for Valmo Partner Pulse (see tests/README.md). Never published: GitHub Pages serves only web/. Exact package versions are pinned on purpose.",
+  "scripts": {
+    "test:flow": "node flow/flow_test.js",
+    "test:model": "node model/test_model.js",
+    "test:shrink": "node model/strict/shrink_check.js",
+    "test:fixes": "node fixes/verify.js && node fixes/verify-locks.js",
+    "test:harness": "node gas-harness/run-tests.js",
+    "test:panel": "node panel/test.js",
+    "test:e2e": "node e2e/e2e.js"
+  },
+  "devDependencies": {
+    "acorn": "8.14.0",
+    "puppeteer-core": "23.11.1"
+  }
+}

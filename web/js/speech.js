@@ -2,8 +2,10 @@
    speech.js: the read-aloud (speaker) button shown next to each question.
 
    HOW IT DECIDES WHAT TO PLAY, for each piece of text on the screen:
-   1. If web/config/audio_clips.json has a pre-recorded mp3 for that text key in
-      that language, play the mp3 (best quality, works on every phone).
+   1. If there is a pre-recorded mp3 for that text key in that language
+      (control panel "Audio clips", which arrive with the published
+      questionnaire; or web/config/audio_clips.json when the form uses its own
+      copy), play the mp3 (best quality, works on every phone).
    2. Otherwise use the phone's built-in voice (the browser's speechSynthesis)
       in the right language, e.g. "hi-IN" for Hindi.
    3. If some text on the screen can be played neither way, the speaker button
@@ -14,8 +16,9 @@
    The phone's list of voices often arrives a moment after the page loads, so
    buttons re-check themselves when it does (onVoicesChanged).
 
-   Nothing here needs editing: switch read-aloud off with
-   "read_aloud": { "enabled": false } in web/config/survey.json.
+   Nothing here needs editing: switch read-aloud off in the control panel
+   (Settings > Read aloud), or with "read_aloud": { "enabled": false } in
+   web/config/survey.json.
    ============================================================================= */
 (function (root) {
   'use strict';
@@ -33,7 +36,8 @@
     _buttons: []
   };
 
-  /* Called once by app.js. clipsFile = contents of audio_clips.json (or null). */
+  /* Called once by app.js. clipsFile = { clips: {...} } (from the bootstrap,
+     or the contents of audio_clips.json), or null. */
   speech.init = function (config, clipsFile) {
     speech.enabled = !(config && config.read_aloud && config.read_aloud.enabled === false);
     speech.clips = (clipsFile && clipsFile.clips) || {};

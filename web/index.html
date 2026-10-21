@@ -6,10 +6,15 @@
   WHAT THIS FILE IS
   Only the empty "frame" of the page: top bar, progress bar, the area where
   each question appears, and the bottom Back / Next bar. Everything shown
-  inside the frame is drawn by the JavaScript files in js/, using:
-    config/survey.json        questions, areas, chips, rules, colours
+  inside the frame is drawn by the JavaScript files in js/.
+  The questionnaire itself normally comes from the backend: the version the
+  admins PUBLISHED in the control panel (Google Sheet), fetched when the page
+  opens (see js/app.js). If the backend is slow or down, the form uses its
+  own copy instead:
+    config/survey.json        questions, areas, chips, rules, colours, and
+                              where answers are sent (always used for that)
     i18n/strings.json         every word, in all six languages
-    config/whats_changed.json "what changed since last time" (backup copy)
+    config/whats_changed.json "what changed since last time"
     config/audio_clips.json   optional pre-recorded read-aloud clips
 
   YOU SHOULD NOT NEED TO EDIT THIS FILE to change the questionnaire.
@@ -47,7 +52,7 @@
 </head>
 <body>
   <div class="app" id="app">
-    <!-- Yellow strip shown only in test (mock) mode -->
+    <!-- Strip shown only in test (mock) mode, and on preview links ("PREVIEW: answers are not saved") -->
     <div class="dev-banner" id="dev-banner" hidden></div>
 
     <header class="topbar">

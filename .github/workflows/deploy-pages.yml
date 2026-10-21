@@ -1,0 +1,112 @@
+# =============================================================================
+# deploy-pages.yml: puts the survey form online with GitHub Pages
+# =============================================================================
+#
+# WHAT THIS FILE IS FOR
+#   GitHub reads this file and follows its steps by itself (this is called a
+#   "workflow", and it runs in "GitHub Actions"). It publishes the web/ folder,
+#   which is the survey form, at:
+#       https://pranavakellaps37.github.io/NPS-Form-/
+#   Partners' links point there.
+#
+# WHEN IT RUNS
+#   - Every time new commits reach the "main" branch on GitHub (git push).
+#   - When you start it by hand: on GitHub, open the repository > Actions tab >
+#     "Deploy the form to GitHub Pages" (left) > "Run workflow" button (right)
+#     > Run workflow.
+#
+# WHAT IT DOES, IN ORDER
+#   1. Downloads the project files.
+#   2. Installs Python 3.12.
+#   3. Runs  python3 scripts/check_config.py  (the same settings check you run
+#      on your Mac). If it finds ERRORS, the deployment STOPS here and the form
+#      that is already online stays as it was. So a broken settings file never
+#      reaches partners.
+#   4. Packs ONLY the web/ folder and publishes it on GitHub Pages. Nothing
+#      outside web/ is put online by this workflow.
+#
+# ONE-TIME SETUP (do this once, right after the first git push)
+#   On GitHub: open the repository > Settings > Pages (left menu) >
+#   "Build and deployment" > Source: choose "GitHub Actions".
+#   If the first run failed because Pages was not switched on yet, start it
+#   again by hand: Actions tab > open the failed run > "Re-run all jobs" (or use
+#   "Run workflow" as described above).
+#
+# HOW TO SEE IF IT WORKED
+#   On GitHub, open the Actions tab. Each run shows a yellow dot while it runs
+#   (about 1 to 2 minutes), then a green tick (published) or a red cross
+#   (stopped). Click a red cross, then the "deploy" box, then the step with the
+#   red cross to read why. If it is "Check the settings", the text lists each
+#   problem in plain English: fix it, run python3 scripts/check_config.py on
+#   your Mac until it says "All good", then commit and push again.
+#   After a green tick, phones may keep the old copy for up to about 10
+#   minutes (GitHub Pages caching).
+#
+# WHAT IT READS AND WRITES
+#   Reads the repository. Writes only the published copy of web/ on GitHub
+#   Pages. It changes no file in the repository.
+#
+# SAFETY
+#   - Everything inside web/ becomes PUBLIC on the internet. Never put partner
+#     data, links or secrets in web/ (or anywhere in this repository).
+#   - The permissions below are the minimum GitHub Pages needs: read the code,
+#     write to Pages, and prove to Pages that this run is genuine (id-token).
+#   - Each action is pinned to an exact, unchangeable version (the long
+#     commit code after @; the "# vN" comment says which release it is). A
+#     version label like @v5 can be moved by whoever controls the action, so
+#     an exact code means nobody can swap in different code behind our back.
+#
+# Who maintains it: you should not need to edit this file. If GitHub one day
+# says an action version is too old, a developer can update each line to the
+# commit of a newer release (and update the "# vN" comment).
+# =============================================================================
+
+name: Deploy the form to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The least access that publishing to GitHub Pages needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time. A newer push waits for the running one to
+# finish instead of cancelling it half-way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Get the project files
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Check the settings (stops the deployment if there are errors)
+        run: python3 scripts/check_config.py
+
+      - name: Prepare GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+      - name: Pack the web folder (only web/ is published)
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: web
+
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

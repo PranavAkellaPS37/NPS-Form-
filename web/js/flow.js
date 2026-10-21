@@ -1,7 +1,9 @@
 /* =============================================================================
    flow.js: the "brain" of the questionnaire. Nothing is drawn here.
 
-   Using ONLY web/config/survey.json, it answers three questions:
+   Using ONLY the questionnaire (the version published from the control
+   panel, or the form's own copy in web/config/survey.json, see app.js), it
+   answers three questions:
 
    1. buildSteps(config, ctx)
         Given the answers so far, which screens should this partner see, and in

@@ -36,6 +36,13 @@ Safety
 
 Everything partners see is controlled by four **settings files**. This guide explains every setting in plain English. Then it gives copy-and-paste **recipes** for common changes.
 
+> [!IMPORTANT]
+> **Since Phase 2, the live questionnaire is changed in the control panel**, not in these files. Once the Google Sheet control panel is set up ([README, Phase 2](../README.md#phase-2-go-live)), what you **publish** there is what partners see: use the [control panel guide](control-panel.md), which has the same recipes as clicks.
+>
+> These four files then serve as the **backup copy**: the form uses them only when Google does not answer in time (and the test server on this Mac always uses them). Refresh them from the panel after important changes ([control panel guide, Recipe 12](control-panel.md#recipe-12-refresh-the-github-copy)). This guide explains the files themselves, which is still useful to understand every setting, and for testing on this Mac.
+>
+> Four settings are never part of what you publish: `backend.mode`, `backend.mock_url`, `backend.apps_script_url` and `links`. The form always reads them from its own copy of `web/config/survey.json`, because it needs them before it can ask Google for the published questionnaire. The control panel has no setting for them, with one exception: once the web app address is recorded in the panel (**Home > Quick links**, **Check and save**), its **Download files for the GitHub copy** writes that address into `backend.apps_script_url`, with `mode` set to `"apps_script"`. While no address is recorded, the downloaded `survey.json` stays in test mode (`"mock"`, with an empty address), and the panel warns you. `mock_url` and `links` are always written as they are today.
+
 You do not need to read it all. Read [Before you start](#before-you-start) and [JSON in two minutes](#json-in-two-minutes) once. After that, jump straight to the [recipe](#recipes) you need.
 
 ## On this page
@@ -72,7 +79,7 @@ You do not need to read it all. Read [Before you start](#before-you-start) and [
 
 ## Before you start
 
-Four habits keep you safe. Run every command from the project folder: open Terminal and run `cd ~/NPSF` first.
+Four habits keep you safe. Run every command from the project folder: open Terminal and run `cd ~/NPSF` first (your project folder; the main README, step 2, explains `~`).
 
 **1. Make a backup copy first.** These commands copy the two files you will edit most onto your Desktop, outside the project:
 
@@ -132,6 +139,8 @@ If the last line says "Please fix the errors above", fix each error and run it a
 > **Reword freely instead.** What partners read lives in `web/i18n/strings.json`. Fixing a typo or improving a label there is always safe.
 >
 > Between rounds you may add new codes or retire old ones. But **never rename a code, and never reuse an old code for a new meaning.** The same goes for support item ids (`agent_behaviour`, …) and the option codes of single-choice questions.
+>
+> **With the control panel**, codes lock by themselves when the first real round opens (rounds whose name starts with SMOKE, DEMO or TEST never lock them). The screen ids `nps` and `support_gate` are protected from the start: their answers fill their own columns in every round's answers sheet, so the panel can hide them but never deletes them or changes their code.
 
 ---
 
@@ -179,9 +188,9 @@ If you make one of these, `check_config.py` usually tells you the line.
 
 | File | What it controls | How often you will edit it |
 |---|---|---|
-| [`web/config/survey.json`](../web/config/survey.json) | The questionnaire: areas, problem chips, rules, order of screens, colours, voice. | Between rounds, when questions change. |
-| [`web/i18n/strings.json`](../web/i18n/strings.json) | Every word on screen, in six languages. | For wording fixes and translations. |
-| [`web/config/whats_changed.json`](../web/config/whats_changed.json) | The "What changed since your last feedback" card, one block per round. | Once per round. |
+| [`web/config/survey.json`](../web/config/survey.json) | The questionnaire: areas, problem chips, rules, order of screens, colours, voice. Also where answers are sent (`backend`). | Before the control panel: between rounds, when questions change. After: once, to connect the form to the live backend; the rest comes from the panel. |
+| [`web/i18n/strings.json`](../web/i18n/strings.json) | Every word on screen, in six languages. | Before the control panel: for wording fixes and translations. After: only when refreshing the backup copy. |
+| [`web/config/whats_changed.json`](../web/config/whats_changed.json) | The "What changed since your last feedback" card, one block per round. | Before the control panel: once per round. After: only when refreshing the backup copy. |
 | [`web/config/audio_clips.json`](../web/config/audio_clips.json) | Optional recorded read-aloud clips. | Rarely. |
 
 **Why words and settings are kept apart.** `survey.json` never contains the words partners read. It refers to each text by a short code called a **string key**, such as `q.nps`. The words themselves live in `strings.json`, in all six languages. So translators only ever touch `strings.json`, and changing a word can never break the survey's logic.
@@ -204,7 +213,7 @@ Every setting whose name starts with `_` (such as `_help` or `_flow_help`) is a 
 | Setting | What it means | Today |
 |---|---|---|
 | `survey_id` | The survey's permanent name. Every answer is stamped with it. | `"valmo-partner-pulse"`. Never change it. |
-| `config_version` | The version of the questionnaire. Every answer is stamped with it, so the dashboard knows which version each partner saw. Change it whenever partners will see something different ([Recipe 15](#recipe-15-bump-config_version)). | `"2026-10-19.1"` |
+| `config_version` | The version of the questionnaire. Every answer is stamped with it, so the dashboard knows which version each partner saw. Change it whenever partners will see something different ([Recipe 15](#recipe-15-bump-config_version)). Once the control panel is in use, every published version gets its own stamp (for example `p7-2026-10-21`). Refreshing the GitHub copy writes that stamp here only when the saved draft is exactly the live version; otherwise it writes `"draft"`. | `"2026-10-19.1"` |
 
 ### branding: colours and logo
 
@@ -212,7 +221,7 @@ Colours are **hex codes**: a `#` followed by six characters (0–9 and A–F), s
 
 | Setting | What it colours | Today |
 |---|---|---|
-| `logo` | Optional logo image: a path inside `web/`, such as `"assets/logo.svg"`. Leave it empty (`""`) to show the product name as text instead. The product name is the text `brand.name` in `strings.json`. | `""` |
+| `logo` | Optional logo image: a path inside `web/`, such as `"assets/logo.svg"`, or a secure web address starting with `https://`. Leave it empty (`""`) to show the product name as text instead. The product name is the text `brand.name` in `strings.json`. | `""` |
 | `colors.primary` | Buttons and selected answers. | `#4B2E83` |
 | `colors.on_primary` | Text on primary buttons. | `#FFFFFF` (white) |
 | `colors.background` | The page background. | `#FFFFFF` |
@@ -227,18 +236,28 @@ Colours are **hex codes**: a `#` followed by six characters (0–9 and A–F), s
 
 | Setting | What it means | Today |
 |---|---|---|
-| `mode` | Where answers are sent. `"mock"` = the test server on this Mac. `"apps_script"` = Google Apps Script (set up in Phase 2). Leave it as `"mock"` in Phase 1. | `"mock"` |
+| `mode` | Where answers are sent, and where the form asks for the published questionnaire. `"mock"` = the test server on this Mac. `"apps_script"` = Google Apps Script, the live backend. Keep `"mock"` until the web app exists; switching is step 12 of the [setup guide](../apps-script/README.md#step-12-put-the-web-app-address-into-the-forms-settings). The control panel's GitHub copy writes `"apps_script"` once the web app address is recorded in the panel, and `"mock"` while it is not. | `"mock"` |
 | `mock_url` | The test server's address for receiving answers. Leave it. | `"/api"` |
-| `apps_script_url` | Phase 2: the Apps Script web address ending in `/exec` goes here. | `""` |
+| `apps_script_url` | The Apps Script web app address, in the plain form ending in `/exec` (see below). Needed when `mode` is `"apps_script"`. | `""` |
 | `request_timeout_seconds` | How long the form waits for the server to reply to one send. After that, it counts the attempt as failed and tries again. Bigger sends get more time automatically (next row). | `90` |
 | `slow_upload_bytes_per_second` | The slowest upload speed the form plans for. A send with voice notes gets at least 30 seconds plus the time to upload it at this speed, so a slow but working connection is never cut off. 1000 = very weak 2G. | `1000` |
 | `retry_delays_seconds` | The waits, in seconds, before each automatic retry when sending fails. After the last one, the partner still has a **Send now** button. The form also tries again when the internet comes back or the page is reopened. | `[2, 5, 10, 20, 40, 60, 60, 120, 120, 300]` (about 12 minutes in all) |
 
-Adding `mock=1` to any link forces test mode, whatever `mode` says.
+The last three rows can also be changed in the control panel (**Settings > Sending**); the published values win over these.
+
+Adding `mock=1` to any link forces test mode, whatever `mode` says. The links the test server prints already end in `&mock=1`, so they keep working after `mode` becomes `"apps_script"`; add it yourself to local links you type (`localhost:8787/?mock=1`).
+
+**The web app address (`apps_script_url`).** It must look like `https://script.google.com/macros/s/AKfycb...long-code.../exec`. The easiest way to get it right: copy it from the control panel (**Home > Quick links > Copy**), where it was checked when it was recorded ([setup guide, step 10](../apps-script/README.md#step-10-copy-the-web-app-address-and-record-it-in-the-control-panel)). Never use:
+
+- an address ending in `/dev`: it only works for people who can edit the script, never for partners;
+- a `googleusercontent.com` address: that is where Google forwards to, not the web app itself;
+- a company-style `…/a/macros/<company>/s/…/exec` address: it can ask partners to sign in. (The panel turns it into the plain form when you record it.)
+
+`check_config.py` reports an error when `mode` is `"apps_script"` and the address is empty or does not start with `https://script.google.com/` (GitHub then keeps the previous form online), and a warning when it does not end in `/exec`.
 
 ### links: test-mode defaults
 
-Every real link carries three details: `dc` (the DC's id), `t` (the *token*, a secret code that proves the link is genuine) and `round` (the round id). It can also carry `lang` (the language; the language screen is then skipped) and `mock=1` (test mode). A real link looks like this (fake values):
+Every real link carries three details: `dc` (the DC's id), `t` (the *token*, a secret code that proves the link is genuine) and `round` (the round id). It can also carry `lang` (the language; the language screen is then skipped) and `mock=1` (test mode). Preview links made by the control panel carry `preview=1` and `pk` (a private preview key) instead of a token. A real link looks like this (fake values):
 
 ```text
 https://<the survey's web address>/?dc=DC-DEMO-001&t=<token>&round=2026-R1&lang=hi
@@ -262,7 +281,7 @@ In live mode (from Phase 2), a link missing `dc`, `t` or `round` shows "This lin
 
 The codes are `en` English, `hi` Hindi, `ta` Tamil, `te` Telugu, `kn` Kannada and `ml` Malayalam. To change the order of the buttons, move whole lines within the list (and check the commas).
 
-Never change a language's code: it would break every link and every text that uses it. Adding a seventh language is a bigger job, because every text in `strings.json` and every "What changed" sentence needs it. Plan it as a project, not a quick edit.
+Never change a language's code: it would break every link and every text that uses it. Adding a seventh language is a bigger job, because every text in `strings.json` and every "What changed" sentence needs it. Plan it as a project, not a quick edit. (With the control panel: **Settings > Languages > Add a language**. Every text then starts as "to translate", so partners see English until it is translated.)
 
 ### navigation
 
@@ -345,9 +364,9 @@ If a phone cannot record, or the partner blocks the microphone, the form quietly
 | Setting | What it means | Today |
 |---|---|---|
 | `text.max_chars` | The maximum length of one typed answer, in characters. Any language or script is accepted, including Hindi or Tamil typed in English letters. | `1500` |
-| `read_aloud.enabled` | Shows the speaker button on each question. It plays a recorded clip if [`audio_clips.json`](#audio_clipsjson-recorded-read-aloud-clips) has one for that text and language. Otherwise it uses the phone's built-in voice. The button hides itself when neither is available. | `true` |
-| `whats_changed.timeout_seconds` | How long the form waits for the backend to send the "What changed" content. If it takes longer, the form uses the copy in `whats_changed.json`. If that has nothing for the round, the screen is skipped. | `4` |
-| `telemetry.enabled` | Sends small progress messages (opened, started, which screen the partner reached), so the dashboard can show where partners drop off. They never contain answers. | `true` |
+| `read_aloud.enabled` | Shows the speaker button on each question. It plays a recorded clip when one is listed for that text and language. In live mode the list comes from the Sheet's **Audio clips** tab (published from the control panel); in test mode, or when Google is slow, from [`audio_clips.json`](#audio_clipsjson-recorded-read-aloud-clips). If there is no clip, it uses the phone's built-in voice. The button hides itself when neither is available. | `true` |
+| `whats_changed.timeout_seconds` | How long the form waits for the backend when a link is opened. Since Phase 2 the "What changed" content arrives together with the published questionnaire, in one request, and the form waits this many seconds **plus 2** for it (4 + 2 = 6 seconds). If it takes longer, the form uses its own copy of all four files, including `whats_changed.json`; if that has nothing for the round, the screen is skipped. Preview links wait up to 20 seconds instead, because Google needs longer to prepare a draft. Allowed: 1 to 20. In the control panel: **Settings > What changed > Wait for the live questionnaire (seconds)**. | `4` |
+| `telemetry.enabled` | Sends small progress messages (started, which screen the partner reached), so the dashboard can show where partners drop off. They never contain answers. The "opened" message is always sent, even when this is `false`, because it also checks that the link is genuine. | `true` |
 
 ### flow: the screens, in order
 
@@ -530,7 +549,24 @@ Today, English and Hindi are written, and every Tamil, Telugu, Kannada and Malay
 | `brand.name` | The product name in the header. | `brand.name` |
 | `lang.title`, `wc.title` | The titles of the language and "What changed" screens. | `wc.title` |
 | `ui.*`, `voice.*`, `text.*`, `dd.*`, `submit.*`, `thanks.*`, `already.*`, `link.*`, `resume.*`, `net.*` | Buttons and messages. | `ui.next` |
-| `dev.*` | Test-mode messages. Partners never see these. | `dev.mock_banner` |
+| `round.*` | The messages for a round that has closed or is not open yet (Phase 2). | `round.closed_title` |
+| `dev.*` | Test-mode and preview messages, such as the yellow TEST MODE banner and the blue PREVIEW strip. Partners never see these. | `dev.mock_banner`, `dev.preview_banner` |
+
+**The texts added in Phase 2** (English and Hindi written, the other four languages `[TRANSLATE]`):
+
+| Key | English | Where it shows |
+|---|---|---|
+| `round.closed_title` | This survey has closed | A round that has closed. |
+| `round.closed_body` | Thank you. Look out for the next round. | Under it. |
+| `round.not_open_title` | This survey is not open yet | A round that is not open yet. |
+| `round.not_open_body` | Please open the same link again once it starts. | Under it. |
+| `dev.preview_banner` | PREVIEW: answers are not saved | The blue strip on preview links. |
+| `dev.preview_done` | Preview finished. Nothing was saved. | The last screen of a preview. |
+| `dev.preview_fallback` | Could not load the draft: showing the form's stored copy. Open the preview link from the control panel again. | Added to the strip when a preview could not get the draft. |
+| `ui.start_again` | Start again | The button on the last screen of a preview. |
+| `dev.preview_broken` | The draft could not be shown: something in it stops the form from starting, so the form's stored copy is shown. Don't publish it: undo your last change, run Check for problems and preview again. | Added to the strip when the draft arrived but stops the form from starting. |
+
+`check_config.py` checks that all of them exist, in all six languages.
 
 ### Adding a new text
 
@@ -558,7 +594,7 @@ Good to know:
 
 - `DEMO-R1` is fake test content (every sentence starts with `[SAMPLE]`). Never use it for a real round.
 - `2026-R1` already exists, with no items yet.
-- From Phase 2, the live form gets this content from Google Apps Script, so it can be changed without republishing the form. This file is then the backup.
+- Since Phase 2, the live form gets this content from Google Apps Script, together with the published questionnaire. It is written in the control panel (**Rounds > What changed**) and reaches partners when you **Publish**. This file is then the backup.
 - Anyone will be able to read it once the form is online, so write nothing confidential.
 
 How to fill it in: [Recipe 12](#recipe-12-update-the-what-changed-card-for-a-new-round).
@@ -581,6 +617,8 @@ Example:
 }
 ```
 
+**With the control panel (Phase 2)**, the live list of clips is the Sheet's **Audio clips** tab (columns `key`, `lang` and `url`), and it reaches phones when you publish. This file is then the backup copy, refreshed from the panel like the others.
+
 How to record and add clips: [Recipe 13](#recipe-13-add-a-pre-recorded-audio-clip) and [web/audio/README.md](../web/audio/README.md).
 
 ---
@@ -597,7 +635,7 @@ Each recipe uses fake example content. Replace it with yours.
 > 1. Save the file or files.
 > 2. Run `python3 scripts/check_config.py`. Fix anything it lists until it says **All good**.
 > 3. If partners will see something different, bump `config_version` ([Recipe 15](#recipe-15-bump-config_version)).
-> 4. Look at the result. Start the test server if it is not running (`python3 scripts/mock_server.py`). Open a **new Incognito window** in Chrome (Cmd+Shift+N), so old saved answers do not get in the way. Go to `localhost:8787` and go through the screens you changed.
+> 4. Look at the result. Start the test server if it is not running (`python3 scripts/mock_server.py`). Open a **new Incognito window** in Chrome (Cmd+Shift+N), so old saved answers do not get in the way. Go to `localhost:8787` (once the form is connected to the live backend: `localhost:8787/?mock=1`) and go through the screens you changed.
 
 ### Recipe 1: Reword a question or a chip
 
@@ -847,7 +885,7 @@ Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_v
 **To remove** a screen, delete its whole line. Examples:
 
 - **Drop "one thing to fix":** delete the `one_fix` line.
-- **Drop the support questions:** delete **both** the `support_gate` and `support` lines. If you deleted only `support_gate`, the `support` screen's `show_if` would point at a screen that no longer exists.
+- **Drop the support questions:** delete **both** the `support_gate` and `support` lines. If you deleted only `support_gate`, the `support` screen's `show_if` would point at a screen that no longer exists. (In the control panel you **hide** these screens instead: `support_gate`, like `nps`, can never be deleted there. A hidden screen is simply left out of these files, so deleting its line here has the same effect. If you bring it back, use exactly the same id.)
 - **Hide the "What changed" card for one round:** do not delete anything. Leave that round's `items` empty in `whats_changed.json`, and the screen is skipped by itself.
 
 **Rules:**
@@ -893,6 +931,8 @@ Tips:
 
 The path starts inside `web/`, so do not write `web/` at the start. Keep the file small (an SVG, or a PNG of a few KB), because the whole page must stay under 300 KB. `check_config.py` reports the page weight. Leave `"logo": ""` to show the product name as text.
 
+A picture already online can be used instead, by its full address: `"logo": "https://…/logo.png"`. It must start with `https://` (a plain `http://` picture is blocked on the form's secure page), and it must not contain spaces. `check_config.py` can't check that such a picture exists or how big it is, so open the form once to see it, and keep the picture small. The control panel (**Look & feel > Logo**) uses the same rule.
+
 **Product name.** The name in the header is the text `brand.name` in `strings.json` (today "Valmo Partner Pulse"). Change it like any other text ([Recipe 1](#recipe-1-reword-a-question-or-a-chip)).
 
 Then [finish as usual](#finish-every-recipe-the-same-way). A change to colours or the logo alone does not need a `config_version` bump.
@@ -920,9 +960,12 @@ Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_v
 
 ### Recipe 12: Update the "What changed" card for a new round
 
+> [!IMPORTANT]
+> **With the control panel (Phase 2), do this in the panel instead:** **Rounds > What changed**, then **Publish**. The exact clicks are in the [control panel guide, Recipe 7](control-panel.md#recipe-7-start-a-new-round-with-its-what-changed-bullets). Partners get the bullets from the published version; this file is only the backup copy, which you refresh from the panel ([control panel guide, Recipe 12](control-panel.md#recipe-12-refresh-the-github-copy)). The steps below edit the file by hand, for example to try it on the test server.
+
 Do this before each round's links go out.
 
-1. **Decide the round id**, such as `2026-R1`. It must match `round=…` in the partner links **exactly**, capitals included.
+1. **Decide the round id**, such as `2026-R1`. It must match `round=…` in the partner links **exactly**, capitals included. Use 1 to 64 letters, digits, `-` or `_`: no spaces and no dots. `check_config.py` and the control panel both refuse any other name.
 2. Open `web/config/whats_changed.json` and find that round's block under `rounds`. `2026-R1` is already there, with an empty `items` list. For a new round, see the note below.
 3. **Add one item per change.** Two or three short sentences are plenty. Each item needs all six languages. Write each one as a single short sentence a partner can check for themselves.
 4. **Translations:** ask your translators for these sentences too, and paste their text in place of the `[TRANSLATE]` lines.
@@ -955,9 +998,9 @@ The example below uses the fake `[SAMPLE]` sentences from `DEMO-R1`. **Replace t
 
 **For a round that is not in the file yet** (such as `2026-R2`), add a new block after the last one inside `rounds`, shaped like the one above. Put a comma after the closing `}` of the block before it.
 
-**To preview it,** start the test server and open `localhost:8787/?round=2026-R1` in a new Incognito window. (In test mode, the parts missing from this link are filled with demo values.) The test server reads this file again every time, so later edits show up without restarting it: just open a new Incognito window.
+**To preview it,** start the test server and open `localhost:8787/?round=2026-R1&mock=1` in a new Incognito window. (In test mode, the parts missing from this link are filled with demo values.) The test server reads this file again every time, so later edits show up without restarting it: just open a new Incognito window.
 
-**From Phase 2,** the live form gets this content from Google Apps Script first, so it will need updating there too (the Phase 2 guide will explain how). This file is then the backup.
+**For partners,** the bullets come from the control panel: see the note at the top of this recipe.
 
 Run `check_config.py` afterwards. No `config_version` bump is needed: the card belongs to the round, not to the questionnaire.
 
@@ -975,10 +1018,15 @@ Full instructions are in [web/audio/README.md](../web/audio/README.md). In short
    }
    ```
 
-4. Run `python3 scripts/check_config.py`. It checks that every listed file exists.
+4. Run `python3 scripts/check_config.py`. It checks that every listed file exists. A clip may also be a full `https://` address (no spaces); the check can't see such a file, so play it once on a phone.
 5. Open the survey in that language and tap the speaker button on that question.
 
+**With the control panel (Phase 2):** the clip still has to be a file in `web/audio/` on GitHub (or any `https://` address), but partners only get it once it is listed in the Sheet's **Audio clips** tab (columns `key`, `lang`, `url`; for example `q.nps`, `hi`, `audio/hi/q.nps.mp3`) and you **Publish**. Close the control panel before typing in the tab, and open it again afterwards. The panel's checks refuse a clip whose `key` is not a text, or whose `url` is neither a path inside `web/` nor an `https://` address (the same rules as `check_config.py`).
+
 ### Recipe 14: Translate a language with a spreadsheet
+
+> [!NOTE]
+> **With the control panel (Phase 2), translate there instead:** **Texts & translations**, or the Sheet's **Texts** tab, then **Publish**. See the [control panel guide, Recipe 5](control-panel.md#recipe-5-translate-a-language). The steps below change only the backup copy in `web/i18n/strings.json`.
 
 Translators work in a spreadsheet, so they never edit `strings.json` itself.
 
@@ -1026,6 +1074,9 @@ The "What changed" sentences live in `whats_changed.json`, so send those to the 
 
 Every answer is stamped with `config_version`, so the dashboard knows which version of the questionnaire each partner saw.
 
+> [!NOTE]
+> **With the control panel (Phase 2) you never bump it by hand.** Every **Publish** stamps the new version itself, as `p` + the version number + the date (for example `p7-2026-10-21`), and partners' answers carry that stamp. When you refresh the backup copy from the panel ([control panel guide, Recipe 12](control-panel.md#recipe-12-refresh-the-github-copy)), the downloaded `survey.json` carries the live version's stamp too, as long as your saved draft is exactly the live version. Otherwise it carries `"draft"`: publish first, then download the files again. Bump by hand only if you edit the files themselves.
+
 **When:** whenever partners would see something different, such as questions, wording, areas, chips, thresholds, the order of screens or voice settings. A change to colours or the logo alone does not need it, but bumping never hurts.
 
 **How:** in `web/config/survey.json`, find
@@ -1036,6 +1087,7 @@ Every answer is stamped with `config_version`, so the dashboard knows which vers
 
 - Another change on the same day: raise the last number, to `"2026-10-19.2"`.
 - A change on a new day: use that day's date and `.1`, for example `"2026-11-02.1"`.
+- If it holds a stamp from the control panel, such as `"p7-2026-10-21"` or `"draft"`, use that day's date and `.1` as above. Never invent a `p…` stamp: those are made only by Publish.
 
 Keep the quotes. Then run `check_config.py`.
 

@@ -4,8 +4,9 @@ README.md: the front page of the Valmo Partner Pulse project
 ===============================================================================
 What this file is for
   The first page anyone reads. It says what the project is, the golden rule
-  about partner data, what each folder holds, and how to try the survey on a
-  Mac, step by step.
+  about partner data, what each folder holds, how to try the survey on a
+  Mac, and how to go live (GitHub, the Google Sheet control panel, links),
+  step by step.
 
 Who it is for
   Ops colleagues. You do not need to know how to code.
@@ -15,8 +16,8 @@ How to read it
   VS Code and press Cmd+Shift+V to see the formatted preview.
 
 When to update it
-  At the end of every phase. It covers Phase 1 today and grows phase by
-  phase. Phase 5 polishes it end to end.
+  At the end of every phase. It covers Phases 1 and 2 today and grows phase
+  by phase. Phase 5 polishes it end to end.
 
 What it reads and writes
   Nothing. It is documentation only.
@@ -35,7 +36,12 @@ Partners score Valmo from 0 to 10, rate six areas of work, and say what the main
 They can use any of six languages, and can tap, type or leave a voice note.
 
 > [!NOTE]
-> **This README grows with each phase.** Today it covers **Phase 1**: the survey form, its settings, and a test server that runs on this Mac. Phase 5 will polish it end to end.
+> **This README grows with each phase.** Today it covers:
+>
+> - **Phase 1**: the survey form, its settings, and a test server that runs on this Mac;
+> - **Phase 2**: going live. The form goes online on GitHub Pages, a Google Sheet becomes the **control panel** where colleagues change the whole questionnaire, and a small Google program (Apps Script) checks every partner's link and saves the answers.
+>
+> Phase 5 will polish it end to end.
 
 ## On this page
 
@@ -44,12 +50,13 @@ They can use any of six languages, and can tap, type or leave a voice note.
 3. [Phase 1: try the survey on this Mac](#phase-1-try-the-survey-on-this-mac)
 4. [Test the tricky cases](#test-the-tricky-cases)
 5. [Try it on your phone](#try-it-on-your-phone)
-6. [Change the questions](#change-the-questions)
-7. [Translations](#translations)
-8. [What's next](#whats-next)
-9. [Command cheat sheet](#command-cheat-sheet)
-10. [If something goes wrong](#if-something-goes-wrong)
-11. [Words used in this README](#words-used-in-this-readme)
+6. [Phase 2: go live](#phase-2-go-live)
+7. [Change the questions](#change-the-questions)
+8. [Translations](#translations)
+9. [What's next](#whats-next)
+10. [Command cheat sheet](#command-cheat-sheet)
+11. [If something goes wrong](#if-something-goes-wrong)
+12. [Words used in this README](#words-used-in-this-readme)
 
 ---
 
@@ -66,11 +73,11 @@ Real partner data means anything about a real partner:
 - real survey links (each one contains that DC's personal secret code);
 - the live secret key that makes those codes.
 
-For testing, use only obviously fake data, such as the DC ids `DC-DEMO-001` and `DC-SMOKE-TEST`.
+For testing, use only obviously fake data, such as the DC id `DC-DEMO-001` and the smoke test's `DC-SMOKE-…` ids.
 
 ### How the folder protects you
 
-This folder will be stored on GitHub using **git**. (git is a tool that saves versions of a folder and uploads them to GitHub.)
+This folder is stored on GitHub using **git**. (git is a tool that saves versions of a folder and uploads them to GitHub.)
 A file called `.gitignore` tells git which files it must never save:
 
 | Never saved by git | Why |
@@ -80,18 +87,20 @@ A file called `.gitignore` tells git which files it must never save:
 | Voice recordings: `.webm`, `.ogg`, `.opus`, `.m4a`, `.wav`, `.aac`, `.mp4`, `.bin` | Partner voices are personal data. |
 | Secrets: `.env`, `*.key`, `credentials*.json`, `token*.json` and similar | Passwords and keys must never be uploaded. |
 
-The one exception is the `sample_data/` folder (coming in a later phase). It is only for obviously fake demo data.
+The one exception is the `sample_data/` folder. git does save it, so it is only for obviously fake demo data, such as the 20 fake DCs in `sample_data/dcs_fake.csv`.
 
 `.gitignore` is a safety net, not a guarantee. It cannot catch real data that someone types or pastes into a file git does save, such as a `.json` or `.md` file.
 
-Two more things to know:
+More things to know:
 
-- Everything inside `web/` becomes a **public** web page once the form is online (Phase 2). Keep it free of anything confidential.
-- The live secret key will never be stored in this folder. Phase 2 keeps it inside Google Apps Script.
+- Everything inside `web/` is a **public** web page once the form is online (GitHub Pages). Keep it free of anything confidential.
+- The GitHub copy of this folder is **public** too: anyone can read every file git saves.
+- The live secret key is never stored in this folder. It stays inside Google Apps Script (in its "Script Properties").
+- Real partner data lives in Google: the DC list and the links in the control-panel Sheet, the answers and voice notes in Google Drive. If you ever download a DC list or a links file to this Mac, keep it **outside** this project folder, for example in Documents, and delete it when you are done.
 
 ### Before every commit, check what git will save
 
-A *commit* is one saved snapshot of the folder. Once this folder uses git, run this before every commit:
+A *commit* is one saved snapshot of the folder. Run this before every commit:
 
 ```bash
 git status --ignored
@@ -102,7 +111,7 @@ What it does: lists every file git sees as new or changed. Then, under the headi
 Read everything **above** "Ignored files": those files can end up on GitHub. If any of them could contain real partner data, stop and ask for help before you commit.
 
 > [!NOTE]
-> This folder does not use git yet. Start doing this check as soon as it does.
+> This folder uses git, and its GitHub copy is public. Do this check before **every** commit.
 
 ---
 
@@ -111,12 +120,15 @@ Read everything **above** "Ignored files": those files can end up on GitHub. If 
 | Folder or file | What it is | Will you edit it? |
 |---|---|---|
 | `web/` | **The form**: the survey page partners open on their phone. | Only the sub-folders below. |
-| `web/config/` | **Questionnaire settings**: questions, areas, problem chips, colours, voice. | Yes. See the [settings guide](docs/config-guide.md). |
-| `web/i18n/` | **All six languages**: every word on screen, in `strings.json`. (*i18n* is short for "internationalisation".) | Yes, to change wording or add translations. |
-| `web/audio/` | Optional pre-recorded read-aloud clips. See [web/audio/README.md](web/audio/README.md). | Only if you add clips. |
+| `web/config/` | **Questionnaire settings**: questions, areas, problem chips, colours, voice. Since Phase 2 they are the **backup copy**: the live questionnaire is changed in the [control panel](docs/control-panel.md). | Rarely. See the [settings guide](docs/config-guide.md). |
+| `web/i18n/` | **All six languages**: every word on screen, in `strings.json`. (*i18n* is short for "internationalisation".) Also a backup copy since Phase 2. | Rarely: wording and translations are changed in the control panel. |
+| `web/audio/` | Optional pre-recorded read-aloud clips. Since Phase 2, which clip plays for which text is listed in the Sheet's **Audio clips** tab. See [web/audio/README.md](web/audio/README.md). | Only if you add clips. |
 | `web/index.html`, `web/css/`, `web/js/` | The form's code. | No. |
-| `scripts/` | Tools you run: the test server, the checks and the translation tool. | No, you only run them. |
-| `docs/` | Guides: the [settings guide](docs/config-guide.md) and the [data format](docs/submission-format.md). | No. |
+| `apps-script/` | **The control panel and the live backend**: the code that is pasted into the Google Sheet, and its [setup guide](apps-script/README.md). | No. You copy the code into the Sheet once (and again when it is updated). |
+| `scripts/` | Tools you run: the test server, the checks, the translation tool and the link generator. | No, you only run them. |
+| `docs/` | Guides: the [control panel guide](docs/control-panel.md), the [settings guide](docs/config-guide.md), the [data format](docs/submission-format.md) and the [technical design of the control panel](docs/control-panel-design.md). | No. |
+| `sample_data/` | Obviously fake demo data, such as `dcs_fake.csv` (20 fake DCs). The only data folder git is allowed to save. | Only with fake data. |
+| `.github/workflows/` | Instructions GitHub follows by itself: `deploy-pages.yml` checks the settings and publishes `web/` on GitHub Pages after every push. Hidden in Finder, like `.gitignore`. | No. |
 | `local_data/` | **Your test answers and voice notes**, saved by the test server on this Mac. git never saves it. | No. You can clear it with `--reset` (see below). |
 | `README.md` | This page. | |
 | `CHANGELOG.md` | [What changed in each version](CHANGELOG.md). | |
@@ -126,10 +138,8 @@ Read everything **above** "Ignored files": those files can end up on GitHub. If 
 
 | Folder | What it will hold |
 |---|---|
-| `apps-script/` | Phase 2: the live backend. It checks links and saves answers in a Google Sheet. |
 | `pipeline/` | Phase 3: a program that downloads the answers and sorts comments and voice notes into problem codes. |
 | `dashboard/` | Phase 4: the results dashboard. |
-| `sample_data/` | Obviously fake demo data for trying the pipeline and dashboard. It is the only data folder git is allowed to save. |
 | `logs/` | Run logs. git never saves them. |
 
 ---
@@ -137,6 +147,9 @@ Read everything **above** "Ignored files": those files can end up on GitHub. If 
 ## Phase 1: try the survey on this Mac
 
 You will start a small test server on this Mac, fill in the survey in Google Chrome, and then look at the answer it saved. The first time takes about 10 minutes.
+
+> [!IMPORTANT]
+> **After go-live, local links need `&mock=1`.** Once the form is connected to the live backend ([Phase 2](#phase-2-go-live), step 5), the form starts in live mode even on this Mac, and would talk to Google instead of the test server. `&mock=1` at the end of a link puts it back in test mode. The links the test server prints already end in `&mock=1`, so they keep working. Add it yourself only to links you type, such as the plain address: use `localhost:8787/?mock=1` instead of `localhost:8787`.
 
 > [!TIP]
 > **How to run a command.** Copy it from a grey box (on GitHub, use the copy button that appears at the box's top-right corner). Click in the Terminal window, paste with Cmd+V, and press Enter.
@@ -154,7 +167,7 @@ Press Cmd+Space, type `Terminal` and press Enter.
 cd ~/NPSF
 ```
 
-What it does: moves Terminal into the project folder. Every other command on this page only works from here.
+What it does: moves Terminal into the project folder. `~` is short for your home folder, so `~/NPSF` is the folder NPSF in it, where the project lives on the Mac it was built on. If your copy is somewhere else, use that folder in every `cd` on this page. Every other command on this page only works from here.
 
 **You should see:** nothing printed, and the prompt now mentions `NPSF`. That is normal.
 
@@ -194,15 +207,15 @@ What it does: checks every settings file and every translation, and reports the 
 python3 scripts/mock_server.py
 ```
 
-What it does: starts a small test server on this Mac. It shows the survey to your browser and saves your answers in the `local_data/` folder. (*Mock* means "pretend". The server pretends to be the real backend that arrives in Phase 2.)
+What it does: starts a small test server on this Mac. It shows the survey to your browser and saves your answers in the `local_data/` folder. (*Mock* means "pretend". The server pretends to be the real backend, Google Apps Script, from [Phase 2](#phase-2-go-live).)
 
 **You should see** a block of text headed "Valmo Partner Pulse: local test server (pretend backend) is running". It shows:
 
 - the survey's address, `http://localhost:8787/`, and where answers are saved (`local_data/`);
 - its test settings (none of the special options from [Test the tricky cases](#test-the-tricky-cases) are on yet);
-- ready-to-click test links for fake demo DCs: English, Hindi, Tamil, one with no language (so the survey starts with the language screen), a link that is **broken on purpose**, and the plain address.
+- ready-to-click test links for fake demo DCs: English, Hindi, Tamil, one with no language (so the survey starts with the language screen), a link that is **broken on purpose**, the plain address, and a **PREVIEW** link (see [Preview mode](#preview-mode)). Every link ends in `&mock=1` (test mode), so they also work after go-live.
 
-After that the window waits. That is normal: the server is running. While you use the survey, one line appears here for each message the form sends (for example `PING opened` or `SUBMIT … saved`). Typed answers and voice notes are never shown here, only counts.
+After that the window waits. That is normal: the server is running. While you use the survey, one line appears here for each request the form makes (for example `GET bootstrap` when a link is opened, `PING opened` or `SUBMIT … saved`). Typed answers and voice notes are never shown here, only counts.
 
 **Leave this window open.** Closing it stops the server.
 
@@ -216,7 +229,7 @@ What it does: the same as above, but on port 8788. Then use `localhost:8788` ins
 
 ### Step 6: Open the survey
 
-Open **Google Chrome**, click in the address bar, type `localhost:8787` and press Enter.
+Open **Google Chrome**, click in the address bar, type `localhost:8787` and press Enter. (After go-live, type `localhost:8787/?mock=1` instead: see the note at the top of this section.)
 
 *localhost* means "this computer". *8787* is the port: a door number the test server listens on.
 A plain address like this has no link details, so the form uses its demo values: DC `DC-DEMO-001`, round `DEMO-R1`.
@@ -303,7 +316,7 @@ Go back to the first tab (the one running the server) and press **Ctrl+C**. That
 
 The survey remembers your answers in the browser, so you can carry on later. It also remembers when you have finished. If you open the same link again in the same browser, you will see **Already received**. That is correct: a real partner who opens their link twice sees the same message.
 
-To fill it in again from the start, tap **Start again (test mode)**. It appears on the Thank you screen and on the Already received screen, in test mode only. It clears this browser's saved answers for that link. It does not delete anything in `local_data/`.
+To fill it in again from the start, tap **Start again (test mode)**. It appears on the Thank you screen and on the other end screens (such as Already received or Could not send), in test mode only. It clears this browser's saved answers and voice notes for that link, and reloads the page. It does not delete anything in `local_data/`.
 
 You can also open the link in an **Incognito window** (Cmd+Shift+N in Chrome). An Incognito window starts with no saved answers, like a brand-new phone.
 
@@ -333,10 +346,11 @@ What it does: sends a few test messages to the server and checks it answers corr
 
 Good to know:
 
-- It saves a few obviously fake answers for `DC-SMOKE-TEST` (round `SMOKE-R1`). That is expected. Delete them with `--reset` if you like.
+- It saves a few obviously fake answers in round `SMOKE-R1`, for a new fake DC each time it runs (its id starts with `DC-SMOKE-`). That is expected. Delete them with `--reset` if you like.
 - Options such as `--fail-rate` (below) make some checks fail on purpose, so run the smoke test against a server started without them.
 - If the server was started with `--strict`, run `python3 scripts/smoke_test.py --expect-strict` instead.
-- If the server runs on another port, tell the check where it is: `python3 scripts/smoke_test.py --url http://localhost:8788/api`. Phase 2 will use `--url` to check the live backend.
+- If the server runs on another port, tell the check where it is: `python3 scripts/smoke_test.py --url http://localhost:8788/api`.
+- The same check works against the live backend: see [step 16 of the setup guide](apps-script/README.md#step-16-run-the-smoke-test-against-the-live-backend).
 
 ---
 
@@ -396,7 +410,33 @@ Copy the link the server labels **A BROKEN link on purpose** into Chrome. (It is
 
 **You should see:** "This link is not valid. Please use the link Valmo sent you." The other demo links still work. The plain address `localhost:8787` has no token, so with `--strict` it shows "not valid" too: use the demo links the server prints, which carry a correct token.
 
-The message "This link is incomplete" (for a link with parts missing) only appears in live mode, from Phase 2. In test mode, missing parts are filled with demo values.
+The message "This link is incomplete" (for a link with parts missing) only appears in live mode. In test mode, missing parts are filled with demo values.
+
+To try links made by the link generator instead (one for each of the 20 fake DCs), run `python3 scripts/generate_links.py --help` and copy its **TEST links** example. With a `localhost` address it makes test links that end in `&mock=1` and carry tokens the `--strict` server accepts.
+
+### A round that is closed, or not open yet
+
+```bash
+python3 scripts/mock_server.py --closed-rounds DEMO-R1
+```
+
+What it does: the server pretends round `DEMO-R1` was closed in the control panel.
+
+**You should see**, with a demo link in a new Incognito window: "This survey has closed". A phone that had already started the survey before may still finish it, and the server saves those answers marked `late`.
+
+```bash
+python3 scripts/mock_server.py --draft-rounds DEMO-R1
+```
+
+What it does: the server pretends round `DEMO-R1` is not open yet (a draft round).
+
+**You should see:** "This survey is not open yet". Nothing is saved for that round.
+
+### Preview mode
+
+When the server starts, it also prints a **PREVIEW** link (`…/?preview=1&round=DEMO-R1&lang=en&mock=1`). It works like the control panel's **Preview** button. On this Mac it shows the files in `web/` (there is no separate draft here), so it needs none of the private preview key that the control panel's preview links carry.
+
+**You should see:** a blue banner "PREVIEW: answers are not saved". At the end: "Preview finished. Nothing was saved." and a **Start again** button. A preview never sends anything to the server.
 
 ### A partner who has already answered
 
@@ -460,7 +500,7 @@ Closing the Incognito window forgets the "Block" choice, so there is nothing to 
 
 **You should see:** the same survey, with the yellow TEST MODE banner. Answers go into `local_data/` on this Mac.
 
-**Voice notes on the phone:** the microphone will not work, and the form shows a text box instead. **That is expected.** Chrome only allows the microphone on secure (`https`) links, and the test link is plain `http`. Test voice notes in Chrome on the Mac instead, where `localhost` is allowed. The real links in Phase 2 are `https`, so voice notes will work on phones then.
+**Voice notes on the phone:** the microphone will not work, and the form shows a text box instead. **That is expected.** Chrome only allows the microphone on secure (`https`) links, and the test link is plain `http`. Test voice notes in Chrome on the Mac instead, where `localhost` is allowed. The real links (GitHub Pages, [Phase 2](#phase-2-go-live)) are `https`, so voice notes work on phones there.
 
 **If the phone cannot open the link:**
 
@@ -484,7 +524,175 @@ Press Cmd+Shift+M again to go back to the normal view. In this view, voice notes
 
 ---
 
+## Phase 2: go live
+
+Going live puts the survey in partners' hands. It has four parts. Each is set up once:
+
+| Part | Where it lives | What it does |
+|---|---|---|
+| **The form** | GitHub Pages, at `https://pranavakellaps37.github.io/NPS-Form-/` | The survey page partners open. Free and fast. It is the `web/` folder of the GitHub copy of this project. |
+| **The control panel** | The Google Sheet **Valmo Partner Pulse - Control** | Where colleagues change the whole questionnaire (questions, areas, chips, texts in six languages, colours), run rounds, make links and **publish**. |
+| **The live backend** | A small Google program (Apps Script) inside that Sheet, put online as a **web app** | Hands the form the published questionnaire, checks every link, and saves the answers. |
+| **The data** | The Google Drive folder **Valmo Partner Pulse** | One data spreadsheet per round, the voice notes, and every published version of the questionnaire. |
+
+### How it fits together
+
+1. A partner opens their personal link on their phone, for example `https://pranavakellaps37.github.io/NPS-Form-/?dc=DC-DEMO-001&t=…&round=2026-R1&lang=hi`.
+2. The phone downloads the form from GitHub Pages.
+3. The form asks the web app for the **published** questionnaire and whether the round is open. If Google takes more than 6 seconds (the setting `whats_changed.timeout_seconds`, 4, plus 2), the form uses the backup copy in `web/config/` and `web/i18n/` instead, so the survey always opens.
+4. The partner answers. The form sends the answers and voice notes to the web app, which checks the link and saves them in the round's data spreadsheet and Drive folder.
+5. In the control panel you change the questionnaire, **Preview** it and **Publish** it. Partners get the new version the next time they open their link. No code changes and no GitHub updates are needed. See the [control panel guide](docs/control-panel.md).
+
+Partner data (the DC list, the links, the answers, the voice notes) stays in Google, never on GitHub.
+
+### The steps, in order
+
+Do them in this order. Steps 3 to 8 are in the [setup guide for the Sheet and the live backend](apps-script/README.md).
+
+| Step | What | Where it is explained |
+|---|---|---|
+| 1 | Put the project on GitHub (with a personal access token, because this Mac has no GitHub login yet) | [Below](#step-1-put-the-project-on-github) |
+| 2 | Switch on GitHub Pages (**Source: GitHub Actions**) | [Below](#step-2-switch-on-github-pages) |
+| 3 | Create the Sheet, paste the four code files (`Code`, `Model`, `PanelServer`, `Panel`), run **Set up or repair** and publish version 1 | [Setup guide](apps-script/README.md), Parts A–B |
+| 4 | Check that Google offers **Anyone** for the web app (if not, ask IT), then deploy it, copy its `/exec` address and record it in the control panel (**Check and save**) | [Setup guide](apps-script/README.md#part-c-put-the-backend-online), Part C |
+| 5 | Connect the form: the `/exec` address into `web/config/survey.json` (`"mode": "apps_script"`), then push | [Setup guide](apps-script/README.md#part-d-connect-the-form), Part D |
+| 6 | Run the smoke test against the live backend | [Setup guide](apps-script/README.md#part-e-run-the-smoke-test-against-the-live-backend), Part E |
+| 7 | Try the whole thing on a phone | [Setup guide](apps-script/README.md#part-f-try-it-end-to-end-on-a-phone), Part F |
+| 8 | Share the Sheet **and** the Drive folder with colleagues | [Below](#step-8-share-the-sheet-and-the-drive-folder-with-colleagues), and the [setup guide](apps-script/README.md#part-g-share-the-sheet-and-the-drive-folder-with-colleagues), Part G |
+| 9 | Prepare the real round | [Below](#step-9-prepare-the-real-round) |
+| 10 | Make the links | [Below](#step-10-make-the-links) |
+| 11 | Open the round and send the links in batches | [Below](#step-11-open-the-round-and-send-the-links-in-batches) |
+
+### Step 1: Put the project on GitHub
+
+The project's GitHub address is https://github.com/PranavAkellaPS37/NPS-Form- (public). This Mac already knows that address (git calls it `origin`), and the work is saved in commits on the branch `main`. What this Mac does not have yet is a GitHub login.
+
+**1a. Make a personal access token.** GitHub does not accept your account password for uploads from Terminal. It wants a *personal access token*: a long password made only for this purpose, which you can limit and cancel.
+
+1. On github.com, sign in as **PranavAkellaPS37**.
+2. Click your profile picture (top right) > **Settings** > **Developer settings** (at the bottom of the left-hand list) > **Personal access tokens** > **Fine-grained tokens** > **Generate new token**.
+3. Fill in:
+   - **Token name**: `NPSF Mac`
+   - **Expiration**: 90 days (or what your company allows)
+   - **Repository access**: **Only select repositories** > `PranavAkellaPS37/NPS-Form-`
+   - **Permissions** (repository permissions): add **Contents** with *Read and write*, and **Workflows** with *Read and write*. **Workflows** is needed because the project contains `.github/workflows/deploy-pages.yml`: without it, GitHub refuses the upload. (**Metadata: Read-only** is added automatically.)
+4. Click **Generate token**, and copy the token (it starts with `github_pat_`). **GitHub shows it only once.** Never save it in a file in the project.
+
+**1b. Check what will be uploaded.**
+
+```bash
+cd ~/NPSF
+git status --ignored
+```
+
+What it does: lists the new and changed files git will save (above "Ignored files") and the files it leaves out. Everything above "Ignored files" becomes public on GitHub: make sure nothing there holds real partner data or secrets.
+
+**1c. Save any new work in a commit, and upload it.**
+
+```bash
+git add -A
+git commit -m "Phase 2: control panel, live backend, links and GitHub Pages"
+git push -u origin main
+```
+
+What it does: `git add -A` and `git commit` save everything listed above "Ignored files" as one snapshot. (If git says "nothing to commit", everything is already saved: carry on.) `git push` uploads the snapshots to GitHub.
+
+The first time, Terminal asks two questions:
+
+- `Username for 'https://github.com':` type `PranavAkellaPS37` and press Enter;
+- `Password for 'https://PranavAkellaPS37@github.com':` paste the **token** (not your GitHub password) and press Enter. Nothing appears while you paste: that is normal.
+
+**You should see** a few lines of progress ending with `main -> main` and `branch 'main' set up to track 'origin/main'`. On https://github.com/PranavAkellaPS37/NPS-Form- you now see the project's files.
+
+This Mac remembers the token (in the Mac's Keychain), so `git push` will not ask again until the token expires.
+
+**If it goes wrong:**
+
+| What you see | What to do |
+|---|---|
+| `Authentication failed` | The token was pasted wrongly, has expired, or lacks **Contents: Read and write**. Make a new one (1a) and push again. |
+| `refusing to allow a Personal Access Token to create or update workflow` | The token lacks **Workflows: Read and write**. Make a new token with it. Then open the **Keychain Access** app, search for `github.com`, and delete that entry, so the Mac forgets the old token. Push again. |
+| `Updates were rejected because the remote contains work that you do not have locally` | Something was added on GitHub directly (for example a README created there). Do not force anything: ask a developer. |
+| `Permission to PranavAkellaPS37/NPS-Form-.git denied to <another account>` | This Mac already has a GitHub login for another account saved in its Keychain, and git used it instead of asking for your token. | Put the account name into the upload address, so git asks for this account's token instead (the other login stays as it is): `git remote set-url origin https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git`, then push again. Terminal now asks only for the password: paste the token. |
+| `GH007: Your push would publish a private email address` | GitHub is protecting your email address. On GitHub: **Settings > Emails**, untick **Block command line pushes that expose my email**, and push again. Or ask a developer. |
+| `Please tell me who you are` (on commit) | git needs your name once: run `git config user.name "Your Name"` and `git config user.email "you@meesho.com"`, then commit again. |
+
+### Step 2: Switch on GitHub Pages
+
+1. On https://github.com/PranavAkellaPS37/NPS-Form-, click the repository's **Settings** tab (along the top of the repository) > **Pages** (left-hand list).
+2. Under **Build and deployment**, set **Source** to **GitHub Actions**. If GitHub then suggests workflows (such as "Static HTML"), ignore them: the project already has its own.
+3. Click the repository's **Actions** tab, then **Deploy the form to GitHub Pages** on the left. The run started by your push has probably failed (red cross), because Pages was not switched on yet. That is expected: click **Run workflow** (right) > **Run workflow**.
+4. Wait for the green tick (1–2 minutes).
+
+What it does: from now on, after every push, GitHub runs `python3 scripts/check_config.py` and, only if it finds no errors, publishes the `web/` folder. The steps are in [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml).
+
+**You should see** the form at https://pranavakellaps37.github.io/NPS-Form-/ with the yellow **TEST MODE** banner. The form is online, but still in test mode: it cannot save answers yet. **Do not send any links yet.**
+
+**If it goes wrong:** a red cross on a later run means `check_config.py` found an error, so GitHub kept the previous version online. Click the run, then **deploy**, then the step with the red cross to read the error. Fix it on the Mac, run `python3 scripts/check_config.py` until it says "All good", then commit and push again.
+
+### Steps 3 to 7: The Sheet, the live backend and the tests
+
+Follow the [setup guide for the Sheet and the live backend](apps-script/README.md) from Part A to Part F. It takes about an hour and covers, in this order:
+
+- creating the Sheet **Valmo Partner Pulse - Control** and pasting the four code files into it (`Code`, `Model`, `PanelServer` as Script files, `Panel` as an HTML file);
+- running **Partner Pulse > Set up or repair**, which builds the tabs and the Drive folder, copies the questionnaire from GitHub and publishes version 1;
+- checking that Google offers **Who has access: Anyone** for the web app (Meesho's Google Workspace settings may block it: the guide has a message to send to IT), then deploying the web app and copying its address ending in `/exec`;
+- recording that address in the control panel (**Home > Quick links**, **Check and save**), which checks that partners' phones can reach it. The panel's GitHub copy of the questionnaire takes the address from there;
+- connecting the form: in `web/config/survey.json`, `"mode": "apps_script"` and your web app address in `"apps_script_url"`, then commit and push;
+- running `scripts/smoke_test.py` against the live backend;
+- a full test on a phone, with a link for a fake DC.
+
+### Step 8: Share the Sheet and the Drive folder with colleagues
+
+Every colleague who will use the control panel needs **both**:
+
+1. **The Sheet:** click **Share** and add them as **Editor**. Editors are admins: they can publish, and they can see the link secret. (A **Viewer** can only look at the tabs, including the DC list and the links.)
+2. **The Drive folder:** then click **Partner Pulse > Share the Drive folder with all editors**. Without it, publishing, opening a round and the numbers stop with a message that starts "Google Drive would not open … for you" and names you. The control panel soon stops opening for them, at least some of the time: without the folder it can only use Google's short-term copy of the live version, which is kept for 6 hours at most.
+
+Run the menu item again whenever you add someone. Details, and how to remove someone: [setup guide, Part G](apps-script/README.md#part-g-share-the-sheet-and-the-drive-folder-with-colleagues) and [Who can use it](docs/control-panel.md#who-can-use-it).
+
+### Step 9: Prepare the real round
+
+The [control panel guide](docs/control-panel.md) has the exact clicks for each item.
+
+1. **The DC list**: paste the real DCs into the Sheet's **DCs** tab ([Recipe 9](docs/control-panel.md#recipe-9-generate-and-download-links)). Its **active** boxes start ticked; untick a DC to leave it out. The DC ids may use only letters, digits, `-`, `_` or `.` (at most 64 characters). If Google Sheets turns an id into a number or a date (`0123` into `123`, `1-2` into a date), **Make links** skips that DC and says "Type the id as text": type it again with an apostrophe in front, for example `'0123`.
+2. **The round**: `2026-R1` is already in **Rounds**, as a draft. Add its "What changed" bullets, or leave them empty to skip that screen ([Recipe 7](docs/control-panel.md#recipe-7-start-a-new-round-with-its-what-changed-bullets)).
+3. **The questionnaire**: make the areas, problem chips and questions final (Recipes 1–4), add Valmo's colours and logo (Recipe 6), and get the translations done and read by native speakers on a phone (Recipe 5). **Nothing is locked yet:** codes lock only when you open the first real round (step 11). The test round `SMOKE-R1` from step 6 doesn't count, because rounds whose name starts with SMOKE, DEMO or TEST never lock anything. So this is the moment to replace the placeholder areas and problem chips with the real ones: delete, rename or change the code of anything you like.
+4. **Preview** on a phone, then **Publish**.
+5. **Refresh the GitHub copy**, so the backup matches what you published ([Recipe 12](docs/control-panel.md#recipe-12-refresh-the-github-copy)). It needs the web app address recorded in the control panel (step 4): without it, the panel warns you and the files would put the form back in test mode.
+
+### Step 10: Make the links
+
+In the control panel: **Links** > pick `2026-R1` > **Make links** > **Download the 2026-R1 links (CSV)** ([Recipe 9](docs/control-panel.md#recipe-9-generate-and-download-links)).
+
+**The offline alternative** makes exactly the same links on this Mac, from a CSV file of DCs (column `dc_id`, and optionally `language`, `dc_name`, `state`, `region` and `active`). It asks for the link secret, which you copy from the control panel (**Links > Show the link secret**):
+
+```bash
+cd ~/NPSF
+python3 scripts/generate_links.py --dcs ~/Documents/dcs.csv --round 2026-R1
+```
+
+What it does: makes one link per DC and saves them in `links-2026-R1.csv`, next to the DC list. It explains every row it skipped, refuses to save inside `web/` or `sample_data/`, and never prints the secret. `python3 scripts/generate_links.py --help` shows all the options.
+
+> [!CAUTION]
+> A links file is partner data: each link lets someone answer as that DC. Keep it outside this project folder, share it only with whoever sends the links, and delete it when the round is over.
+
+### Step 11: Open the round and send the links in batches
+
+1. In the control panel: **Rounds** > `2026-R1` > **Open the round**, then **Open round** to confirm ([Recipe 8](docs/control-panel.md#recipe-8-open-or-close-a-round)). **This locks the codes:** from now on, questions, areas and problems that are live can only be hidden, not deleted or given a new code, so rounds stay comparable. The confirm window says so. If the problem list is still the placeholder one, cancel and do step 9 first. If the window also warns "Partners will get version …", your draft has changes that are not published: click **Publish first** and publish. The window **Version … is live** then offers **Open round 2026-R1 now**: click it, and confirm with **Open round**.
+2. Send a small first batch (for example 50 DCs), and check on **Home** that answers arrive.
+3. Then send the rest **in batches**, for example 1,000 an hour, not all 10,000 at once. Google handles only about 30 partners at the same moment. The form retries by itself when Google is busy, but batches keep the waiting short.
+4. Watch the numbers on **Home**: links, opened, started, sent answers ([Recipe 10](docs/control-panel.md#recipe-10-check-how-many-partners-answered)).
+5. When the round is over, click **Close the round**. Partners who are already in the middle can still finish.
+
+---
+
 ## Change the questions
+
+> [!IMPORTANT]
+> **Once the control panel is set up ([Phase 2](#phase-2-go-live)), change the live questionnaire in the control panel**, not in these files: see the [control panel guide](docs/control-panel.md). What you publish there is what partners see, and it wins over these files.
+>
+> The files in `web/config/` and `web/i18n/` then serve as the **backup copy**: the form uses them only when Google does not answer in time, and the test server on this Mac uses them. Refresh them from the panel after important changes ([Recipe 12](docs/control-panel.md#recipe-12-refresh-the-github-copy)). The rest of this section explains how to edit the files themselves.
 
 The questions, areas, problem chips, the "main problem" rule, the order of screens, colours and voice settings are all **settings**, not code. You change them by editing text files in `web/config/` and `web/i18n/`.
 
@@ -501,7 +709,7 @@ Every change follows the same loop:
    ```
 
    What it does: checks all settings and texts. **You should see** "All good". Otherwise it lists each problem in plain English. Fix them and run it again.
-4. Look at the result. Open the survey in a new Incognito window (Cmd+Shift+N) so old saved answers do not get in the way, and go through the screens you changed.
+4. Look at the result. With the test server running, open `localhost:8787` (after go-live: `localhost:8787/?mock=1`) in a new Incognito window (Cmd+Shift+N), so old saved answers do not get in the way, and go through the screens you changed.
 5. If partners will see something different, change `config_version` (the guide shows how).
 
 > [!WARNING]
@@ -510,6 +718,9 @@ Every change follows the same loop:
 ---
 
 ## Translations
+
+> [!NOTE]
+> **With the control panel ([Phase 2](#phase-2-go-live)), translate in the panel** (**Texts & translations**) or in the Sheet's **Texts** tab: see [Recipe 5](docs/control-panel.md#recipe-5-translate-a-language). That is what partners see once you publish. The steps below work on the backup copy in `web/i18n/strings.json`.
 
 Every word on screen lives in one file, `web/i18n/strings.json`, in six languages: English, Hindi, Tamil, Telugu, Kannada and Malayalam.
 
@@ -564,8 +775,8 @@ The [settings guide](docs/config-guide.md#recipe-14-translate-a-language-with-a-
 
 ## What's next
 
-- **Phase 2: Go live.** A Google Apps Script backend that checks every link and saves answers in a Google Sheet, a personal link for every DC, and the form online on GitHub Pages.
-- **Phase 3: Pipeline.** A Python program on this Mac that downloads the answers, sorts comments and voice notes into the same area and problem codes, and prepares clean tables.
+- **Phase 2: Go live** (this version). The form online on GitHub Pages, the Google Sheet control panel, the live Apps Script backend, and a personal link for every DC. See [Phase 2: go live](#phase-2-go-live).
+- **Phase 3: Pipeline.** A Python program on this Mac that downloads the answers from each round's data spreadsheet, transcribes the voice notes, sorts comments and voice notes into the same area and problem codes, and prepares clean tables. It will read the Google Drive folder **Valmo Partner Pulse** through its own Google service account, with which the folder will be shared.
 - **Phase 4: Dashboard.** A Streamlit dashboard (a simple web dashboard made with Python): NPS, area scores, top problems, where partners drop off, and round-by-round comparison.
 - **Phase 5: Polish.** An end-to-end review of everything, and this README rewritten as one complete guide.
 
@@ -577,22 +788,28 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 
 | Command | What it does |
 |---|---|
-| `python3 scripts/mock_server.py` | Start the test server at `http://localhost:8787`. Stop it with Ctrl+C. |
+| `python3 scripts/mock_server.py` | Start the test server at `http://localhost:8787`. Stop it with Ctrl+C. After go-live, open `localhost:8787/?mock=1` (the links it prints already end in `&mock=1`). |
 | `python3 scripts/mock_server.py --port 8788` | Use another port if 8787 is busy. Then open `localhost:8788`. |
 | `python3 scripts/mock_server.py --lan` | Let a phone on the same Wi-Fi open the survey. Prints a `http://192.168.x.x:8787` link. |
 | `python3 scripts/mock_server.py --strict` | Reject links with a wrong token. |
 | `python3 scripts/mock_server.py --one-response-per-dc` | Answer "Already received" for a DC that has already answered. |
 | `python3 scripts/mock_server.py --fail-rate 0.3` | Make 30% of sends fail, to test automatic retries. |
 | `python3 scripts/mock_server.py --slow 3` | Reply 3 seconds late, like slow mobile data. |
+| `python3 scripts/mock_server.py --closed-rounds DEMO-R1` | Pretend round DEMO-R1 has closed. `--draft-rounds DEMO-R1` pretends it is not open yet. |
 | `python3 scripts/mock_server.py --data-dir local_data/demo2` | Save test answers in a different folder. Keep it inside `local_data/` so git ignores it. |
 | `python3 scripts/mock_server.py --reset` | Delete all local test answers. Asks you to type `yes` first. |
 | `python3 scripts/smoke_test.py` | Check that the running test server answers correctly (PASS/FAIL lines). Add `--expect-strict` if the server runs with `--strict`. |
+| `python3 scripts/smoke_test.py --url <web app address ending in /exec> --secret "$(pbpaste)" --expect-strict` | Check the **live** backend. Copy the link secret first (control panel > **Links > Show the link secret**). [Details](apps-script/README.md#step-16-run-the-smoke-test-against-the-live-backend). |
+| `python3 scripts/generate_links.py --dcs ~/Documents/dcs.csv --round 2026-R1` | Make every DC's personal link from a CSV file (column `dc_id`; optional `language`, `dc_name`, `state`, `region`, `active`), offline. Asks for the link secret. Add `--help` to see all the options. |
+| `LANG=en_US.UTF-8 pbcopy < apps-script/Code.gs` | Copy a code file, to paste it into the Apps Script editor ([setup guide](apps-script/README.md#step-3-add-the-four-code-files)). |
 | `python3 scripts/check_config.py` | Check all settings and texts, and report the page weight. **Run after every edit.** |
 | `python3 scripts/strings_csv.py export --out translations.csv` | Make a translation spreadsheet. Add `--only-untranslated` and/or `--lang ta` to narrow it down. |
 | `python3 scripts/strings_csv.py import translations.csv --dry-run` | Preview a translation import without changing anything. |
 | `python3 scripts/strings_csv.py import translations.csv` | Import translations into `strings.json`. |
 | `tail -n 1 local_data/responses.jsonl \| python3 -m json.tool --no-ensure-ascii` | Show the newest saved answer, neatly laid out. |
 | `git status --ignored` | Before a commit: see what git will save and what it ignores. |
+| `git add -A` then `git commit -m "What changed"` | Save all changes (except ignored files) as one snapshot. |
+| `git push` | Upload your commits to GitHub. GitHub then checks the settings and republishes the form by itself. |
 
 ---
 
@@ -612,8 +829,14 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 | "Already received" in a new Incognito window | The server was started with `--one-response-per-dc`. | Restart without it, or delete the test answers with `--reset`. |
 | "Could not send" does not go away | The server is stopped, or was started with `--fail-rate`. | Make sure the server is running, then tap **Send now**. |
 | No speaker button | This device has no read-aloud voice for that language. | Expected. Recorded clips can fill the gap: see [web/audio/README.md](web/audio/README.md). |
-| On the phone, a text box shows instead of the voice button | Chrome blocks the microphone on `http` links. | Expected in Phase 1. Test voice notes on the Mac. |
+| On the phone, a text box shows instead of the voice button | Chrome blocks the microphone on `http` links. | Expected with the test server. Test voice notes on the Mac, or with a real `https` link. |
 | The phone cannot open the link | Different Wi-Fi, the Mac's firewall, or a Wi-Fi network that keeps devices apart. | See [Try it on your phone](#try-it-on-your-phone). |
+| After go-live, a local test link says "This link is not valid" or "This link is incomplete" | The form is in live mode now, so a link without `&mock=1` talks to Google, not to the test server. | Use a link the test server printed (they end in `&mock=1`), or add `&mock=1` to the end of the link (the plain address becomes `localhost:8787/?mock=1`). |
+| `git push` asks for a password | GitHub wants the personal access token, not your account password. | Paste the token. See [Step 1: Put the project on GitHub](#step-1-put-the-project-on-github). |
+| GitHub's **Actions** tab shows a red cross | `check_config.py` found an error, so GitHub kept the previous version of the form online. | Open the run to read the error. Fix it, run `python3 scripts/check_config.py` until "All good", then commit and push. |
+| The online form still shows TEST MODE | `web/config/survey.json` still says `"mode": "mock"`, the change is not pushed yet, or the old page is cached. | See [the setup guide, Part D](apps-script/README.md#part-d-connect-the-form). Wait for the green tick in **Actions**, then reload in a new Incognito window. |
+| A colleague gets "Google Drive would not open … for you" in the control panel, or the panel does not open for them at all ("The control panel could not open") | They can edit the Sheet but not the Drive folder **Valmo Partner Pulse**. | The admin who ran set-up clicks **Partner Pulse > Share the Drive folder with all editors** (see [Step 8](#step-8-share-the-sheet-and-the-drive-folder-with-colleagues)). |
+| Problems with the Google Sheet, the control panel or the live backend | | See the [setup guide's troubleshooting](apps-script/README.md#troubleshooting) and the [control panel guide](docs/control-panel.md#if-something-goes-wrong). |
 
 ---
 
@@ -621,8 +844,18 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 
 | Word | Meaning |
 |---|---|
-| **Backend** | The part that receives and stores answers. In Phase 1 it is the test server on this Mac; from Phase 2 it is Google Apps Script. |
+| **Backend** | The part that receives and stores answers. For testing, the test server on this Mac; for real partners, Google Apps Script. |
 | **Mock / test mode** | A pretend version for testing. Answers stay on this Mac, and a yellow banner shows on every screen. |
+| **Live mode** | The real thing: the form talks to Google Apps Script, and only works with a genuine personal link. |
+| **Control panel** | The window inside the Google Sheet **Valmo Partner Pulse - Control** where colleagues change the questionnaire, run rounds and make links. See the [control panel guide](docs/control-panel.md). |
+| **Draft / Publish / Live version** | The draft is what you edit in the control panel. **Publish** turns it into the next live version, which partners see. |
+| **Preview** | Trying the draft form yourself. Nothing is saved. A preview link from the control panel ends with a private **preview key** (`&pk=…`): without it, the form shows its stored copy instead of the draft. |
+| **Apps Script** | Google's way to add small programs to a Google Sheet. The live backend and the control panel are Apps Script. |
+| **Web app, `/exec` address** | The Apps Script program put online, so the form can talk to it. Its address ends in `/exec`. |
+| **GitHub, GitHub Pages, GitHub Actions** | GitHub stores the project online (public). GitHub Pages serves the form to partners' phones. GitHub Actions does the publishing by itself after every push. |
+| **Push** | Uploading your commits to GitHub. |
+| **Personal access token** | A long password made only for `git push`, created on github.com. |
+| **Link secret** | The password the backend uses to make and check every partner's token. It lives only in Apps Script. Never share it, and never change it while links are out. |
 | **localhost** | "This computer". |
 | **Port** | A door number on a computer. The test server uses 8787. |
 | **Terminal** | The Mac app where you type commands. |
@@ -634,4 +867,4 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 | **Token** | The secret code in each partner's link (`t=…`) that proves the link is genuine. |
 | **git, commit** | git saves versions of this folder and uploads them to GitHub. A commit is one saved snapshot. |
 
-**More guides:** [settings guide](docs/config-guide.md) · [data format](docs/submission-format.md) · [read-aloud clips](web/audio/README.md) · [changelog](CHANGELOG.md)
+**More guides:** [control panel guide](docs/control-panel.md) · [setup guide for the Sheet and the live backend](apps-script/README.md) · [settings guide](docs/config-guide.md) · [data format](docs/submission-format.md) · [technical design of the control panel](docs/control-panel-design.md) · [read-aloud clips](web/audio/README.md) · [changelog](CHANGELOG.md)

@@ -1,5 +1,6 @@
 /* =============================================================================
-   screens.js: draws each kind of screen listed in "flow" (survey.json).
+   screens.js: draws each kind of screen listed in "flow" (the questionnaire:
+   published from the control panel, or web/config/survey.json).
 
    One drawing function per screen type:
      language_picker, whats_changed, nps_0_10, function_rating (one per area),
@@ -17,11 +18,13 @@
      }
 
    ctx gives: step, config, state, wc (what-changed content), mode,
+     preview (true for the control panel's preview links),
      setAnswer(id, value, advance), refreshNav(), save(), saveSoon(), activity(),
      onCleanup(fn), chooseLanguage(code), ns, submit (status), retryNow(),
      startOver()
 
-   All words come from web/i18n/strings.json; nothing here needs editing to
+   All words come from the texts (control panel "Texts", or the form's own
+   copy web/i18n/strings.json); nothing here needs editing to
    change questions, areas, chips or languages. A text still waiting for its
    translation is shown in English and marked as English (lang="en-IN"), so
    screen readers pronounce it correctly.
@@ -275,13 +278,20 @@
     var tellTitle = h('h2', { 'class': 'sub-title' });
     // With "Other" picked, a voice note or text becomes required: the heading
     // drops "(optional)" and the red hint shows until something is added.
+    var tellRequired = function () {
+      return ctx.state.answers[ctx.step.id] === 'other' && dd.require_detail_if_other !== false;
+    };
+    var tellKey = function () { return tellRequired() ? 'q.tell_more_required' : 'q.tell_more'; };
+    // The heading has its own speaker, which reads whichever text is showing.
+    var tellSpeak = PP.speech.button(function () { return [{ key: tellKey() }]; });
+    var tellHead = h('div', { 'class': 'q-head sub-head' }, [tellTitle, tellSpeak]);
     var updateHint = function () {
-      var required = ctx.state.answers[ctx.step.id] === 'other' && dd.require_detail_if_other !== false;
-      hint.hidden = !(required && !PP.flow.hasDetail(ctx.state, ctx.step.id));
-      var info = say(required ? 'q.tell_more_required' : 'q.tell_more');
+      hint.hidden = !(tellRequired() && !PP.flow.hasDetail(ctx.state, ctx.step.id));
+      var info = say(tellKey());
       tellTitle.textContent = info.text;
       if (langAttr(info)) tellTitle.setAttribute('lang', langAttr(info));
       else tellTitle.removeAttribute('lang');
+      tellSpeak._ppUpdate();
     };
 
     var buttons = [];
@@ -321,7 +331,7 @@
         h('p', { 'class': 'your-rating', text: t('dd.your_rating') + ': ' + ratingText }),
         questionHead('q.deep_dive', speak, t(nameKey)),
         chips,
-        tellTitle,
+        tellHead,
         hint,
         widget
       ]),
@@ -398,7 +408,11 @@
       kids.push(rowEl);
     });
     if (support.allow_comment !== false) {
-      kids.push(textEl('h2', 'sub-title', support.comment_text || 'q.support_comment'));
+      var commentKey = support.comment_text || 'q.support_comment';
+      kids.push(h('div', { 'class': 'q-head sub-head' }, [
+        textEl('h2', 'sub-title', commentKey),
+        PP.speech.button(function () { return [{ key: commentKey }]; })
+      ]));
       kids.push(tellWidget(ctx, 'support_comment'));
     }
     return {
@@ -481,6 +495,9 @@
   /* ---- S7: thank you + sending status -------------------------------------
      ctx.submit.status is one of:
        sending | done | failed | error | bad_link | already | incomplete
+       closed   : the survey round has closed (new visitors only)
+       not_open : the survey round has not started yet (a "draft" round)
+       preview  : the end of a preview: nothing was sent or saved
      The app calls update() whenever the status (or the countdown) changes.
      The box is a "status" region, so screen readers announce each change. */
   S.thank_you = function (ctx) {
@@ -488,9 +505,11 @@
     var shownStatus = null;
     var countdown = null;
 
-    function message(iconName, iconWarn, titleKey, lines, speakKeys) {
+    /* tone: null = green (all good), 'warn' = red (a problem), 'info' = brand
+       colour (nothing wrong, just information, e.g. "not open yet"). */
+    function message(iconName, tone, titleKey, lines, speakKeys) {
       var kids = [];
-      if (iconName) kids.push(PP.icon(iconName, 'big-icon' + (iconWarn ? ' is-warn' : '')));
+      if (iconName) kids.push(PP.icon(iconName, 'big-icon' + (tone ? ' is-' + tone : '')));
       var speak = (speakKeys || []).map(function (k) { return { key: k }; });
       kids.push(questionHead(titleKey, speak.length ? speak : null));
       (lines || []).forEach(function (line) { kids.push(line); });
@@ -501,9 +520,11 @@
       return h('button', { type: 'button', 'class': 'btn btn-primary', on: { click: ctx.retryNow } }, t('submit.retry_now'));
     }
 
+    /* Test mode and preview only: forget this phone's answers and start again. */
     function startOverButton() {
-      if (ctx.mode !== 'mock') return null;
-      return h('button', { type: 'button', 'class': 'btn', on: { click: ctx.startOver } }, t('dev.start_over'));
+      if (ctx.mode !== 'mock' && !ctx.preview) return null;
+      return h('button', { type: 'button', 'class': 'btn', on: { click: ctx.startOver } },
+        t(ctx.preview ? 'ui.start_again' : 'dev.start_over'));
     }
 
     function render(sub) {
@@ -515,30 +536,42 @@
           kids = [h('div', { 'class': 'spinner', 'aria-hidden': 'true' }), textEl('p', null, 'submit.sending')];
           break;
         case 'done':
-          kids = message('checkCircle', false, 'thanks.title', [
+          kids = message('checkCircle', null, 'thanks.title', [
             textEl('p', null, 'thanks.body'),
             textEl('p', 'muted', 'thanks.close')
           ], ['thanks.title', 'thanks.body']);
           break;
         case 'failed':
           countdown = h('p', { 'class': 'muted' });
-          kids = message(null, false, 'thanks.title', [textEl('p', null, 'submit.failed'), countdown, retryButton()],
+          kids = message(null, null, 'thanks.title', [textEl('p', null, 'submit.failed'), countdown, retryButton()],
             ['thanks.title', 'submit.failed']);
           break;
         case 'error':
-          kids = message('warn', true, 'thanks.title', [textEl('p', null, 'submit.error'), retryButton()], ['submit.error']);
+          kids = message('warn', 'warn', 'thanks.title', [textEl('p', null, 'submit.error'), retryButton()], ['submit.error']);
           break;
         case 'already':
-          kids = message('checkCircle', false, 'already.title', [textEl('p', null, 'already.body')],
+          kids = message('checkCircle', null, 'already.title', [textEl('p', null, 'already.body')],
             ['already.title', 'already.body']);
           break;
         case 'bad_link':
-          kids = message('warn', true, 'link.bad_title', [textEl('p', null, 'submit.bad_link')],
+          kids = message('warn', 'warn', 'link.bad_title', [textEl('p', null, 'submit.bad_link')],
             ['link.bad_title', 'submit.bad_link']);
           break;
         case 'incomplete':
-          kids = message('warn', true, 'link.bad_title', [textEl('p', null, 'link.incomplete')],
+          kids = message('warn', 'warn', 'link.bad_title', [textEl('p', null, 'link.incomplete')],
             ['link.bad_title', 'link.incomplete']);
+          break;
+        case 'closed':
+          kids = message('eventBusy', 'info', 'round.closed_title', [textEl('p', null, 'round.closed_body')],
+            ['round.closed_title', 'round.closed_body']);
+          break;
+        case 'not_open':
+          kids = message('schedule', 'info', 'round.not_open_title', [textEl('p', null, 'round.not_open_body')],
+            ['round.not_open_title', 'round.not_open_body']);
+          break;
+        case 'preview':
+          kids = message('checkCircle', null, 'thanks.title', [textEl('p', null, 'dev.preview_done')],
+            ['thanks.title', 'dev.preview_done']);
           break;
         default:
           kids = [];

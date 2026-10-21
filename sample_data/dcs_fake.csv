@@ -1,0 +1,21 @@
+dc_id,dc_name,state,region,language
+DC-DEMO-001,Demo DC 01,Demo State A,Demo North,hi
+DC-DEMO-002,Demo DC 02,Demo State A,Demo South,en
+DC-DEMO-003,Demo DC 03,Demo State A,Demo North,ta
+DC-DEMO-004,Demo DC 04,Demo State A,Demo South,te
+DC-DEMO-005,Demo DC 05,Demo State A,Demo North,kn
+DC-DEMO-006,Demo DC 06,Demo State A,Demo South,ml
+DC-DEMO-007,Demo DC 07,Demo State A,Demo North,hi
+DC-DEMO-008,Demo DC 08,Demo State A,Demo South,hi
+DC-DEMO-009,Demo DC 09,Demo State A,Demo North,ta
+DC-DEMO-010,Demo DC 10,Demo State A,Demo South,te
+DC-DEMO-011,Demo DC 11,Demo State B,Demo North,kn
+DC-DEMO-012,Demo DC 12,Demo State B,Demo South,ml
+DC-DEMO-013,Demo DC 13,Demo State B,Demo North,en
+DC-DEMO-014,Demo DC 14,Demo State B,Demo South,hi
+DC-DEMO-015,Demo DC 15,Demo State B,Demo North,hi
+DC-DEMO-016,Demo DC 16,Demo State B,Demo South,ta
+DC-DEMO-017,Demo DC 17,Demo State B,Demo North,te
+DC-DEMO-018,Demo DC 18,Demo State B,Demo South,kn
+DC-DEMO-019,Demo DC 19,Demo State B,Demo North,ml
+DC-DEMO-020,Demo DC 20,Demo State B,Demo South,hi
