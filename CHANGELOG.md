@@ -45,6 +45,13 @@ This version also contains the fixes from the independent review of 20 Oct and t
 
 ### Added
 
+**Meesho-only mode (21 Oct, for demos while IT has not yet allowed "Anyone")**
+
+- When Google offers only **Anyone within meesho.com** for the web app, the web app now shows the survey page itself to colleagues signed in with a Meesho account, and the page talks to the script through Google's own channel (`google.script.run`, `ppFormRequest`). Answers reach the Sheet as usual.
+- **Check and save** recognises such an address (it asks again signed in as you) and records it as Meesho-only. Links and Preview then open the survey through the web app; the GitHub copy stays in test mode. Recording the address again once it is open to **Anyone** switches everything back.
+- **Safety:** a page the web app serves could call any of the script's public functions, and it runs the form's scripts from GitHub. Every admin function (the panel's, set-up, sharing the folder, the menu items) now runs only from inside the Sheet itself (its menu or the control panel), so such a page can't use them, whoever opens it.
+- After a switch to or from Meesho-only, **Make links** remakes every link that points at the old address, even with "Only DCs without a link yet"; and a Meesho-only web app that still runs older code is refused with the fix (deploy a new version).
+
 **Control panel in a Google Sheet (`apps-script/Panel.html` and `apps-script/PanelServer.gs`)**
 
 - The Google Sheet **Valmo Partner Pulse - Control** has a **Partner Pulse** menu: *Open control panel*, *Preview the draft form*, *Publish…*, *Generate links…*, *Share the Drive folder with all editors*, *Set up or repair* and *Help*.

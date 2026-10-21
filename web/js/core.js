@@ -98,11 +98,29 @@
      ------------------------------------------------------------------------- */
   PP.params = function () {
     var out = {};
+    // Meesho-only mode: the web app served this page and passed on the link's
+    // details (the address bar shows Google's address, not the link's).
+    var embedded = root.PP_EMBED && root.PP_EMBED.params;
+    if (embedded && typeof embedded === 'object') {
+      Object.keys(embedded).forEach(function (key) { out[key] = String(embedded[key]).trim(); });
+      return out;
+    }
     try {
       var sp = new URLSearchParams(root.location.search);
       sp.forEach(function (value, key) { out[key] = String(value).trim(); });
     } catch (e) { /* very old browser: behave as if there were no parameters */ }
     return out;
+  };
+
+  /* The address of one of the form's own files (settings, texts, clips, the
+     logo). Normally the path itself. In Meesho-only mode the page comes from
+     the web app, so a relative path is turned into one on the form's own
+     address (PP_EMBED.base, the GitHub Pages address). */
+  PP.assetUrl = function (path) {
+    var p = String(path || '');
+    var base = root.PP_EMBED && root.PP_EMBED.base;
+    if (!base || /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(p)) return p;
+    return base + p.replace(/^\.?\//, '');
   };
 
   /* ---------------------------------------------------------------------------

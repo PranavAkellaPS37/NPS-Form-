@@ -326,6 +326,8 @@ GET <endpoint>?action=bootstrap&round=DEMO-R1&draft=1&pk=<preview key>   (previe
 - `draft=1` (preview): the admins' current, unpublished draft **as last saved**, compiled from the Sheet's tabs, with `"draft": true`, `"version": null` and `"config_version": "draft"`. The live backend keeps the compiled draft in its script cache for 30 seconds, so a preview link shared around cannot make the script re-read the whole Sheet on every visit. Every save in the control panel clears that cache, so a preview shows saved changes at once; edits typed straight into the Sheet's tabs show within 30 seconds.
 - **`draft=1` needs the preview key.** The live backend hands out the draft only when the request also carries `pk=<preview key>`: the private key that set-up creates (Script Property `PREVIEW_KEY`) and that the control panel puts into every preview link. A missing or wrong key gets `{ "ok": false, "error": "bad_preview_key" }` (so does every preview request while the backend has no preview key yet; Set up or repair creates it). So someone who only knows the web app address can neither read the unpublished draft nor make the script re-read the whole Sheet. The mock server ignores `pk`.
 
+**Meesho-only mode** (21 Oct 2026): while the web app is open only to people signed in with a company account, the web app serves the survey page itself, and the same messages and answers travel through Google's own channel instead (`google.script.run.ppFormRequest`: `"bootstrap"` with `{round, draft, pk}`, `"post"` with the message text; [control-panel-design.md, section 12](control-panel-design.md#12-public-web-api-doget--dopost-in-codegs)). Nothing in the messages changes.
+
 **What the form does with it** (`web/js/app.js`):
 
 1. It first loads only its own `web/config/survey.json` (it comes with the form from GitHub Pages and says where the backend is).
@@ -358,6 +360,7 @@ The live backend answers `"mode": "live"` and adds two fields:
 
 - `live_version`: the published version number (`null` when nothing is published yet);
 - `runs_as_owner`: `true` when the web app runs as the person who set Partner Pulse up (Script Property `OWNER_EMAIL`), so the files it creates land in their Google Drive. The email itself is never sent: this answer is public.
+- `form_page`: `true` from the code of 21 Oct on, which can serve the survey page itself in Meesho-only mode; the control panel uses it to spot a deployment that still runs older code.
 
 ## 5. The link token `t`
 
@@ -513,7 +516,7 @@ The test server imitates the live backend closely, so the form can be tested on 
 | Stored pings per DC and round | No limit | 60 in 10 minutes |
 | `draft=1` (preview) | Ignores `pk`; shows the files in `web/` | Needs `pk`; shows the saved draft, compiled from the Sheet (kept 30 seconds) |
 | `version` in the bootstrap | Always `null` | The published version number (`null` for a preview) |
-| Health check | `mode: "mock"` | `mode: "live"`, plus `live_version` and `runs_as_owner` |
+| Health check | `mode: "mock"` | `mode: "live"`, plus `live_version`, `runs_as_owner` and `form_page` |
 | Deliberate failures | `--fail-rate` answers 503; `--slow` delays the answer to every ping and submission | None |
 | Where answers go | `local_data/` on the Mac ([section 6](#6-what-the-mock-server-stores-on-this-mac-only-git-ignored)) | One data spreadsheet per round, voice notes in Drive ([section 9](#9-what-the-live-backend-apps-script-stores)) |
 | Unused voice-note files | Never | Possible ([section 9](#reading-the-data-correctly-for-the-pipeline-and-the-dashboard)) |

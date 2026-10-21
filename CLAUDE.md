@@ -101,6 +101,7 @@ The flow branches and comes from config (`flow` in `web/config/survey.json`).
   - GET `?action=bootstrap`: the form's one request on opening. It returns the published questionnaire, the texts and the round's "what changed".
   - GET `?action=whats_changed`: kept for older forms.
   - GET `?action=health`.
+  - **Meesho-only mode** (21 Oct, while IT hasn't allowed "Anyone"): a GET without `action` but with `dc`/`round`/`preview` returns the survey page itself (`PP_formPage_`), which talks back through `google.script.run.ppFormRequest`. Links and Preview point at the web app while `WEB_APP_ACCESS` is `domain`. Because such a page can call every public server function (and runs the form's scripts from GitHub), every admin function calls `PP_requireAdminCaller_`, which allows only calls made from inside the Sheet (its menu or the panel window: `SpreadsheetApp.getUi()` works only there), via `PP_forPanel_` and in the `pp…` menu functions: **keep that rule for any new public function.**
 - **Answers:** always HTTP 200 with `{ok: true|false, ...}`. Checks run in this order: message shape, token, round status, duplicate (`submission_id`). Voice notes are decoded only after the token and round checks.
 - **Storage:**
   - One data spreadsheet per round, with tabs `responses`, `function_ratings`, `free_text`, `events` and `pings`.
@@ -187,8 +188,8 @@ CHANGELOG.md  what changed in each version
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Form + config + mock backend running locally | Done; commit `25c2bfd` (20 Oct; rewritten 21 Oct to remove personal details), not pushed |
-| 2 | Apps Script + link generator, plus the control panel | Built, reviewed, fixed and committed locally on 21 Oct (not pushed); waiting for Pranav's hand-off review (docs/STATE.md, item 11) |
+| 1 | Form + config + mock backend running locally | Done; commit `25c2bfd` (20 Oct; rewritten 21 Oct to remove personal details), pushed 21 Oct |
+| 2 | Apps Script + link generator, plus the control panel | Built, reviewed and pushed on 21 Oct (`1c99b5e`). The Meesho-only mode for the BU head demo was added that evening (committed locally, not pushed). Waiting for Pranav's hand-off review (docs/STATE.md, item 11) |
 | 3 | Pipeline | Not started |
 | 4 | Dashboard + ~300 fake sample responses | Not started |
 | 5 | README/docs polish | Not started |
@@ -209,12 +210,12 @@ The developer suites live in [`tests/`](tests/README.md) (rebuilt there on 21 Oc
 
 | Suite | Command | Checks |
 |---|---|---|
-| Form, end to end | `node tests/e2e/e2e.js` | 23 scenarios: the form in headless Chrome at phone size, against the mock server |
+| Form, end to end | `node tests/e2e/e2e.js` | 24 scenarios: the form in headless Chrome at phone size, against the mock server |
 | Flow rules | `node tests/flow/flow_test.js` | which screen comes next (8 cases) |
-| Google imitation | `node tests/gas-harness/run-tests.js` | 42 scenarios, 1,821 checks: the real `.gs`/`Panel.html` code in a strict fake Google (no global `MimeType.JSON`; the document lock, `requireAllScopes` and `setOwner` as Google documents them). Expected: 41 pass, 1 warns (S: Model.gs's `var` lists, open question 14). `python3 tools/plant-bugs.py` (in `tests/gas-harness`) must catch 33 of 33 planted mistakes |
+| Google imitation | `node tests/gas-harness/run-tests.js` | 43 scenarios, 1,895 checks: the real `.gs`/`Panel.html` code in a strict fake Google (no global `MimeType.JSON`; the document lock, `requireAllScopes` and `setOwner` as Google documents them). Expected: 42 pass, 1 warns (S: Model.gs's `var` lists, open question 14). `python3 tools/plant-bugs.py` (in `tests/gas-harness`) must catch 41 of 41 planted mistakes |
 | Questionnaire logic | `node tests/model/test_model.js` | 195 tests of `Model.gs` |
 | Shrinking save | `node tests/model/strict/shrink_check.js` | a save that shrinks every tab, in the strict fake (the 20 Oct `clearContents` crash) |
 | Fix checks | `node tests/fixes/verify.js`, `node tests/fixes/verify-locks.js` | 81 + 40 checks: the 20 and 21 Oct fixes, a second, independent check of the document lock, permission re-prompt, owner hand-over and code lock |
-| Panel bench | `node tests/panel/test.js` | 52 steps in `Panel.html` with a fake server |
+| Panel bench | `node tests/panel/test.js` | 53 steps in `Panel.html` with a fake server |
 | Settings check | `python3 scripts/check_config.py` | config and texts; page weight |
 | Smoke test | Mock: `python3 scripts/smoke_test.py` (add `--url http://localhost:<port>/api` for another port). Live: `python3 scripts/smoke_test.py --url <web app address ending in /exec> --secret "$(pbpaste)" --expect-strict`. Without Google: `node tests/gas-harness/server.js --setup --open-round SMOKE-R1 --port 8970`, then `--url http://127.0.0.1:8971/exec` with the secret it prints | 9 checks; safe to repeat (a new fake `DC-SMOKE-…` DC each run; optional `--dc`) |

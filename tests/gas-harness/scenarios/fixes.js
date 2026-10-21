@@ -32,6 +32,10 @@
            addresses follow the settings check's rule; a round whose name
            has a dot can't be opened; a real round opened before anything
            is published keeps every code locked
+       G10 Meesho-only mode: the web app serves the survey page to signed-in
+           colleagues (PP_formPage_), the page's requests go through
+           ppFormRequest, links and Preview follow the recorded access, and
+           web visitors can never reach the admin functions
 
    HOW TO USE IT
      Loaded by run-tests.js (node run-tests.js --only G).
@@ -595,6 +599,121 @@ module.exports = function register(add) {
     s.ok(L2.codes_locked === true && L2.live === null && L2.live_ids_unknown === true,
       'a real round open with nothing published: codes_locked, live null, live_ids_unknown (the panel keeps every code locked)',
       K.show({ locked: L2.codes_locked, live: L2.live, unknown: L2.live_ids_unknown }));
+    H.contractClean(s, h);
+  });
+
+  add('G10', 'Meesho-only mode: the web app serves the survey page to signed-in colleagues, its requests go through ppFormRequest, links follow the recorded access, and web visitors can never reach the admin functions', async (s) => {
+    const h = H.setupPublished(s);
+    P(h, s, 'panelSetRoundStatus', ['2026-R1', 'open'], { need: true });
+    const secret = H.secretOf(h);
+    const dc = 'DC-DEMO-001';
+    const t = K.token(secret, dc, '2026-R1');
+    const visitor = { context: 'webapp', activeUser: 'colleague@example.com' };
+    // 1. A link-style request (no ?action=) gets the survey page itself
+    const run = h.exec('doGet', [{ parameter: { dc, t, round: '2026-R1', lang: 'hi' } }], visitor);
+    const out = run.ok ? h.admin.unwrapOutput(run.value) : null;
+    s.ok(out && out.kind === 'html', 'a link opened on the web app\'s own address gets a web page (HtmlService), not JSON', K.show(run.ok ? out && out.kind : run.error.message));
+    const page = out ? out.content : '';
+    const embed = /window\.PP_EMBED = (\{[^<]*\});/.exec(page);
+    let data = null;
+    try { data = embed ? JSON.parse(embed[1]) : null; } catch (e) { data = null; }
+    s.ok(data && data.base === C.FORM_URL && data.params.dc === dc && data.params.t === t && data.params.round === '2026-R1' && data.params.lang === 'hi',
+      'the page carries the link\'s details and the form\'s own address (window.PP_EMBED)', K.show(data));
+    s.ok(page.indexOf('src="' + C.FORM_URL + 'js/core.js"') >= 0 && page.indexOf('href="' + C.FORM_URL + 'css/app.css"') >= 0,
+      'the form\'s scripts and styles load from the form\'s own address', K.show(page.slice(0, 400)));
+    s.ok(page.indexOf('window.PP_EMBED') < page.indexOf('js/core.js'), 'PP_EMBED is set before the form\'s scripts run');
+    s.ok(out && /^width=device-width/.test(out.meta && out.meta.viewport || '') && /interactive-widget=resizes-content/.test(out.meta.viewport) && out.title === 'Valmo Partner Pulse',
+      'a phone-sized page (the keyboard pushes the Next bar up) with the survey\'s title', K.show(out && { meta: out.meta, title: out.title }));
+    const evil = h.exec('doGet', [{ parameter: { dc: '</script><script>alert(1)</script>', round: '2026-R1' } }], visitor);
+    const evilPage = evil.ok ? h.admin.unwrapOutput(evil.value).content : '';
+    s.ok(evil.ok && evilPage.indexOf('<script>alert(1)') < 0 && evilPage.indexOf('\\u003c/script>') >= 0, 'link details can\'t break out of the page\'s script (escaped as \\u003c)', K.show(evilPage.slice(0, 300)));
+    let j = K.webJson(s, K.webGet(h, {}), 'GET without action or link');
+    s.ok(j && j.ok === false && j.error === 'bad_request', 'a GET with neither ?action= nor link details still answers bad_request (JSON)', K.show(j));
+    j = K.webJson(s, K.webGet(h, { action: 'health' }), 'health');
+    s.ok(j && j.ok === true, 'health still answers JSON');
+    // 2. The page's requests: ppFormRequest answers like GET ?action=bootstrap and like doPost
+    const boot = h.exec('ppFormRequest', ['bootstrap', { round: '2026-R1' }], visitor);
+    s.ok(boot.ok && boot.value && boot.value.ok === true && boot.value.round && boot.value.round.status === 'open' && boot.value.survey && boot.value.strings,
+      'ppFormRequest("bootstrap") gives the published questionnaire and the round status', K.show(boot.ok ? Object.keys(boot.value || {}) : boot.error.message));
+    const ping = h.exec('ppFormRequest', ['post', JSON.stringify(K.makePing({ dc, t, round: '2026-R1' }))], visitor);
+    s.ok(ping.ok && ping.value && ping.value.ok === true && ping.value.token_valid === true, 'ppFormRequest("post") takes a ping and checks its token', K.show(ping.ok ? ping.value : ping.error.message));
+    const sub = h.exec('ppFormRequest', ['post', JSON.stringify(K.makeSubmission({ dc, t, round: '2026-R1', submission_id: 'sub_meeshoonly0001', audioBytes: 0 }))], visitor);
+    s.ok(sub.ok && sub.value && sub.value.ok === true && sub.value.duplicate === false, 'ppFormRequest("post") stores a submission', K.show(sub.ok ? sub.value : sub.error.message));
+    const rows = (h.admin.table(H.roundBookId(h, '2026-R1'), 'responses') || { rows: [] }).rows.filter((r) => r.dc === dc);
+    s.ok(rows.length === 1 && rows[0].token_valid === true, 'the submission lands in the round\'s responses tab', K.show(rows));
+    const bad = h.exec('ppFormRequest', ['post', 'not json'], visitor);
+    s.ok(bad.ok && bad.value && bad.value.ok === false && bad.value.error === 'bad_request', 'a garbled message gets bad_request, never a crash', K.show(bad.ok ? bad.value : bad.error.message));
+    // 3. Admin work only runs from inside the Sheet: a page the web app serves can call any public function
+    //    (running as the owner, with the form's scripts from GitHub Pages), so it is refused for EVERYONE,
+    //    the owner and editors included (21 Oct review, SEC-1 and SEC-2)
+    h.control.sheetEditors = ['admin@example.com', 'coadmin@example.com'];
+    const people = [['', 'an anonymous visitor'], ['colleague@example.com', 'a colleague who is not an editor'],
+      ['coadmin@example.com', 'an editor of the Sheet'], ['admin@example.com', 'the owner']];
+    for (const [who, label] of people) {
+      for (const [fn, args] of [['panelGetSecret', ['SHOW']], ['panelLoad', []], ['panelGenerateLinks', ['2026-R1', {}]], ['panelPublish', ['x', 'note']], ['ppSetup', []], ['ppShareFolder', []], ['ppMenuOpenPanel', []]]) {
+        const r = h.exec(fn, args, { context: 'webapp', activeUser: who });
+        s.ok(!r.ok && /This can only be done from the Partner Pulse Sheet itself/.test(r.error.message), `${label}: ${fn} is refused on a page the web app serves`, K.show(r.ok ? 'it ran' : r.error.message));
+      }
+    }
+    const inSheet = h.exec('panelGetSecret', ['SHOW'], { context: 'panel' });
+    s.ok(inSheet.ok && inSheet.value && inSheet.value.secret === secret, 'in the Sheet\'s own control panel it still works', K.show(inSheet.ok ? 'ok' : inSheet.error.message));
+    h.control.sheetEditors = null;
+    // 4. Check and save: a web app open only to signed-in colleagues is recorded as Meesho-only
+    const healthBody = JSON.stringify({ ok: true, service: 'valmo-partner-pulse', mode: 'live', time: 'x', live_version: 1, form_page: true });
+    const oldCodeBody = JSON.stringify({ ok: true, service: 'valmo-partner-pulse', mode: 'live', time: 'x', live_version: 1 });
+    h.admin.writeRows(null, 'DCs', 2, [[dc, 'Demo DC One', 'Karnataka', 'South', 'hi', true]]);
+    P(h, s, 'panelGenerateLinks', ['2026-R1', { only_missing: true }], { need: true });
+    let row = h.admin.table(null, 'Links').rows.find((x) => x.dc_id === dc && x.round_id === '2026-R1');
+    s.ok(row && String(row.link).indexOf(C.FORM_URL + '?dc=') === 0, 'before: links open the form on GitHub Pages', K.show(row && row.link));
+    const oldUrl = 'https://script.google.com/macros/s/AKfycbxOLDcode_deploy-789/exec';
+    h.control.routeUrl(oldUrl + '?action=health', (url, params) => (params.headers && /^Bearer \S+/.test(params.headers.Authorization || ''))
+      ? { code: 200, body: oldCodeBody } : { code: 200, body: '<html><head><title>Sign in - Google Accounts</title></head><body>ServiceLogin</body></html>' });
+    const old = h.exec('panelSetWebAppUrl', [oldUrl], { context: 'panel' });
+    s.ok(!old.ok && /still runs older code/.test(old.error.message) && /Version: New version/.test(old.error.message),
+      'a Meesho-only web app still running older code is refused, with the fix (a new version)', K.show(old.ok ? old.value : old.error.message));
+    const signInPage = '<html><head><title>Sign in - Google Accounts</title></head><body>ServiceLogin</body></html>';
+    const companyUrl = 'https://script.google.com/macros/s/AKfycbxCOMPANYonly_deploy-123/exec';
+    h.control.routeUrl(companyUrl + '?action=health', (url, params) => (params.headers && /^Bearer \S+/.test(params.headers.Authorization || ''))
+      ? { code: 200, body: healthBody } : { code: 200, body: signInPage });
+    const rec = P(h, s, 'panelSetWebAppUrl', [companyUrl]);
+    s.ok(rec && rec.ok === true && rec.web_app_access === 'domain' && h.admin.props.script.get('WEB_APP_ACCESS') === 'domain',
+      'Check and save accepts a sign-in-protected address that answers when asked signed in: recorded as Meesho-only ("domain")', K.show(rec));
+    s.eq(P(h, s, 'panelLoad', [], { need: true }).web_app_access, 'domain', 'panelLoad reports web_app_access "domain"');
+    let links = P(h, s, 'panelGenerateLinks', ['2026-R1', { only_missing: true }], { need: true });
+    row = h.admin.table(null, 'Links').rows.find((x) => x.dc_id === dc && x.round_id === '2026-R1');
+    s.ok(row && String(row.link).indexOf(companyUrl + '?dc=' + dc + '&t=') === 0 && links.updated === 1,
+      'while Meesho-only, links open the survey through the web app\'s address (made again even with "only DCs without a link")', K.show({ link: row && row.link, updated: links.updated }));
+    const pageNow = h.exec('doGet', [{ parameter: { dc, t, round: '2026-R1' } }], visitor);
+    const pageData = pageNow.ok ? /window\.PP_EMBED = (\{[^<]*\});/.exec(h.admin.unwrapOutput(pageNow.value).content) : null;
+    const pageEmbed = pageData ? JSON.parse(pageData[1]) : null;
+    s.ok(pageEmbed && pageEmbed.page === companyUrl + '?dc=' + dc + '&t=' + t + '&round=2026-R1', 'the page knows its own address (Start again and Retry reopen it)', K.show(pageEmbed && pageEmbed.page));
+    const pv = P(h, s, 'panelPreviewUrl', ['2026-R1'], { need: true });
+    s.ok(pv && String(pv.url).indexOf(companyUrl + '?preview=1&') === 0, 'and so does Preview', K.show(pv));
+    let ex = P(h, s, 'panelExport', [], { need: true });
+    let sv = JSON.parse(ex.files['survey.json']);
+    s.ok(sv.backend.mode === 'mock' && /Meesho-only/.test(ex.warning || ''), 'the GitHub copy stays in test mode, with a warning that says why', K.show({ mode: sv.backend.mode, warning: ex.warning }));
+    const otherUrl = 'https://script.google.com/macros/s/AKfycbxOTHERscript_deploy-456/exec';
+    h.control.routeUrl(otherUrl + '?action=health', { code: 200, body: signInPage });
+    const refused = h.exec('panelSetWebAppUrl', [otherUrl], { context: 'panel' });
+    s.ok(!refused.ok && /asks visitors to sign in/.test(refused.error.message) && h.admin.props.script.get('WEB_APP_URL') === companyUrl,
+      'an address that asks to sign in even when asked signed in (another script) is still refused, and the recorded one kept', K.show(refused.ok ? refused.value : refused.error.message));
+    // 5. Switching up: once "Who has access" is "Anyone", Check and save again puts everything back
+    h.control.routeUrl(companyUrl + '?action=health', { code: 200, body: healthBody });
+    const up = P(h, s, 'panelSetWebAppUrl', [companyUrl]);
+    s.ok(up && up.web_app_access === 'anyone', 'after the switch to "Anyone", Check and save records "anyone"', K.show(up));
+    links = P(h, s, 'panelGenerateLinks', ['2026-R1', { only_missing: true }], { need: true });
+    row = h.admin.table(null, 'Links').rows.find((x) => x.dc_id === dc && x.round_id === '2026-R1');
+    s.ok(row && String(row.link).indexOf(C.FORM_URL + '?dc=') === 0, 'links made again point at the form on GitHub Pages', K.show(row && row.link));
+    ex = P(h, s, 'panelExport', [], { need: true });
+    sv = JSON.parse(ex.files['survey.json']);
+    s.ok(sv.backend.mode === 'apps_script' && sv.backend.apps_script_url === companyUrl && !ex.warning, 'the GitHub copy is live again', K.show({ backend: sv.backend, warning: ex.warning }));
+    // 6. If the form's own page can't be fetched, visitors get a short message, never a crash
+    h.admin.cache.clear();
+    h.control.routeUrl(C.FORM_URL + 'index.html', { code: 500, body: 'oops' });
+    const down = h.exec('doGet', [{ parameter: { dc, t, round: '2026-R1' } }], visitor);
+    const downOut = down.ok ? h.admin.unwrapOutput(down.value) : null;
+    s.ok(downOut && downOut.kind === 'html' && /could not be loaded just now/.test(downOut.content), 'the form\'s page unreachable: a short "try again in a minute" page', K.show(down.ok ? downOut && downOut.content : down.error.message));
+    void links;
     H.contractClean(s, h);
   });
 };

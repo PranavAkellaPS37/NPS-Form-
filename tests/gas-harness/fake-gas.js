@@ -122,7 +122,7 @@ const ALLOWED = {
   Menu: ['addItem', 'addSeparator', 'addToUi'],
   PromptResponse: ['getResponseText', 'getSelectedButton'],
   HtmlService: ['createHtmlOutputFromFile', 'createHtmlOutput'],
-  HtmlOutput: ['setWidth', 'setHeight', 'setTitle'],
+  HtmlOutput: ['setWidth', 'setHeight', 'setTitle', 'addMetaTag'],
   DriveApp: ['getFolderById', 'getFileById', 'createFolder'],
   Folder: ['getId', 'getUrl', 'createFolder', 'getFoldersByName', 'createFile', 'addEditors', 'setOwner'],
   FolderIterator: ['hasNext', 'next'],
@@ -144,7 +144,7 @@ const ALLOWED = {
   HTTPResponse: ['getResponseCode', 'getContentText'],
   Session: ['getActiveUser', 'getEffectiveUser'],
   User: ['getEmail'],
-  ScriptApp: ['requireAllScopes', 'AuthMode'],
+  ScriptApp: ['requireAllScopes', 'AuthMode', 'getOAuthToken'],
   'ScriptApp.AuthMode': ['FULL'],
   Service: [],
   MimeType: [],
@@ -167,7 +167,9 @@ const FORBIDDEN_GLOBALS = ['Browser', 'GmailApp', 'MailApp', 'DocumentApp', 'Sli
 const DEFAULTS = {
   appsScriptDir: path.join(REPO, 'apps-script'),
   urlMap: {
-    'https://raw.githubusercontent.com/PranavAkellaPS37/NPS-Form-/main/web/': path.join(REPO, 'web') + '/'
+    'https://raw.githubusercontent.com/PranavAkellaPS37/NPS-Form-/main/web/': path.join(REPO, 'web') + '/',
+    // GitHub Pages serves the same folder (the Meesho-only survey page fetches index.html from there)
+    'https://pranavakellaps37.github.io/NPS-Form-/': path.join(REPO, 'web') + '/'
   },
   scriptUrl: 'https://script.google.com/macros/s/AKfycbFAKE-harness-deployment/exec',
   adminEmail: 'admin@example.com',   // fake admin; override with --user
@@ -1425,13 +1427,19 @@ function createFakeGas(userOptions) {
      ========================================================================= */
   function makeOutput(kind, content, file) {
     const out = { kind, content: String(content || ''), title: '', width: null, height: null, file: file || null,
-      mime: null };
+      mime: null, meta: {} };
     const impl = {
       setWidth: (n) => { if (typeof n !== 'number') throw paramsError('HtmlOutput.setWidth', [n]); out.width = n; return proxy; },
       setHeight: (n) => { if (typeof n !== 'number') throw paramsError('HtmlOutput.setHeight', [n]); out.height = n; return proxy; },
       setTitle: (t) => { out.title = String(t); return proxy; },
+      addMetaTag: (name, content) => {
+        if (typeof name !== 'string' || typeof content !== 'string') throw paramsError('HtmlOutput.addMetaTag', [name, content]);
+        out.meta[name] = content;
+        return proxy;
+      },
       // ---- outside the contract (recorded) ----
       getContent: () => out.content,
+      getMetaTag: (name) => out.meta[name],
       getTitle: () => out.title,
       getWidth: () => out.width,
       getHeight: () => out.height,
@@ -1793,9 +1801,11 @@ function createFakeGas(userOptions) {
      UrlFetchApp (serves files from folders on this Mac; never the internet)
      ========================================================================= */
   const fetchLog = [];
-  function lookupUrl(url) {
+  function lookupUrl(url, params) {
     for (const route of control.fetchRoutes) {
-      if (url === route.url || (route.prefix && url.startsWith(route.prefix))) return route.response;
+      if (url === route.url || (route.prefix && url.startsWith(route.prefix))) {
+        return typeof route.response === 'function' ? route.response(url, params || {}) : route.response;
+      }
     }
     for (const prefix of Object.keys(opts.urlMap)) {
       if (!url.startsWith(prefix)) continue;
@@ -1810,7 +1820,7 @@ function createFakeGas(userOptions) {
 
   // The fetch options the code uses on purpose (contract section 2): muteHttpExceptions,
   // and followRedirects (true is also Google's default: a 3xx answer is followed).
-  const FETCH_OPTIONS = ['muteHttpExceptions', 'followRedirects'];
+  const FETCH_OPTIONS = ['muteHttpExceptions', 'followRedirects', 'headers'];
   const UrlFetchApp = strictObject('UrlFetchApp', {
     fetch: (url, params) => {
       requireContext('UrlFetchApp.fetch', 'https://www.googleapis.com/auth/script.external_request');
@@ -1820,13 +1830,13 @@ function createFakeGas(userOptions) {
       for (const k of Object.keys(p)) {
         if (FETCH_OPTIONS.indexOf(k) < 0) warn(`UrlFetchApp.fetch option "${k}" is outside the contract (${FETCH_OPTIONS.join(', ')}).`);
       }
-      let res = lookupUrl(url);
+      let res = lookupUrl(url, p);
       fetchLog.push({ url, code: res.error ? null : res.code, fn: state.current ? state.current.fn : null });
       // A route answer { code: 302, location } is a redirect; Google follows it unless followRedirects is false.
       for (let hops = 0; !res.error && res.code >= 300 && res.code < 400 && res.location && p.followRedirects !== false; hops += 1) {
         if (hops >= 10) throw gasError(`[harness] More than 10 redirects starting at ${url}.`);
         const next = String(res.location);
-        res = lookupUrl(next);
+        res = lookupUrl(next, p);
         fetchLog.push({ url: next, code: res.error ? null : res.code, fn: state.current ? state.current.fn : null, redirectedFrom: url });
       }
       if (res.error) throw gasError(res.error);
@@ -1888,6 +1898,8 @@ function createFakeGas(userOptions) {
       isEnabled: () => !!control.scriptUrl,
       toString: () => 'Service'
     }),
+    // A token for the account this run works as (a test can check it in a route's params.headers).
+    getOAuthToken: () => 'fake-oauth-token:' + (control.users.effective || ''),
     requireAllScopes: (mode) => {
       if (authModeList.indexOf(mode) === -1) throw paramsError('ScriptApp.requireAllScopes', [mode]);
       const entry = { mode: mode.name, fn: state.current ? state.current.fn : null, context: control.context,

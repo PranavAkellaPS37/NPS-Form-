@@ -771,6 +771,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     user: '',
     urls: { sheet: '', folder: '', webApp: '' },
     webAppRecorded: false,     // has someone recorded the web app address (panelSetWebAppUrl)?
+    webAppAccess: '',          // 'anyone', or 'domain' (Meesho-only: open only to signed-in colleagues), '' = none
     liveIdsUnknown: false,     // codes are locked but the live version couldn't be read: keep every code locked
     dcCount: 0,
     activeDcCount: 0,
@@ -2207,7 +2208,8 @@ details.group > .group-body { padding: 0 16px 14px; }
             S.ui.pendingFocus = { test: prefix + '-field', focusTest: prefix + '-input', flash: false };
             renderMain(true);
           }, { small: true, kind: 'ghost', title: 'After a brand-new deployment the address changes: record the new one' })),
-        h('div', { class: 'help', text: 'Partners’ links open the form, and the form sends answers to the address in its settings file (web/config/survey.json, backend > apps_script_url). The GitHub copy (Publish > Backup copy in GitHub) writes this address into that file.' }));
+        S.webAppAccess === 'domain' ? meeshoOnlyNote(prefix + '-meesho-only') :
+          h('div', { class: 'help', text: 'Partners’ links open the form, and the form sends answers to the address in its settings file (web/config/survey.json, backend > apps_script_url). The GitHub copy (Publish > Backup copy in GitHub) writes this address into that file.' }));
     }
     var input = textInput(st.value, prefix + '-input', function (v) { st.value = v; st.error = ''; err.textContent = ''; },
       { type: 'url', placeholder: 'https://script.google.com/macros/s/…/exec', aria: 'Web app address', spellcheck: false });
@@ -2219,6 +2221,13 @@ details.group > .group-body { padding: 0 16px 14px; }
         btn('Check and save', prefix + '-save', function () { saveWebAppUrl(input.value, prefix); }, { small: true, kind: 'primary' }),
         st.editing ? btn('Cancel', prefix + '-cancel', function () { st.editing = false; st.value = ''; st.error = ''; renderMain(true); }, { small: true, kind: 'ghost' }) : null),
       err);
+  }
+
+  /* Meesho-only mode (21 Oct 2026): the web app is open only to people signed
+     in with a company account, so it serves the survey itself (Code.gs,
+     PP_formPage_) and links point at it (PanelServer.gs, PP_linkBaseUrl_). */
+  function meeshoOnlyNote(test) {
+    return h('div', { class: 'callout is-warn small', test: test }, h('p', { text: 'Meesho-only: the web app is open only to people signed in with a company account. Links and Preview open the survey through the web app, so colleagues can try it; partners can’t use it yet. (If colleagues can’t open it, check that “Who has access” is “Anyone within …” your company, not “Only myself”.) When “Who has access” becomes “Anyone” (Deploy > Manage deployments), click Change, then Check and save again: links go back to the form’s own address.' }));
   }
 
   function saveWebAppUrl(value, prefix) {
@@ -2236,13 +2245,21 @@ details.group > .group-body { padding: 0 16px 14px; }
     withBusy('Checking the web app address…', function () { return call('panelSetWebAppUrl', url); }).then(function (res) {
       S.urls.webApp = str(obj(res).web_app_url) || url;
       S.webAppRecorded = true;
+      var wasAccess = S.webAppAccess;
+      S.webAppAccess = str(obj(res).web_app_access) === 'domain' ? 'domain' : 'anyone';
       /* Files prepared for the GitHub copy before this carry the old address (or
          test mode): they must be prepared again (21 Oct review). */
       S.ui.exportFiles = null;
       S.ui.exportWarning = '';
       st.editing = false; st.value = ''; st.error = '';
       renderMain(true);
-      toast('Web app address saved. The GitHub copy (Publish > Backup copy in GitHub) now uses it.', { kind: 'ok', timeout: 6000 });
+      if (S.webAppAccess === 'domain') {
+        toast('Saved as Meesho-only: colleagues signed in with a company account can open the survey through the web app. Check that “Who has access” is “Anyone within …” your company, not “Only myself”. Make the links again (Links) so they point at it.', { kind: 'ok', timeout: 10000 });
+      } else if (wasAccess === 'domain') {
+        toast('Web app address saved: it is open to anyone now. Make the links again (Links) so they point at the form’s own address, and refresh the GitHub copy.', { kind: 'ok', timeout: 9000 });
+      } else {
+        toast('Web app address saved. The GitHub copy (Publish > Backup copy in GitHub) now uses it.', { kind: 'ok', timeout: 6000 });
+      }
     }, function (e) {
       st.error = e.message;   // the server's plain-English reason, shown under the box
       S.ui.pendingFocus = again;
@@ -3963,6 +3980,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     var result = L.result && L.result.round === L.round ? L.result : null;
     return [
       sectionHead('Links', 'Every delivery centre (DC) gets its own link for each round. The link checks itself, so a DC can’t answer for another one.'),
+      S.webAppAccess === 'domain' ? meeshoOnlyNote('links-meesho-only') : null,
       card({ title: '1. Pick the round and make the links', test: 'links-make' },
         h('div', { class: 'inline-fields' },
           field('Round', selectCtl(rounds.map(function (r) { return { value: r.id, label: r.id + (r.status === 'open' ? ' (open)' : ' (not open yet)') }; }), L.round, 'links-round',
@@ -4295,7 +4313,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     var prepared = str(S.ui.exportFiles && S.ui.exportFiles['survey.json']);
     if (name !== 'survey.json' || !/"mode"\s*:\s*"mock"/.test(prepared)) { go(); return; }
     confirmBox({ title: 'Take a test-mode survey.json?', test: 'confirm-export-test-mode', danger: true, ok: 'Take it anyway',
-      body: [h('p', { text: 'No web app address is recorded, so this survey.json keeps the form in test mode: it does not send answers to Google.' }),
+      body: [h('p', { text: S.webAppAccess === 'domain' ? 'The web app is Meesho-only, so this survey.json keeps the form in test mode: it does not send answers to Google.' : 'No web app address is recorded, so this survey.json keeps the form in test mode: it does not send answers to Google.' }),
         h('p', { text: 'If the form is already live, putting this file into GitHub would stop partners’ answers from reaching Google. Record the address first (Home > Quick links), then prepare the files again.' })]
     }).then(function (ok) { if (ok) go(); });
   }
@@ -4580,6 +4598,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     /* The web app address counts only once someone recorded it (a server
        without web_app_url_recorded sends an address only when it knows it). */
     S.webAppRecorded = !!S.urls.webApp && res.web_app_url_recorded !== false;
+    S.webAppAccess = S.webAppRecorded ? (str(res.web_app_access) === 'domain' ? 'domain' : 'anyone') : '';
     S.dcCount = Number(res.dc_count) || 0;
     S.activeDcCount = Number(res.active_dc_count) || 0;
     S.savedRoundIds = {};

@@ -29,7 +29,7 @@ node tests/gas-harness/run-tests.js
 
 ```
 Self-test of the pretend Google: 41/41 checks passed
-RESULT: 41 passed, 1 passed with warnings, 0 failed, 0 skipped (42 scenarios, ...)
+RESULT: 42 passed, 1 passed with warnings, 0 failed, 0 skipped (43 scenarios, ...)
 ```
 
 - The one warning is scenario **S**: a style rule says Model.gs should use `const`/`let`, and Model.gs uses `var` for its 37 fixed lists on purpose (so other files and the tests can see them). Whether to relax that rule is open question 14 in `docs/STATE.md`; until Pranav decides, S stays a warning. It never blocks.
@@ -62,7 +62,7 @@ The exit code is 0 when nothing failed, and 1 otherwise.
 | `node run-tests.js --out /some/folder` | write `report.txt` and `report.json` there instead of `out/` |
 | `python3 tools/plant-bugs.py` | checks the tests themselves (see below) |
 
-**Do the tests bite?** In `tests/gas-harness`, run `python3 tools/plant-bugs.py` (about 10 seconds, no browser). It plants **33 known mistakes**, one at a time, in temporary copies of the code (for example: a token one character short, test rounds locking the codes again, the "Authorization is required" advice differing between the server and the panel, the 20 Oct `MimeType.JSON` crash). First it runs the same scenarios on an unchanged copy; a mistake counts as **CAUGHT** only when a scenario that passes there fails with the mistake. Expected: `RESULT: 33 of 33 planted mistakes caught`, exit code 0. A line saying **NOT APPLIED** means the code changed and that mistake's text in the tool needs updating.
+**Do the tests bite?** In `tests/gas-harness`, run `python3 tools/plant-bugs.py` (about 10 seconds, no browser). It plants **41 known mistakes**, one at a time, in temporary copies of the code (for example: a token one character short, test rounds locking the codes again, the "Authorization is required" advice differing between the server and the panel, the 20 Oct `MimeType.JSON` crash). First it runs the same scenarios on an unchanged copy; a mistake counts as **CAUGHT** only when a scenario that passes there fails with the mistake. Expected: `RESULT: 41 of 41 planted mistakes caught`, exit code 0. A line saying **NOT APPLIED** means the code changed and that mistake's text in the tool needs updating.
 
 ## 2. The scenarios
 
@@ -106,6 +106,7 @@ The exit code is 0 when nothing failed, and 1 otherwise.
 | G7 | **"Authorization is required"** (21 Oct, decision 2). The server's advice is word for word Panel.html's `MSG_AUTHORIZATION` (the likely cause, another Google account, first; then "tick Select all"), followed by Google's own words; given once, never twice; the same in a menu item (Share the Drive folder). "Specified permissions are not sufficient" gets only the "tick Select all" advice, and other errors are not explained as permissions. |
 | G8 | **`nps` and `support_gate`** (21 Oct, decision 8): deleting either gives a plain warning naming the data column it fills (never an error); hiding them gives none. **A new, empty round** is not an unpublished change; a "What changed" bullet in it is. |
 | G9 | **Later 21 Oct fixes:** a DC id Google Sheets turned into a **date** gets no link ("Type the id as text"); **read-aloud clip addresses** follow the settings check's rule (an `https://` address or a path inside `web/`; a clip for a text that doesn't exist is an error); a **round whose name has a dot** can't be opened; a **real round opened before anything is published** keeps every code locked (`live_ids_unknown`). |
+| G10 | **Meesho-only mode** (21 Oct evening). A link opened on the web app's own address (no `action`; `dc`, `round` or `preview` present) gets the survey page itself (`PP_formPage_`): the form's `index.html` from the GitHub Pages address, its files made absolute, `window.PP_EMBED` added and escaped (a `</script>` in a link can't break out), and the page's own address for Start again and Retry. Health still answers JSON. The page's requests go through `ppFormRequest` (bootstrap, ping and submit; anything else is `bad_request`). Admin functions run only from inside the Sheet (its menu or the panel): from a served page they are refused for everyone, the owner and editors included. **Check and save** records `domain` only when a signed-in retry gets this web app's health answer with `form_page`; one still running older code is refused ("Version: New version"), and so is an address that asks to sign in even then. While `domain`, links (made again even with "only DCs without a link") and Preview open through the web app, and the GitHub copy stays in test mode with a warning; after the switch to "Anyone", Check and save puts everything back. If GitHub Pages can't be reached, visitors get a short message, never a crash. |
 | E1 | **Real form in headless Chrome, at phone size.** The partner opens a link made by `panelGenerateLinks` and answers everything. The rows land in the round's data spreadsheet. The form made one `bootstrap` request, sent no CORS preflight, and showed no console errors. |
 | E2 | The admin changes the NPS question text through the panel API and publishes; a new partner sees the new text. |
 | E3 | A closed round shows "This survey has closed"; a draft round shows "This survey is not open yet". |
@@ -234,7 +235,7 @@ It copies Google's documented behaviour, including the surprises that often brea
 | `lib/static-checks.js` | the static checks |
 | `lib/selftest.js` | the self-test of the pretend Google (41 checks) |
 | `lib/java-date-format.js` | Java-style date patterns (`Utilities.formatDate`) |
-| `tools/plant-bugs.py` | the "do the tests bite?" check: 33 planted mistakes (temporary copies in `out/planted/`, deleted afterwards) |
+| `tools/plant-bugs.py` | the "do the tests bite?" check: 41 planted mistakes (temporary copies in `out/planted/`, deleted afterwards) |
 
 **What it needs:**
 

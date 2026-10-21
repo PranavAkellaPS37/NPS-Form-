@@ -1,7 +1,7 @@
 /* =============================================================================
    tests/e2e/e2e.js: end-to-end test of the survey form in a real Chrome.
 
-   WHAT IT CHECKS (23 scenarios, A to X; there is no O)
+   WHAT IT CHECKS (24 scenarios, A to Y; there is no O)
      It starts the project's local test server (scripts/mock_server.py) on
      ports 8791-8795, opens the form in headless Chrome at phone size (360 x 740,
      an Android user agent) and goes through it like a partner: every screen,
@@ -15,7 +15,7 @@
      First time only: cd tests && npm install && cd ..
      node tests/e2e/e2e.js            (about 5 minutes)
      ONLY=S node tests/e2e/e2e.js     (just one scenario, here S)
-     The last line says how many scenarios passed (23 of 23 expected).
+     The last line says how many scenarios passed (24 of 24 expected).
 
    WHAT IT READS / WRITES
      Reads web/ and scripts/mock_server.py. Writes screenshots and a server log
@@ -1398,6 +1398,62 @@ async function quickFinish(page, opts = {}) {
     }
     pass('X: a published questionnaire that breaks the form falls back to the form\'s own copy (no extra resume; a broken draft is named in preview)');
   } catch (e) { fail('X: broken published questionnaire', e); }
+
+  /* ---------------- Y: Meesho-only mode: the form inside the web app's own page (21 Oct) ----------------
+     Google serves the page from its own address and the page talks to the script through
+     google.script.run (Code.gs PP_formPage_ and ppFormRequest). Here the page is served from
+     /embed/index.html (so a file fetched relative to the page would be missing) and a stand-in
+     for google.script.run passes each request to the local test server. */
+  if (want('Y')) try {
+    const { page, context } = await newPage(browser);
+    const dc = 'DC-DEMO-048';
+    const round = 'DEMO-R1';
+    const formBase = base(main);
+    const pageUrl = formBase + 'embed/index.html';
+    const html = fs.readFileSync(path.join(REPO, 'web/index.html'), 'utf8')
+      .replace(/\b(src|href)="(?![a-z][a-z0-9+.-]*:|\/\/|#)([^"]*)"/gi, (m, attr, p2) => attr + '="' + formBase + p2 + '"');
+    const calls = [];
+    await page.exposeFunction('__ppScriptCall', async (kind, payload) => {
+      calls.push(kind);
+      if (kind === 'bootstrap') {
+        return realBootstrap(`${formBase}api?action=bootstrap&round=${encodeURIComponent(payload.round)}` +
+          (payload.draft ? `&draft=1&pk=${encodeURIComponent(payload.pk)}` : ''));
+      }
+      const r = await fetch(`${formBase}api`, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload });
+      return r.json();
+    });
+    await page.evaluateOnNewDocument((embed) => {
+      window.PP_EMBED = embed;
+      const runner = (ok, fail) => ({
+        withSuccessHandler: (f) => runner(f, fail),
+        withFailureHandler: (f) => runner(ok, f),
+        ppFormRequest: (kind, payload) => { window.__ppScriptCall(kind, payload).then((a) => ok && ok(a), (e) => fail && fail(e)); }
+      });
+      window.google = { script: { run: runner(null, null) } };
+    }, { base: formBase, params: { dc, t: token(dc, round), round, lang: 'en' } });
+    await page.setRequestInterception(true);
+    const direct = [];
+    page.on('request', (req) => {
+      if (req.url() === pageUrl) return req.respond({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+      if (/\/api(\?|$)/.test(req.url())) direct.push(req.method() + ' ' + req.url());
+      if (/\/embed\/(config|i18n|js|css|audio)\//.test(req.url())) direct.push('RELATIVE ' + req.url());
+      req.continue();
+    });
+    await page.goto(pageUrl, { waitUntil: 'networkidle0' });   // the address bar carries no link details
+    await waitScreen(page, 'whats_changed');
+    await page.click('#nav-next');
+    await quickFinish(page);
+    await waitFinal(page, /Your feedback goes straight|Thank you/, 10000);
+    await sleep(400);
+    const stored = readJsonl(path.join(main.dataDir, 'responses.jsonl')).find((x) => x.dc === dc);
+    assert(stored && stored.mode === 'live' && stored.round === round, 'the answers arrived through the script, sent in live mode: ' + JSON.stringify(stored && { mode: stored.mode, round: stored.round }));
+    assert(calls.indexOf('bootstrap') >= 0 && calls.indexOf('post') >= 0, 'the questionnaire and the answers went through google.script.run: ' + calls.join(','));
+    assert.deepStrictEqual(direct, [], 'nothing was fetched from the backend directly, and no file relative to the page');
+    const errs = page.consoleMessages.filter((m) => /^(error|pageerror)/.test(m) && !/favicon/.test(m));
+    assert.deepStrictEqual(errs, [], 'no console errors');
+    await context.close();
+    pass('Y: Meesho-only mode: the form inside the web app\'s page talks through google.script.run and loads its files from its own address');
+  } catch (e) { fail('Y: Meesho-only mode', e); }
 
   await browser.close();
   await browserNoMic.close();

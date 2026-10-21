@@ -265,6 +265,14 @@
      by the form's own copy: the published questionnaire never changes it. */
   function chooseBackend(ownCfg, params) {
     var backend = ownCfg.backend || {};
+    if (PP.net.embedded()) {
+      // Meesho-only mode: the web app served this page, and answers go to it
+      // through google.script.run (net.js), whatever the form's own copy says.
+      mode = 'live';
+      PP.net.mode = mode;
+      PP.net.endpoint = 'google.script.run';
+      return;
+    }
     mode = params.mock === '1' ? 'mock' : (backend.mode === 'apps_script' ? 'live' : 'mock');
     PP.net.mode = mode;
     PP.net.endpoint = mode === 'mock' ? absoluteUrl(backend.mock_url || '/api') : (backend.apps_script_url || '');
@@ -838,7 +846,7 @@
 
     PP.clear(el.brand);
     var logo = config.branding && config.branding.logo;
-    if (logo) el.brand.appendChild(h('img', { src: logo, alt: '' }));
+    if (logo) el.brand.appendChild(h('img', { src: PP.assetUrl(logo), alt: '' }));
     el.brand.appendChild(document.createTextNode(t('brand.name')));
 
     var L = PP.i18n.language(PP.i18n.lang);
@@ -1150,7 +1158,18 @@
     // Forget them in memory too: the page saves its answers when it is left
     // (pagehide), which would otherwise write them straight back during the reload.
     state = null;
-    try { root.location.reload(); } catch (e) { /* ignore */ }
+    reloadPage();
+  }
+
+  /* Loads the page again. Inside Google's page (Meesho-only mode) reloading
+     its inner frame would show a blank page, so the page's own address is
+     opened in the whole window instead (PP_EMBED.page, set by the web app). */
+  function reloadPage() {
+    var page = PP.net.embedded() && root.PP_EMBED.page;
+    try {
+      if (page) root.open(page, '_top');
+      else root.location.reload();
+    } catch (e) { /* ignore */ }
   }
 
   /* ---------------------------------------------------------------------------
@@ -1349,7 +1368,7 @@
     el.screen.appendChild(h('div', { 'class': 'boot-error' }, [
       h('p', { text: 'Could not load the survey. Please check your internet connection and try again.' }),
       h('p', { lang: 'hi-IN', text: 'सर्वे लोड नहीं हो पाया। कृपया इंटरनेट कनेक्शन चेक करके फिर से कोशिश करें।' }),
-      h('button', { type: 'button', 'class': 'btn btn-primary', on: { click: function () { root.location.reload(); } } },
+      h('button', { type: 'button', 'class': 'btn btn-primary', on: { click: reloadPage } },
         'Retry / फिर से कोशिश करें')
     ]));
   }

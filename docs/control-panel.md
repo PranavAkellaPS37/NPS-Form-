@@ -38,9 +38,10 @@ You never need to edit code or files. If the panel was not set up yet, the admin
 4. [A tour of the panel](#a-tour-of-the-panel)
 5. [The everyday loop: Save, Preview, Publish](#the-everyday-loop-save-preview-publish)
 6. [Recipes](#recipes)
-7. [What the errors and warnings mean](#what-the-errors-and-warnings-mean)
-8. [If something goes wrong](#if-something-goes-wrong)
-9. [Words used in this guide](#words-used-in-this-guide)
+7. [Meesho-only mode (until IT allows "Anyone")](#meesho-only-mode-until-it-allows-anyone)
+8. [What the errors and warnings mean](#what-the-errors-and-warnings-mean)
+9. [If something goes wrong](#if-something-goes-wrong)
+10. [Words used in this guide](#words-used-in-this-guide)
 
 ---
 
@@ -504,6 +505,15 @@ The form keeps a backup copy of the questionnaire in the GitHub project (the fil
 
 ---
 
+## Meesho-only mode (until IT allows "Anyone")
+
+Partners reach the survey only if the web app's **Who has access** is **Anyone**. If Meesho's Google settings don't offer that yet, the web app can run as **Anyone within meesho.com** meanwhile, so colleagues can try the real thing, for example to show it to a manager before approval ([setup guide, step 8](../apps-script/README.md#step-8-first-check-that-anyone-is-offered)).
+
+- **How the panel knows:** when you record the web app address (**Home > Quick links > Check and save**), the panel says "Saved as Meesho-only", and a yellow note on **Home** and in **Links** reminds you.
+- **What changes:** the web app shows the survey page itself, to people signed in with a Meesho Google account. **Links** and **Preview** open the survey through the web app's address, so make the links again after recording it. Answers, numbers, Publish and everything else work as usual.
+- **What doesn't work yet:** partners (no Meesho account) can't open those links, and the GitHub copy of the questionnaire stays in test mode (the **Backup copy in GitHub** card says why). Voice notes may not work inside Google's page; typing always does.
+- **Switching up, once IT allows "Anyone":** in the Apps Script editor, **Deploy > Manage deployments >** pencil icon (Edit) > **Who has access: Anyone** > **Deploy** (the address stays the same). Then in the panel: **Home > Quick links > Change**, the same address, **Check and save**. The panel says the web app "is open to anyone now". Make the links again (they now open the form on GitHub Pages) and refresh the GitHub copy ([Recipe 12](#recipe-12-refresh-the-github-copy)).
+
 ## What the errors and warnings mean
 
 **Check for problems** (in **Publish**, card **1. Check for problems**) lists **errors** ("✖ … problems to fix before publishing") and **warnings** ("… warnings (publishing still works)"), and shows the questionnaire's size for phones. Each one names where the problem is (for example "Problems › payments/payout_delayed" or "Settings › Longest voice note (seconds)") and has a **Go there** button. The exact wording comes from the panel; the table explains the common ones.
@@ -546,6 +556,7 @@ The form keeps a backup copy of the questionnaire in the GitHub project (the fil
 
 | What you see | What it means | What to do |
 |---|---|---|
+| A colleague can't open a link while the panel says "Meesho-only" | They aren't signed in with their Meesho Google account in that browser, or **Who has access** is **Only myself** (the panel can't tell that apart from **Anyone within meesho.com**). | Ask them to sign in with their Meesho account (or open the link in a Chrome profile that has it). In the Apps Script editor, check **Deploy > Manage deployments**: **Who has access** must be **Anyone within meesho.com**. |
 | No **Partner Pulse** menu | You have Viewer access, or the Sheet has not finished loading. | Reload the Sheet and wait 10 seconds. If it still does not appear, ask the admin for Editor access. |
 | Google's permission screen, the first time you use the menu | Google asks you to allow Partner Pulse's permissions. | Tick **Select all** and allow them all ([setup guide, step 6](../apps-script/README.md#step-6-run-set-up-or-repair-and-allow-the-permissions)). |
 | "Authorization is required", or "Google says Partner Pulse needs authorization" | Usually Google is using another of your Google accounts (several are signed in to Chrome). Less often, a permission was left unticked. | Open the Sheet in a Chrome profile (or an Incognito window) signed in only with your company account, and try again. If that does not help, use the **Partner Pulse** menu again and tick **Select all** on Google's permission screen. |

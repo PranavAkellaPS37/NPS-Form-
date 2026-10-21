@@ -1248,6 +1248,30 @@ async function main() {
     await idle();
   });
 
+  /* 21 Oct 2026: Meesho-only mode. A web app open only to signed-in colleagues is recorded as such, the
+     panel says what that means, and recording it again once it is open to "Anyone" puts everything back. */
+  await step('a Meesho-only web app address is recorded as such, and the panel says what it means', async () => {
+    await click('nav-home');
+    await click('webapp-change');
+    await typeInto('webapp-input', 'https://script.google.com/macros/s/AKfyCOMPANYONLY123/exec');
+    await click('webapp-save');
+    await idle();
+    check(/Saved as Meesho-only: colleagues signed in with a company account can open the survey through the web app\./.test(await toastText()), 'toast: ' + (await toastText()));
+    check(/^Meesho-only: the web app is open only to people signed in with a company account\./.test(await text('webapp-meesho-only')), 'note on Home: ' + (await text('webapp-meesho-only')));
+    await shot('meesho-only-home');
+    await click('nav-links');
+    check(await exists('links-meesho-only'), 'the note in Links too');
+    await click('nav-home');
+    await click('webapp-change');
+    await typeInto('webapp-input', 'https://script.google.com/macros/s/AKfyBENCH123/exec');
+    await click('webapp-save');
+    await idle();
+    check(/open to anyone now/.test(await toastText()), 'toast after the switch to Anyone: ' + (await toastText()));
+    check(!(await exists('webapp-meesho-only')), 'the Meesho-only note is gone from Home');
+    await click('nav-links');
+    check(!(await exists('links-meesho-only')), 'and from Links');
+  });
+
   await step('no console errors or warnings', async () => {
     check(!consoleProblems.length, consoleProblems.join('\n'));
   });

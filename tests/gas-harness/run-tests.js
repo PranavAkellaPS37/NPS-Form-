@@ -20,15 +20,17 @@
                   duplicates, refusals, malformed input, busy lock, growth,
                   texts that look like formulas, size limits), and the links
                   CSV (D11)
-       G1-G9      the Google-side fixes of 20-21 Oct: the two locks, the
+       G1-G10     the Google-side fixes of 20-21 Oct: the two locks, the
                   permission re-check, owner hand-over, the web app address,
                   the code lock (test rounds; a real round opened before any
                   publish), a save that shrinks every tab, the "Authorization
                   is required" message, nps/support_gate, empty new rounds,
-                  DC ids turned into dates, read-aloud clip addresses
+                  DC ids turned into dates, read-aloud clip addresses, and
+                  the Meesho-only mode (G10: the survey page served by the web
+                  app, ppFormRequest, links, the admin lock)
        E1-E4      the real form in headless Chrome, end to end
        F          the control panel page in Chrome (smoke test)
-     tools/plant-bugs.py checks these tests themselves: it plants 33 known
+     tools/plant-bugs.py checks these tests themselves: it plants 38 known
      mistakes, one at a time, in copies of the code and expects each to be
      caught.
 

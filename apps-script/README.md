@@ -249,7 +249,7 @@ Do this check **before** anything else in this part.
 **You should see** the choice **Anyone**. Then go straight on to step 9.
 
 > [!WARNING]
-> **If "Anyone" is NOT in the list** (you only see *Only myself*, *Anyone within meesho.com* and perhaps *Anyone with Google account*): **stop here**. Click **Cancel** and ask Meesho's IT team (Google Workspace admin) for help. You can send them this:
+> **If "Anyone" is NOT in the list** (you only see *Only myself*, *Anyone within meesho.com* and perhaps *Anyone with Google account*): partners can't use the web app yet. Ask Meesho's IT team (Google Workspace admin) for help. **Meanwhile you can run it Meesho-only** (box below), so colleagues can try the real thing. You can send IT this:
 >
 > > I need to deploy a Google Apps Script web app with **Who has access: Anyone**, from my account [your email address]. It is the backend of a feedback survey for Valmo's delivery-centre partners, who are outside Meesho and do not sign in to Google. In the Google Admin console, the "Anyone" option for web apps depends on the Drive sharing settings (sharing outside the organisation, and making content visible to anyone with the link). Please enable it for my account, or for a group or organisational unit that contains it. The web app only answers with survey data; it does not share any Drive files.
 >
@@ -259,13 +259,23 @@ Do this check **before** anything else in this part.
 > - **Anyone with Google account**: Google would first demand a sign-in. The form talks to the web app in the background, and a sign-in page cannot appear there: Google answers with a sign-in page instead of the survey data, so the form could neither load the questionnaire nor send any answers. Partners would see "Could not send" forever.
 > - **Only myself**: only you could use it.
 
+> [!NOTE]
+> **Meesho-only mode, while you wait for IT** (for example to show the survey to a manager before approval). In step 9 choose **Who has access: Anyone within meesho.com** instead of **Anyone**, and carry on. In step 10, **Check and save** then records the address as **Meesho-only**:
+>
+> - the web app shows the survey page itself, to anyone **signed in with a Meesho Google account**, and their answers go to the Sheet as usual;
+> - the panel's links and Preview open the survey through the web app's address (make the links again in **Links** after recording it);
+> - partners, who have no Meesho account, can't open those links, and the GitHub copy of the questionnaire stays in test mode;
+> - voice notes may not work inside Google's page; typing always does.
+>
+> **When IT has allowed "Anyone":** **Deploy > Manage deployments >** pencil icon (Edit) > **Who has access: Anyone** > **Deploy** (the address stays the same). In the panel, **Home > Quick links > Change**, paste the same address and click **Check and save** again: it is recorded as open to anyone. Then make the links again (they point at the form on GitHub Pages) and refresh the GitHub copy ([control panel guide, Recipe 12](../docs/control-panel.md#recipe-12-refresh-the-github-copy)).
+
 ### Step 9: Deploy the web app
 
 Still in the **New deployment** window:
 
 1. **Description:** `Partner Pulse`
 2. **Execute as:** **Me (your email address)**. The backend then works with your account's permissions, so answers are saved in your Drive.
-3. **Who has access:** **Anyone**.
+3. **Who has access:** **Anyone** (or, in Meesho-only mode, **Anyone within meesho.com**: see step 8).
 4. Click **Deploy**.
 5. Google may show the permission screens again (**Authorize access**): allow them as in step 6.
 
@@ -290,12 +300,15 @@ Still in the **New deployment** window:
 
    **You should see:** "Checking the web app address…", then a green message starting "Web app address saved.". The box is replaced by the address in the plain form, with a **Copy** and a **Change** button. (The same box is in **Settings**, in the group **Form address**.)
 
+   **In Meesho-only mode** (step 8) the green message starts "Saved as Meesho-only", and a yellow note under the address explains what that means. The panel could confirm the address only by asking it again signed in as you. It can't tell **Anyone within meesho.com** from **Only myself** that way, so check that **Who has access** is **Anyone within meesho.com**: with *Only myself*, colleagues can't open the survey.
+
    **If it goes wrong**, a red message under the box says what to fix:
 
    | The message starts with… | What to do |
    |---|---|
    | "This is the test address (it ends in /dev)" | In the Apps Script editor, **Deploy > Manage deployments**, and copy the **Web app** URL that ends in `/exec`. |
-   | "The web app asks visitors to sign in" | **Who has access** is not **Anyone**. In the Apps Script editor: **Deploy > Manage deployments >** pencil icon (Edit) > **Who has access: Anyone** > **Deploy**. The address stays the same: click **Check and save** again. |
+   | "This web app is open only to signed-in colleagues, but it still runs older code" | The deployment runs the code from before you pasted the new files. **Deploy > Manage deployments >** pencil icon (Edit) > **Version: New version** > **Deploy**, then click **Check and save** again. |
+   | "The web app asks visitors to sign in" | **Who has access** is neither **Anyone** nor **Anyone within meesho.com** (for example *Only myself*), or it is another person's web app. In the Apps Script editor: **Deploy > Manage deployments >** pencil icon (Edit) > **Who has access: Anyone** (or **Anyone within meesho.com** for Meesho-only mode, step 8) > **Deploy**. The address stays the same: click **Check and save** again. |
    | "There is no web app at …" | Part of the address is missing. Copy it again, from `https://` to `/exec`. |
    | "That is not a web app address" | Copy the whole **Web app URL**, with nothing after `/exec`. |
    | "This address answers, but not as the Partner Pulse web app" | It is the address of another script. Deploy the script of **this** Sheet (step 9) and copy its address. |

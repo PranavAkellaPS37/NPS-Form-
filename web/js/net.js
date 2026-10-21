@@ -44,6 +44,14 @@
    sends cookies (credentials: "omit"), so a partner's Google login is never
    involved.
 
+   MEESHO-ONLY MODE (21 Oct 2026): while the web app is open only to people
+   signed in with a company account, the web app serves this page itself
+   (Code.gs, PP_formPage_) and sets window.PP_EMBED. The bootstrap, pings and
+   submissions then go through google.script.run (ppFormRequest on the
+   server), Google's own channel for its pages, which carries the colleague's
+   login; the form's own files still come from its GitHub Pages address
+   (PP.assetUrl). Nothing else changes.
+
    Retrying failed submissions (with growing waits) is handled in app.js.
    ============================================================================= */
 (function (root) {
@@ -75,9 +83,40 @@
     });
   };
 
-  /* GET a JSON file or URL. */
+  /* True when the web app served this page (Meesho-only mode, see above). */
+  net.embedded = function () {
+    return Boolean(root.PP_EMBED && root.google && root.google.script && root.google.script.run);
+  };
+
+  /* Asks the script (ppFormRequest) through google.script.run. Errors and
+     timeouts are retryable, like a failed fetch. */
+  function scriptCall(kind, payload, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var fail = function (text) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        var err = new Error(text);
+        err.retryable = true;
+        reject(err);
+      };
+      var timer = setTimeout(function () { fail('timeout'); }, timeoutMs || 90000);
+      root.google.script.run
+        .withSuccessHandler(function (answer) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(answer);
+        })
+        .withFailureHandler(function (error) { fail(String((error && error.message) || error)); })
+        .ppFormRequest(kind, payload);
+    });
+  }
+
+  /* GET a JSON file or URL (one of the form's own files: see PP.assetUrl). */
   net.getJSON = function (url, timeoutMs, cacheMode) {
-    return net.fetchWithTimeout(url, { method: 'GET', credentials: 'omit', cache: cacheMode || 'no-cache' }, timeoutMs || 20000)
+    return net.fetchWithTimeout(PP.assetUrl(url), { method: 'GET', credentials: 'omit', cache: cacheMode || 'no-cache' }, timeoutMs || 20000)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
@@ -91,6 +130,17 @@
      the partner waiting, because the form's own copy works just as well.
      ------------------------------------------------------------------------- */
   net.bootstrap = function (round, draft, timeoutMs, previewKey) {
+    if (net.embedded()) {
+      return scriptCall('bootstrap', { round: round, draft: draft ? '1' : '', pk: previewKey || '' }, timeoutMs)
+        .then(function (answer) {
+          if (usableBootstrap(answer)) return answer;
+          if (root.console && answer && answer.error) {
+            console.warn('[Partner Pulse] The backend has no questionnaire for us (' + answer.error +
+              '); using the copy in the form instead.');
+          }
+          return null;
+        }, function () { return null; });
+    }
     if (!net.endpoint) return Promise.resolve(null);
     var url = net.endpoint + (net.endpoint.indexOf('?') === -1 ? '?' : '&') +
       'action=bootstrap&round=' + encodeURIComponent(round) +
@@ -150,6 +200,14 @@
     var data = JSON.stringify(body);
     var limit = timeoutMs || 90000;
     if (minBytesPerSecond > 0) limit = Math.max(limit, 30000 + Math.ceil(data.length / minBytesPerSecond) * 1000);
+    if (net.embedded()) {
+      return scriptCall('post', data, limit).then(function (answer) {
+        if (answer && typeof answer === 'object') return answer;
+        var badErr = new Error('The server reply was not JSON');
+        badErr.retryable = true;
+        throw badErr;
+      });
+    }
     return net.fetchWithTimeout(net.endpoint, {
       method: 'POST',
       credentials: 'omit',
@@ -178,6 +236,12 @@
   /* Fire-and-forget. sendBeacon keeps working while the page is closing
      (browsers accept up to about 64 KB this way). Returns true if handed over. */
   net.beaconText = function (data) {
+    if (net.embedded()) {
+      // Best effort: Google's channel may not finish once the page closes;
+      // anything unsent goes the next time the link is opened.
+      scriptCall('post', data, 30000).then(null, function () { /* nothing to do */ });
+      return true;
+    }
     if (!net.endpoint) return false;
     try {
       if (navigator.sendBeacon && navigator.sendBeacon(net.endpoint, data)) return true;

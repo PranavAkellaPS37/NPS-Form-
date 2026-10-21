@@ -105,7 +105,7 @@ To use anything new, first check it in Google's Apps Script reference, then add 
 | TextFinder (from `Range.createTextFinder`) | `matchEntireCell(true)`, then `findAll()` (a list of one-cell ranges) |
 | Data validation | `SpreadsheetApp.newDataValidation()`, then `requireCheckbox()` or `requireValueInList(values, true)`, `setAllowInvalid(true)`, `setHelpText(text)`, `build()` |
 | `Ui` (from `SpreadsheetApp.getUi()`) | `createMenu(name)` then `addItem(label, functionName)`, `addSeparator()`, `addToUi()`; `alert(title, message, buttons)`; `prompt(title, message, buttons)`, whose answer has `getSelectedButton()` and `getResponseText()`; `showModalDialog(html, title)`; `ButtonSet.OK`, `ButtonSet.OK_CANCEL`, `ButtonSet.YES_NO`; `Button.OK`, `Button.YES` |
-| `HtmlService` | `createHtmlOutputFromFile('Panel')`, `createHtmlOutput(html)`; on either, `setWidth(n)`, `setHeight(n)`, `setTitle(title)` |
+| `HtmlService` | `createHtmlOutputFromFile('Panel')`, `createHtmlOutput(html)`; on either, `setWidth(n)`, `setHeight(n)`, `setTitle(title)`, `addMetaTag(name, content)` (the survey page of Meesho-only mode, section 12) |
 | `DriveApp` | `getFolderById(id)`, `getFileById(id)`, `createFolder(name)` |
 | Folder | `getId()`, `getUrl()`, `createFolder(name)`, `getFoldersByName(name)` (a `FolderIterator` with `hasNext()` and `next()`), `createFile(blob)`, `createFile(name, content, 'application/json')`, `addEditors(emails)`, `setOwner(email)` (best effort, section 13) |
 | File | `getId()`, `getUrl()`, `getBlob()` then `getDataAsString()`, `moveTo(folder)`, `setOwner(email)` (best effort, section 13) |
@@ -114,9 +114,9 @@ To use anything new, first check it in Google's Apps Script reference, then add 
 | `PropertiesService` | `getScriptProperties()` and `getUserProperties()`, with `getProperty`, `setProperty`, `getProperties`, `deleteProperty` |
 | `Utilities` | `computeHmacSha256Signature(value, key, Utilities.Charset.UTF_8)`, `base64EncodeWebSafe(bytes)`, `base64Decode(text)`, `newBlob(bytes, contentType, name)`, `getUuid()`, `formatDate(date, 'Asia/Kolkata', pattern)` |
 | `ContentService` | `createTextOutput(text).setMimeType(ContentService.MimeType.JSON)` |
-| `UrlFetchApp` | `fetch(url, { muteHttpExceptions: true })`, plus `followRedirects: true` when checking the web app address; the response's `getResponseCode()` and `getContentText()` |
+| `UrlFetchApp` | `fetch(url, { muteHttpExceptions: true })`, plus `followRedirects: true` when checking the web app address or fetching the form's `index.html` (Meesho-only mode), and `headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }` only for the second, signed-in check of a web app address on `script.google.com`; the response's `getResponseCode()` and `getContentText()` |
 | `Session` | `getActiveUser().getEmail()`, `getEffectiveUser().getEmail()` |
-| `ScriptApp` | `requireAllScopes(ScriptApp.AuthMode.FULL)` (looked up first, see below) |
+| `ScriptApp` | `requireAllScopes(ScriptApp.AuthMode.FULL)` (looked up first, see below); `getOAuthToken()` (the signed-in check above) |
 | Logging | `console.log`, `console.error` |
 
 **Never use:**
@@ -688,6 +688,15 @@ It follows [submission-format.md](submission-format.md):
 - the same token formula (section 17);
 - de-duplication by `submission_id`.
 
+**Meesho-only mode (21 Oct 2026).** While the web app is open only to people signed in with a company account ("Anyone within <domain>", `WEB_APP_ACCESS` = `domain`, section 13), the form on GitHub Pages can't use it, because it never sends a Google login with `fetch()`. So:
+
+- **`doGet` without `action`, but with `dc`, `round` or `preview`,** returns the survey page itself (`PP_wantsFormPage_`, `PP_formPage_`): an `HtmlService` page built from the form's `index.html`, fetched from the form address (`form_url`) and cached 10 minutes. Every relative `src`/`href` is made absolute on the form address, and `window.PP_EMBED = { base, params }` is put first in `<head>`. `params` holds only `dc`, `t`, `round`, `lang`, `preview` and `pk` (each at most 200 characters), and the JSON is escaped (`<`, U+2028, U+2029) so it can't end the script. If the form's page can't be fetched, a short "try again in a minute" page is returned. Every other GET still answers JSON as before.
+- **`?action=health` also answers `form_page: true`**, so the panel can tell today's code from a deployment that still runs older code.
+- **The page knows its own address** (`PP_EMBED.page`: the recorded web app address plus the link's details), because reloading Google's inner frame shows a blank page: the form's "Start again" (preview) and "Retry" open that address in the whole window instead (`reloadPage` in app.js).
+- **`ppFormRequest(kind, payload)`** (public, no admin rights) answers that page through `google.script.run`: `"bootstrap"` with `{ round, draft, pk }` gives the same answer as `GET ?action=bootstrap`, and `"post"` with the message text gives the same answer as `doPost`. Anything else gets `bad_request`.
+- **The form** (`web/js`) notices `PP_EMBED` (`net.embedded()`): it reads the link from `PP_EMBED.params`, loads its own files from `PP_EMBED.base` (`PP.assetUrl`), sends everything through `ppFormRequest`, and has no `sendBeacon` (a best-effort send instead).
+- Because a page the web app serves can call every public server function, all admin functions check their caller (section 19).
+
 Any unexpected problem is answered `{ ok: false, error: "server_error", message: "The server had a temporary problem. Nothing was lost on the phone; please send again." }`. An unknown or missing `action` gets `bad_request`.
 
 Live specifics:
@@ -803,14 +812,14 @@ All functions run as the admin using the Sheet. Each one returns plain objects (
 | `panelImport(baseUrl)` | Fetches the four files (section 8) and writes them as the new draft, under the admin lock. Rounds that already exist keep their status, data links and notes; the form address is kept. Returns `{ ok: true, revision, counts: { texts, screens, areas, chips } }`. |
 | `panelExport()` | The four files of the GitHub copy, made from the **saved** draft. Details below the table. |
 | `panelSetFormUrl(url)` | Saves the `form_url` setting (https://, without spaces, quotes, `?` or `#`; a final `/` is added), under the admin lock. Returns `{ ok: true, form_url, revision }`. The panel doesn't use it today (it edits `form_url` in Settings); removing it is on STATE.md's "Later" list. |
-| `panelSetWebAppUrl(url)` | Records the web app's public address in Script Property `WEB_APP_URL`, after checking it. Details below the table. Returns `{ ok: true, web_app_url }`. |
+| `panelSetWebAppUrl(url)` | Records the web app's public address in Script Property `WEB_APP_URL`, after checking it, and how it may be opened in `WEB_APP_ACCESS` (`anyone` or `domain`). Details below the table. Returns `{ ok: true, web_app_url, web_app_access }`. |
 
 **`panelLoad` in detail:**
 
 - **`live`:** `{ version, config_version, published_at, published_by, note }` of the live version, or `null` when nothing is published. When the live document can't be read, these come from its Publish history row.
 - **`live_ids`:** `{ screens: [ids], areas: [ids], chips: { area: [codes] }, support: [codes], options: { screen: [codes] } }`, from the live document, but **only once codes are locked**; until then every list is empty. **`codes_locked`** and **`live_ids_unknown`** are explained in section 11.
 - **`draft_differs_from_live`:** `PP_compileForCompare` of the saved draft and the live version differ (section 7). It is `true` when nothing is live or the comparison failed.
-- **`web_app_url`** is the recorded `WEB_APP_URL` (`""` until someone records it); **`web_app_url_recorded`** is `true` when there is one.
+- **`web_app_url`** is the recorded `WEB_APP_URL` (`""` until someone records it); **`web_app_url_recorded`** is `true` when there is one; **`web_app_access`** is `"anyone"`, `"domain"` (Meesho-only mode) or `""` (none recorded).
 - **`folder_url`** is `""` when set-up hasn't run or the folder can't be opened.
 - **`open_section`** is a one-time hint (User Property `panel_section`, cleared after reading) set by menu items such as "Publish…".
 - When Google Drive refuses this person the live version (it isn't in the cache any more and they were never given the folder), `panelLoad` **stops** with the "ask the owner to share the Drive folder" error, instead of opening as if nothing were published.
@@ -843,11 +852,11 @@ All functions run as the admin using the Sheet. Each one returns plain objects (
   - A `/dev` address (editors only) and a `googleusercontent.com` address (where Google forwards to) are refused with an explanation, and so is anything after `/exec`.
 - **Then it asks the address for `?action=health`, as a partner's phone would:** `UrlFetchApp.fetch(url + '?action=health', { muteHttpExceptions: true, followRedirects: true })`. The answer must be JSON with `ok: true` and `service: "valmo-partner-pulse"`. Otherwise it stops with a plain error:
   - 404: no web app at that address;
-  - 401, 403 or Google's sign-in page: "Who has access" isn't "Anyone";
+  - 401, 403 or Google's sign-in page: it asks again, signed in as the person using the panel (`Authorization: Bearer` + `ScriptApp.getOAuthToken()`; only ever sent to the `script.google.com` address above). If Partner Pulse answers then, and its health answer has `form_page: true` (today's code, which can serve the survey page), the address is recorded with `WEB_APP_ACCESS` = `domain` (Meesho-only mode, section 12). An answer without `form_page` means the deployment still runs older code: refused, with the fix (Manage deployments > Edit > Version: New version). If the signed-in check doesn't get Partner Pulse's answer, the message says so and explains both ways to deploy. That check can't tell "Anyone within <domain>" from "Only myself", so the panel's message asks the admin to check it. Otherwise: "Who has access" isn't "Anyone";
   - another code: try again in a minute;
   - an answer that isn't Partner Pulse's: the wrong project, or a deployment that wasn't updated to the new code.
 - **Then it saves `WEB_APP_URL`** (one Script Property, without the admin lock).
-- **Who uses the recorded address:** `panelLoad` (shown in the panel), `panelExport` (the GitHub copy) and set-up's closing message. Links and checks don't use it: links use `form_url`. Google's own `ScriptApp.getService().getUrl()` is never used.
+- **Who uses the recorded address:** `panelLoad` (shown in the panel), `panelExport` (the GitHub copy) and set-up's closing message. Links and Preview use `form_url`, except in Meesho-only mode (`WEB_APP_ACCESS` = `domain`), when they use the web app's address (`PP_linkBaseUrl_`) and `panelExport` keeps `survey.json` in test mode with a warning. Checks don't use it. Google's own `ScriptApp.getService().getUrl()` is never used.
 
 **The translation helpers** (`PP_applyTranslationHelpers(oldModel, newModel, todayIso)`, applied by `panelSave`; old = the draft as saved before):
 
@@ -1203,6 +1212,7 @@ The audience is non-technical ops staff. All copy is plain English: no "JSON", n
 | `OWNER_EMAIL` | who ran set-up first (owns the Drive folder; named in access errors; gets files handed over) |
 | `CONTROL_SHEET_ID` | lets the web app find the control Sheet (for Preview) |
 | `WEB_APP_URL` | the web app's `/exec` address, recorded by `panelSetWebAppUrl` after a check (used by `panelLoad`, `panelExport` and set-up's closing message) |
+| `WEB_APP_ACCESS` | `anyone`, or `domain` when the recorded web app answers only signed-in colleagues (Meesho-only mode; links and Preview then use the web app's address) |
 | `ROUNDS_EVER_OPENED` | `"1"` once a real (not test) round has been opened: codes are locked from then on. Nothing clears it (section 11) |
 
 **User Properties:** `panel_section`.
@@ -1221,7 +1231,7 @@ The audience is non-technical ops staff. All copy is plain English: no "JSON", n
 
 ## 19. Security
 
-- **Admin functions can't be reached from outside.** The public web app only exposes `doGet`/`doPost`, which return JSON and never HTML. The panel functions can only be called from the panel dialog opened inside the Sheet, by someone with edit access to it.
+- **Admin functions can't be reached from outside.** The public web app exposes `doGet`/`doPost` (JSON) and, in Meesho-only mode, the survey page (section 12). A page the web app serves can call every public server function through `google.script.run`, running as the web app's owner. That page also runs the form's scripts from GitHub Pages. So every admin function checks first that it runs from inside the control Sheet (`PP_requireAdminCaller_`, Code.gs: `SpreadsheetApp.getUi()` must work, which it does only in the Sheet's menu and the panel's window, never on a page the web app serves): in `PP_forPanel_` (every `panel…` function), `ppSetup`, `ppShareFolder` and the `ppMenu…` functions. Calls from a served page are refused for everyone, the owner and editors included (21 Oct review). `PP_ensureRoundStore_` is private. The remaining public functions are `doGet`, `doPost`, `ppFormRequest`, `onOpen` (menus only) and Model.gs's pure helpers, plus `PP_publish` and `PP_restore`, which need a Spreadsheet object that a page can't send.
 - **Sharing the Sheet = admin rights.**
   - Anyone with edit access to the Sheet can also open its Apps Script and see Script Properties, including `LINK_SECRET`.
   - They can also call every function without a final `_` from the panel's window (section 2).

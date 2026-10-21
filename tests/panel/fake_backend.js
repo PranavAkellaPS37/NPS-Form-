@@ -521,6 +521,7 @@ const api = {
       codes_locked: codesLocked(), draft_differs_from_live: differs(), user: state.user,
       spreadsheet_url: 'https://docs.google.com/spreadsheets/d/FAKE-BENCH-CONTROL/edit', folder_url: 'https://drive.google.com/drive/folders/FAKE-BENCH-FOLDER',
       web_app_url: state.webAppUrl, web_app_url_recorded: !!state.webAppUrl,
+      web_app_access: state.webAppUrl ? (state.webAppAccess || 'anyone') : '',
       dc_count: state.dcs.length, active_dc_count: state.dcs.filter((x) => x.active).length, open_section: section
     };
   },
@@ -614,7 +615,10 @@ const api = {
       throw new Error('That is not a web app address. It looks like https://script.google.com/macros/s/…/exec (Deploy > Manage deployments > Web app > URL).');
     }
     state.webAppUrl = text;
-    return { ok: true, web_app_url: text };
+    /* Like PanelServer.gs (21 Oct 2026): an address the bench calls ...COMPANYONLY... stands for a web app
+       open only to signed-in colleagues, recorded as Meesho-only ("domain"). */
+    state.webAppAccess = /COMPANYONLY/.test(text) ? 'domain' : 'anyone';
+    return { ok: true, web_app_url: text, web_app_access: state.webAppAccess };
   },
   panelNewPreviewKey() {
     state.previewKeys += 1;

@@ -162,6 +162,8 @@ const PP_SRV = Object.freeze({
   MAX_PING_EVENTS: 400,
   MAX_PING_CHARS: 60000,                     // one progress ping, events included
   DRAFT_CACHE_SECONDS: 30,                   // a preview's compiled draft is reused this long
+  FORM_PAGE_CACHE_SECONDS: 600,              // Meesho-only mode: the form's index.html and address are reused this long
+  EMBED_PARAMS: ['dc', 't', 'round', 'lang', 'preview', 'pk'],   // the link details the survey page passes on to the form
   HEADER_COLOUR: '#EDE7F6',                  // light purple, row 1 of every tab
   TAB_COLOURS: { config: '#7E57C2', operations: '#43A047', system: '#9E9E9E' },
   DEFAULT_IMPORT_URL: 'https://raw.githubusercontent.com/PranavAkellaPS37/NPS-Form-/main/web/',
@@ -209,6 +211,7 @@ const PP_SRV = Object.freeze({
     PREVIEW_KEY: 'PREVIEW_KEY',              // private key that preview links carry (&pk=...)
     OWNER: 'OWNER_EMAIL',                    // who ran set-up first (owns the Drive folder)
     WEB_APP_URL: 'WEB_APP_URL',              // the checked /exec address (recorded in the control panel)
+    WEB_APP_ACCESS: 'WEB_APP_ACCESS',        // "anyone", or "domain": open only to people signed in with a company account (Meesho-only mode)
     ROUNDS_EVER_OPENED: 'ROUNDS_EVER_OPENED',  // "1" once a real (not test) round was opened: codes are locked from then on
     PANEL_SECTION: 'panel_section'           // a User Property: which panel section to open
   }
@@ -275,18 +278,21 @@ function onOpen() {
 /** Menu: Open control panel (starts on Home). */
 function ppMenuOpenPanel() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   PP_openPanelAt_('home');
 }
 
 /** Menu: Publish… (opens the panel on its Publish section). */
 function ppMenuPublish() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   PP_openPanelAt_('publish');
 }
 
 /** Menu: Generate links… (opens the panel on its Links section). */
 function ppMenuLinks() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   PP_openPanelAt_('links');
 }
 
@@ -322,6 +328,7 @@ function PP_requireAllPermissions_() {
 /** Menu: Preview the draft form. Shows a small window with the preview link. */
 function ppMenuPreview() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   const ui = SpreadsheetApp.getUi();
   const roundId = PP_roundToPreview_(SpreadsheetApp.getActiveSpreadsheet());
   if (!roundId) {
@@ -363,6 +370,7 @@ function PP_previewDialogHtml_(roundId, url) {
 /** Menu: Help. Shows where the guides are. */
 function ppMenuHelp() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   const html = HtmlService.createHtmlOutput(PP_helpDialogHtml_());
   html.setWidth(540);
   html.setHeight(340);
@@ -399,6 +407,7 @@ function PP_helpDialogHtml_() {
  */
 function ppSetup() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   const ui = PP_uiOrNull_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const notes = [];
@@ -1202,7 +1211,7 @@ function PP_splitForCache_(text) {
  * can get here, and the lock makes sure only one of them creates the store.
  * Whatever a co-admin creates here is handed over to the owner (PP_giveToOwner_).
  */
-function PP_ensureRoundStore(roundId) {
+function PP_ensureRoundStore_(roundId) {
   const info = PP_readRoundProp_(roundId) || { status: 'draft', sheet_id: '', audio_folder_id: '' };
   if (info.sheet_id && info.audio_folder_id) return info;
   const roundFolder = PP_childFolder_(PP_folders_().rounds, roundId);
@@ -1274,7 +1283,7 @@ function PP_dataSheet_(book, name) {
 function PP_openRoundStore_(roundId, info) {
   let record = info;
   if (!record.sheet_id || !record.audio_folder_id) {
-    record = PP_withScriptLock_(PP_SRV.SUBMIT_LOCK_MS, () => PP_ensureRoundStore(roundId));
+    record = PP_withScriptLock_(PP_SRV.SUBMIT_LOCK_MS, () => PP_ensureRoundStore_(roundId));
     if (!record) return null;   // busy: the caller answers "try again"
     record.status = info.status;
   }
@@ -1461,7 +1470,104 @@ function PP_writeRoundCells_(roundId, values) {
  * Always answers JSON, never a web page.
  */
 function doGet(e) {
-  return PP_jsonOut_(PP_answerSafely_(() => PP_answerGet_(PP_params_(e))));
+  const params = PP_params_(e);
+  if (PP_wantsFormPage_(params)) return PP_formPage_(params);
+  return PP_jsonOut_(PP_answerSafely_(() => PP_answerGet_(params)));
+}
+
+/**
+ * A partner-style link (?dc=..&t=..&round=.., or a preview link) opened on
+ * the web app's own address, without ?action=: the survey page itself
+ * (Meesho-only mode, see PP_formPage_).
+ */
+function PP_wantsFormPage_(params) {
+  return !PP_text_(params.action) && ['dc', 'round', 'preview'].some(key => typeof params[key] === 'string');
+}
+
+/**
+ * MEESHO-ONLY MODE (21 Oct 2026). While the web app is open only to people
+ * signed in with a company account ("Anyone within <company>"), the survey
+ * on GitHub Pages can't use it: the form never sends a Google login with its
+ * background requests, so Google refuses them. So the web app serves the
+ * survey page itself, to signed-in colleagues: the form's own index.html,
+ * fetched from the form address (Settings > form_url), with every file it
+ * loads addressed there, and window.PP_EMBED telling the form to talk to
+ * this script through google.script.run (ppFormRequest) instead of fetch().
+ * Once "Anyone" is allowed, partners use the GitHub Pages links again.
+ */
+function PP_formPage_(params) {
+  let base;
+  let html;
+  try {
+    base = PP_formBaseUrl_();
+    html = PP_formIndexHtml_(base);
+  } catch (err) {
+    console.error('The survey page could not be built: ' + (err && err.stack ? err.stack : err));
+    return HtmlService.createHtmlOutput('<p style="font:16px sans-serif;margin:24px">The survey could not be ' +
+      'loaded just now. Please try again in a minute.</p>').setTitle('Valmo Partner Pulse');
+  }
+  const embed = { base: base, params: {}, page: '' };
+  const query = [];
+  PP_SRV.EMBED_PARAMS.forEach(key => {
+    if (typeof params[key] !== 'string') return;
+    embed.params[key] = params[key].slice(0, 200);
+    query.push(encodeURIComponent(key) + '=' + encodeURIComponent(embed.params[key]));
+  });
+  // This page's own address: reloading Google's inner frame shows a blank page, so the form's
+  // "Start again" and "Retry" open this address in the whole window instead (app.js, reloadPage).
+  const own = PP_webAppUrl_();
+  if (own) embed.page = own + '?' + query.join('&');
+  // Safe inside <script>: no "</" (or "<!--") and no line separators can end it early.
+  const data = JSON.stringify(embed).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const boot = '<script>window.PP_EMBED = ' + data + ';</script>';
+  const page = html
+    .replace(/<head([^>]*)>/i, tag => tag + boot)
+    .replace(/\b(src|href)="(?![a-z][a-z0-9+.-]*:|\/\/|#)([^"]*)"/gi, (match, attr, path) => attr + '="' + base + path + '"');
+  return HtmlService.createHtmlOutput(page)
+    .setTitle('Valmo Partner Pulse')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, interactive-widget=resizes-content');
+}
+
+/** The form address (Settings > form_url), where the form's own files are; cached 10 minutes. */
+function PP_formBaseUrl_() {
+  const cached = PP_cacheGetOrNull_('form_base');
+  if (cached) return cached;
+  const url = PP_requireFormUrl_(PP_readModel(PP_controlBook_()).settings);
+  PP_cachePutSafely_('form_base', url, PP_SRV.FORM_PAGE_CACHE_SECONDS);
+  return url;
+}
+
+/** The form's index.html from the form address; cached 10 minutes. */
+function PP_formIndexHtml_(base) {
+  const key = 'form_index:' + base;
+  const cached = PP_cacheGetOrNull_(key);
+  if (cached) return cached;
+  const response = UrlFetchApp.fetch(base + 'index.html', { muteHttpExceptions: true, followRedirects: true });
+  const html = String(response.getContentText() || '');
+  if (response.getResponseCode() !== 200 || !/<head[\s>]/i.test(html)) {
+    throw new Error(base + 'index.html answered ' + response.getResponseCode() + ', not the form page.');
+  }
+  PP_cachePutSafely_(key, html, PP_SRV.FORM_PAGE_CACHE_SECONDS);
+  return html;
+}
+
+/**
+ * The survey page of Meesho-only mode (PP_formPage_) talks to this script
+ * here, through google.script.run, instead of fetch(): "bootstrap" answers
+ * like GET ?action=bootstrap, and "post" (a ping or a submission, as the
+ * same text a phone would POST) like doPost. Public on purpose, like doGet
+ * and doPost: it needs no admin rights and does nothing else.
+ */
+function ppFormRequest(kind, payload) {
+  if (kind === 'bootstrap') {
+    const p = PP_isPlainObject_(payload) ? payload : {};
+    return PP_answerSafely_(() => PP_answerGet_({ action: 'bootstrap', round: PP_text_(p.round),
+      draft: p.draft === '1' ? '1' : '', pk: PP_text_(p.pk) }));
+  }
+  if (kind === 'post') {
+    return PP_answerSafely_(() => PP_answerPost_({ postData: { contents: typeof payload === 'string' ? payload : '' } }));
+  }
+  return PP_badRequest_('Unknown request. Use "bootstrap" or "post".');
 }
 
 function PP_answerGet_(params) {
@@ -1481,7 +1587,7 @@ function PP_answerGet_(params) {
 function PP_health_() {
   const version = parseInt(PP_props_()[PP_SRV.KEYS.LIVE_VERSION], 10) || null;
   return { ok: true, service: PP_SRV.SERVICE_NAME, mode: 'live', time: PP_nowIso_(), live_version: version,
-    runs_as_owner: PP_runsAsOwner_() };
+    runs_as_owner: PP_runsAsOwner_(), form_page: true };
 }
 
 /**
@@ -2230,7 +2336,7 @@ function PP_adminLock_() {
 
 /**
  * Inside an admin change: runs work (creating or updating a round's data
- * store, PP_ensureRoundStore) while ALSO holding the script lock for that
+ * store, PP_ensureRoundStore_) while ALSO holding the script lock for that
  * moment, because a partner's first answer may be creating the same store.
  * Answers already waiting finish first; new ones wait a few seconds.
  */
@@ -2356,6 +2462,23 @@ function PP_folderUrl_() {
  */
 function PP_webAppUrl_() {
   return PP_text_(PP_props_()[PP_SRV.KEYS.WEB_APP_URL]);
+}
+
+/**
+ * Admin work (every control panel function, set-up, sharing the folder, the
+ * menu items) only ever runs from inside the control Sheet: its Partner
+ * Pulse menu or the control panel's window. Only people who can edit the
+ * Sheet can use those, and only there does Google give the script the
+ * Sheet's window (SpreadsheetApp.getUi()). A page the web app serves (the
+ * survey in Meesho-only mode) can call every public function too, running
+ * as the owner, and it loads the form's scripts from GitHub Pages; there
+ * getUi() fails, so those calls are refused for everyone, the owner and
+ * editors included (21 Oct 2026, review findings SEC-1 and SEC-2).
+ */
+function PP_requireAdminCaller_() {
+  if (PP_uiOrNull_()) return;
+  throw new Error('This can only be done from the Partner Pulse Sheet itself (its menu or the control panel), ' +
+    'by someone who can edit the Sheet.');
 }
 
 /** Email of the person using the Sheet ('unknown' if Google does not say). */
@@ -2548,6 +2671,7 @@ function PP_previewKey_(create) {
  */
 function ppShareFolder() {
   PP_requireAllPermissions_();
+  PP_requireAdminCaller_();   // only people who can edit the Sheet (Meesho-only mode serves a page from this script)
   const ui = PP_uiOrNull_();
   try {
     const emails = SpreadsheetApp.getActiveSpreadsheet().getEditors()

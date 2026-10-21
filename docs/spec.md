@@ -233,6 +233,7 @@ Dates are 2026, IST. "Brief" means the original brief (§1).
 | 21 Oct ~11:20 | "The latest submission per DC per round" means the one with the latest `received_at` (the server's clock), not `submitted_at` (the phone's clock); written into docs/submission-format.md §9 | Claude (STATE item 5) |
 | 21 Oct ~11:20 | CHANGELOG [0.2.0] is dated 2026-10-21, the day its last changes were made; change the date if the Phase 2 commit happens later | Claude (STATE item 5) |
 | 21 Oct ~17:35 | Before the first push, the two local commits are rewritten: this Mac's folder path becomes `~/NPSF`, and the author email becomes `PranavAkellaPS37@users.noreply.github.com` (also this project's git email from now on). The upload address names the account (`https://PranavAkellaPS37@github.com/…`), because this Mac's Keychain holds another GitHub login | Pranav (open question 13, recommendation accepted; the email added by Claude) |
+| 21 Oct ~18:00 | Meesho's Google Workspace offers only "Anyone within meesho.com" for the web app. Until IT allows "Anyone", run a **Meesho-only mode** for the BU head demo: the web app serves the survey page to signed-in colleagues, links and Preview point at it, and every admin function checks its caller. After approval, switch the permission to "Anyone" and record the address again | Pranav (the plan); Claude (the design: the form on GitHub Pages can't use a sign-in-protected web app) |
 
 ## 5. Where the build differs from the brief
 
@@ -257,6 +258,7 @@ From the re-check of 20 Oct 2026. "Approved" means Pranav agreed (§2–§4). **
 | Phase 2 = Apps Script + link generator | Also a full no-code control panel | Approved (Pranav, 20 Oct) |
 | `requirements.txt` per folder | `scripts/` uses only the Python standard library and has no `requirements.txt` yet | To add (STATE.md item 4) |
 | Typical path under 90 seconds | Not measured with people; a scripted run took 40 s | Check in the field |
+| The web app is shared with **Anyone**; the form is a static page on GitHub Pages | Until IT allows "Anyone": **Meesho-only mode**. The web app ("Anyone within meesho.com") serves the survey page itself to signed-in colleagues; partners can't use it yet | Temporary, Pranav's decision (21 Oct); ends when the permission is switched to "Anyone" |
 
 ## 6. Open questions
 

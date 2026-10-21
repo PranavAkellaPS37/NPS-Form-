@@ -144,7 +144,7 @@
       playNext();
     };
     if (part.clip) {
-      var audio = new Audio(part.clip);
+      var audio = new Audio(PP.assetUrl(part.clip));
       speech._audio = audio;
       audio.onended = advance;
       audio.onerror = advance;

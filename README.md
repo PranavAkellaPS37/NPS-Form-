@@ -554,7 +554,7 @@ Do them in this order. Steps 3 to 8 are in the [setup guide for the Sheet and th
 | 1 | Put the project on GitHub (with a personal access token, because this Mac has no GitHub login yet) | [Below](#step-1-put-the-project-on-github) |
 | 2 | Switch on GitHub Pages (**Source: GitHub Actions**) | [Below](#step-2-switch-on-github-pages) |
 | 3 | Create the Sheet, paste the four code files (`Code`, `Model`, `PanelServer`, `Panel`), run **Set up or repair** and publish version 1 | [Setup guide](apps-script/README.md), Parts A–B |
-| 4 | Check that Google offers **Anyone** for the web app (if not, ask IT), then deploy it, copy its `/exec` address and record it in the control panel (**Check and save**) | [Setup guide](apps-script/README.md#part-c-put-the-backend-online), Part C |
+| 4 | Check that Google offers **Anyone** for the web app (if not, ask IT, and meanwhile use the Meesho-only mode for colleagues: setup guide, step 8), then deploy it, copy its `/exec` address and record it in the control panel (**Check and save**) | [Setup guide](apps-script/README.md#part-c-put-the-backend-online), Part C |
 | 5 | Connect the form: the `/exec` address into `web/config/survey.json` (`"mode": "apps_script"`), then push | [Setup guide](apps-script/README.md#part-d-connect-the-form), Part D |
 | 6 | Run the smoke test against the live backend | [Setup guide](apps-script/README.md#part-e-run-the-smoke-test-against-the-live-backend), Part E |
 | 7 | Try the whole thing on a phone | [Setup guide](apps-script/README.md#part-f-try-it-end-to-end-on-a-phone), Part F |

@@ -94,6 +94,9 @@ function panelOpen() {
  *   web_app_url           the /exec address recorded with panelSetWebAppUrl
  *                         ('' until someone records it)
  *   web_app_url_recorded  true when there is one
+ *   web_app_access        "anyone", "domain" (open only to people signed in
+ *                         with a company account: Meesho-only mode, where
+ *                         links and Preview open through the web app), or ''
  * When Google Drive refuses this person the published version (it is not in
  * the short-term cache any more), the panel stops with the plain "ask the
  * owner to share the Drive folder" message instead of opening as if nothing
@@ -125,6 +128,7 @@ function panelLoad() {
       folder_url: PP_folderUrl_(),
       web_app_url: webAppUrl,
       web_app_url_recorded: Boolean(webAppUrl),
+      web_app_access: PP_webAppAccess_(),
       dc_count: dcs.total,
       active_dc_count: dcs.active,
       open_section: PP_takeOpenSection_()
@@ -284,7 +288,7 @@ function panelSetRoundStatus(roundId, status, confirmDemo) {
  */
 function PP_saveRoundStatus_(id, status) {
   let info = PP_readRoundProp_(id) || { status: 'draft', sheet_id: '', audio_folder_id: '' };
-  if (status === 'open' && !(info.sheet_id && info.audio_folder_id)) info = PP_ensureRoundStore(id);
+  if (status === 'open' && !(info.sheet_id && info.audio_folder_id)) info = PP_ensureRoundStore_(id);
   info.status = status;
   PP_saveRoundProp_(id, info);
   return info;
@@ -382,7 +386,7 @@ function panelGenerateLinks(roundId, options) {
     const job = {
       roundId: id,
       onlyMissing: !(options && options.only_missing === false),
-      formUrl: PP_requireFormUrl_(model.settings || {}),
+      formUrl: PP_linkBaseUrl_(model.settings || {}),
       secret: PP_requireSecret_(),
       languages: (model.languages || []).filter(lang => lang.active !== false).map(lang => lang.code),
       user: PP_currentUser_(),
@@ -429,7 +433,9 @@ function PP_linkRowsOfRound_(table, roundId) {
 /** Creates, refreshes or keeps one DC's link. Returns that DC's line for the CSV. */
 function PP_upsertOneLink_(table, row, dc, job, result) {
   const col = table.col;
-  if (row && job.onlyMissing && PP_text_(row[col.link])) {
+  // Keep a stored link only if it opens the address links use now: after a switch to or from
+  // Meesho-only mode (PP_linkBaseUrl_) every link is made again, even with "only missing".
+  if (row && job.onlyMissing && PP_text_(row[col.link]).indexOf(job.formUrl + '?') === 0) {
     result.kept += 1;
     return { dc_id: dc.dc_id, dc_name: PP_text_(row[col.dc_name]), state: PP_text_(row[col.state]),
       region: PP_text_(row[col.region]), language: PP_text_(row[col.language]), link: PP_text_(row[col.link]) };
@@ -534,7 +540,7 @@ function panelPreviewUrl(roundId) {
     const id = PP_text_(roundId);
     if (!PP_isDcOrRound_(id)) throw new Error('Choose the round to preview first.');
     const settings = PP_readModel(PP_panelBook_()).settings || {};
-    const formUrl = PP_requireFormUrl_(settings);
+    const formUrl = PP_linkBaseUrl_(settings);
     const language = PP_text_(settings.default_language) || 'en';
     return { url: formUrl + '?preview=1&dc=DC-PREVIEW&round=' + encodeURIComponent(id) +
       '&lang=' + encodeURIComponent(language) + '&pk=' + encodeURIComponent(PP_previewKey_(true)) };
@@ -593,10 +599,15 @@ function panelExport() {
     const model = PP_readModel(PP_panelBook_());
     const live = PP_liveDocForAdmin_();
     const webAppUrl = PP_webAppUrl_();
-    const options = { apps_script_url: webAppUrl };
+    const companyOnly = PP_webAppAccess_() === 'domain';
+    const options = { apps_script_url: companyOnly ? '' : webAppUrl };
     if (live && !PP_draftDiffersFromLive_(model, live)) options.config_version = live.config_version;
     const answer = { files: PP_exportStatic(model, options) };
-    if (!webAppUrl) {
+    if (companyOnly) {
+      answer.warning = 'The web app is open only to people signed in with a company account (Meesho-only ' +
+        'mode), so survey.json keeps the form in test mode ("mock"): partners can\'t use the form on GitHub ' +
+        'Pages yet. Once "Who has access" is "Anyone", click Check and save again, then prepare the files again.';
+    } else if (!webAppUrl) {
       answer.warning = 'No web app address is recorded yet, so survey.json keeps the form in test mode ' +
         '("mock"): with these files the form would not send answers to Google. Deploy the web app, paste ' +
         'its address (ending in /exec) into Home > Quick links or Settings, click Check and save, then ' +
@@ -634,10 +645,32 @@ function panelSetFormUrl(url) {
 function panelSetWebAppUrl(url) {
   return PP_forPanel_(() => {
     const clean = PP_cleanWebAppUrl_(url);
-    PP_checkWebApp_(clean);
+    const access = PP_checkWebApp_(clean);
     PP_setScriptProp_(PP_SRV.KEYS.WEB_APP_URL, clean);
-    return { ok: true, web_app_url: clean };
+    PP_setScriptProp_(PP_SRV.KEYS.WEB_APP_ACCESS, access);
+    return { ok: true, web_app_url: clean, web_app_access: access };
   });
+}
+
+/**
+ * How the recorded web app may be opened: "anyone" (partners' phones can use
+ * it), "domain" (only people signed in with a company account: Meesho-only
+ * mode, 21 Oct 2026), or '' when no address is recorded.
+ */
+function PP_webAppAccess_() {
+  if (!PP_webAppUrl_()) return '';
+  return PP_text_(PP_props_()[PP_SRV.KEYS.WEB_APP_ACCESS]) === 'domain' ? 'domain' : 'anyone';
+}
+
+/**
+ * Where partner links and Preview links point: the form on GitHub Pages
+ * (Settings > form_url), or, while the web app is Meesho-only, the web app's
+ * own address, which serves the survey page to signed-in colleagues
+ * (Code.gs, PP_formPage_). Make the links again after switching.
+ */
+function PP_linkBaseUrl_(settings) {
+  const formUrl = PP_requireFormUrl_(settings);
+  return PP_webAppAccess_() === 'domain' ? PP_webAppUrl_() : formUrl;
 }
 
 
@@ -654,6 +687,7 @@ function panelSetWebAppUrl(url) {
  */
 function PP_forPanel_(work) {
   try {
+    PP_requireAdminCaller_();   // Code.gs: only people who can edit the Sheet (21 Oct 2026, Meesho-only mode)
     return work();
   } catch (err) {
     throw PP_permissionError_(err) || err;
@@ -753,9 +787,40 @@ function PP_cleanWebAppUrl_(url) {
  * { ok: true, service: "valmo-partner-pulse", ... }.
  */
 function PP_checkWebApp_(url) {
+  const plain = PP_fetchHealth_(url, false);
+  if (plain.answer) return 'anyone';
+  if (plain.code === 401 || plain.code === 403 || PP_isSignInPage_(plain.text)) {
+    // Maybe "Anyone within <company>" (Meesho-only mode): ask again, signed in as the person using the panel.
+    let signedIn = null;
+    let failure = '';
+    try {
+      signedIn = PP_fetchHealth_(url, true);
+    } catch (err) {
+      failure = PP_rawErrorText_(err);
+    }
+    if (signedIn && signedIn.answer && signedIn.answer.form_page === true) return 'domain';
+    if (signedIn && signedIn.answer) {
+      throw new Error('This web app is open only to signed-in colleagues, but it still runs older code that can\'t ' +
+        'show them the survey. In the Apps Script editor: Deploy > Manage deployments > pencil icon (Edit) > Version: ' +
+        'New version > Deploy. The address stays the same: then press "Check and save" again.');
+    }
+    throw new Error('The web app asks visitors to sign in, and the panel couldn\'t confirm it as this Sheet\'s web app ' +
+      'when it asked again signed in as you (' + (failure ? 'Google said: ' + failure : 'it answered ' +
+      (signedIn ? signedIn.code : '?')) + '). For partners, "Who has access" must be "Anyone". For colleagues only ' +
+      '(Meesho-only mode), use "Anyone within" your company, with "Execute as: Me", and deploy this Sheet\'s latest ' +
+      'code: Deploy > Manage deployments > pencil icon (Edit) > Version: New version > Deploy. The address stays the ' +
+      'same: then press "Check and save" again.');
+  }
+  throw new Error(PP_webAppProblem_(url, plain.code, plain.text, plain.json));
+}
+
+/** Asks an address for ?action=health, optionally signed in as the person running this. */
+function PP_fetchHealth_(url, signedIn) {
+  const options = { muteHttpExceptions: true, followRedirects: true };
+  if (signedIn) options.headers = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() };
   let response;
   try {
-    response = UrlFetchApp.fetch(url + '?action=health', { muteHttpExceptions: true, followRedirects: true });
+    response = UrlFetchApp.fetch(url + '?action=health', options);
   } catch (err) {
     const permission = PP_permissionError_(err);
     if (permission) throw permission;
@@ -764,9 +829,9 @@ function PP_checkWebApp_(url) {
   }
   const code = response.getResponseCode();
   const text = String(response.getContentText() || '');
-  const answer = PP_jsonOrNull_(text);
-  if (answer && answer.ok === true && answer.service === PP_SRV.SERVICE_NAME) return answer;
-  throw new Error(PP_webAppProblem_(url, code, text, answer));
+  const json = PP_jsonOrNull_(text);
+  const answer = json && json.ok === true && json.service === PP_SRV.SERVICE_NAME ? json : null;
+  return { code: code, text: text, json: json, answer: answer };
 }
 
 /** Why an address did not answer as the Partner Pulse web app, in plain English. */

@@ -1,10 +1,13 @@
 # STATE: where the build is
 
-**Updated:** 21 Oct 2026, 16:46 IST, by Claude.
+**Updated:** 21 Oct 2026, 20:54 IST, by Claude.
 
 **APPROVED (21 Oct ~08:45 IST):** Pranav replied "ok" to the remaining Phase 2 list (items 1–11 below) and to all 8 recommended decisions (see Decisions). Work started after a context compaction, as he preferred.
 
-**Progress today (21 Oct):** items 1–9 of 11 are done and tested; item 7's independent review found 9 problems, all fixed and tested (16:45 IST). Left: the hand-off (11). Next: item 7 (full regression plus an independent review), then the local commit (10) and the hand-off (11).
+**Progress today (21 Oct):**
+- Items 1–10 of 11 were done by ~16:55 IST and handed over; Pranav pushed them (`1c99b5e`, after cleaning personal details from both commits) and switched on GitHub Pages.
+- Since ~18:00, at Pranav's request: **the Meesho-only mode** for the BU head demo (see Done). It is built, independently reviewed, every finding fixed, every suite green at 20:47 IST, and committed locally (not pushed).
+- Left: Pranav's demo, then the hand-off checklist (item 11).
 
 **What happened this morning:**
 - **The Mac restarted at 08:24 IST,** which wiped the temporary scratchpad folder holding the developer test suites and the 20 Oct audit evidence. Nothing in the repo was lost.
@@ -17,12 +20,12 @@
 
 ## Where we are (two lines)
 
-Phase 2 is built, independently reviewed, fixed and committed locally (not pushed): all 11 approved items except the hand-off are done, and every developer suite is green (end to end 23/23, panel 52/52, Google imitation 41 + 1 known warning, logic 195/195).
-Now: the hand-off (item 11): Pranav reviews, answers open questions 11–14, then follows the go-live checklist (item 11 under "Next").
+Phase 2 is pushed (`1c99b5e`) and GitHub Pages is on. The Meesho-only mode for the BU head demo is built, reviewed, fixed and committed locally (not pushed); every suite is green (end to end 24/24, panel 53/53, Google imitation 42 + 1 known warning, planted mistakes 41/41, logic 195/195).
+Now: Pranav pushes, pastes the four Apps Script files again, deploys a new version ("Anyone within meesho.com") and runs the demo (steps under "Exact next action"). When IT allows "Anyone", he switches the permission and presses Check and save again.
 
 ## Current phase
 
-**Phase 2: Apps Script + link generator + control panel.** Built, reviewed and committed locally; waiting for Pranav's hand-off review.
+**Phase 2: Apps Script + link generator + control panel.** Pushed; the Meesho-only demo mode is committed locally. Waiting for Pranav's demo and his hand-off review.
 - The scope grew at Pranav's request on 20 Oct: a no-code control panel inside the Google Sheet, with instant publish through Google.
 - Phase 1 is done and committed. Phases 3–5 haven't started.
 
@@ -139,6 +142,39 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
   - New checks prove each fix: e2e W and X fail on mutated copies (speaker not following the wording, no state restore, no `draftBroken`); bench checks for the old files and the hint; harness G9 and planted mistake `dotted-round-opens` (33 of 33 caught).
   - **Note:** two Google-imitation runs at ~15:20–16:25 crawled (E1 took 17 minutes) and one end-to-end run crashed Chrome once. Rerun alone, E1 took 11 s and the full imitation 38 s: a passing slowdown of this Mac, not the code.
 
+### Phase 2, the Meesho-only mode (21 Oct, ~18:00–20:50 IST; Pranav's request)
+
+**Why:** Meesho's Google Workspace offers "Who has access: Anyone within Meesho" for the web app, but not "Anyone". The GitHub Pages form can't use such a web app: its background requests carry no Google login (by design), so Google refuses them. Pranav's plan: run Meesho-only for the BU head demo, then switch to "Anyone" once IT allows it.
+
+- [x] **The web app serves the survey page itself** to signed-in colleagues (Code.gs `PP_formPage_`): a GET without `action` but with `dc`, `round` or `preview`.
+  - The page is the form's `index.html` from the GitHub Pages address (cached 10 min), with its files made absolute and `window.PP_EMBED = {base, params, page}` added (escaped, so a link can't break out of it).
+  - Its requests go through `google.script.run.ppFormRequest` (bootstrap, ping, submit). The health answer gains `form_page: true`.
+  - If GitHub Pages can't be reached, visitors get a short "could not be loaded just now" page.
+- [x] **The form** (`web/js`) reads `PP_EMBED`: `PP.params`, `PP.assetUrl` (logo, clips, settings files), net.js's `scriptCall`, and app.js's `reloadPage` for Start again and Retry.
+- [x] **Check and save** accepts a sign-in-protected address when a signed-in retry (`ScriptApp.getOAuthToken()`) gets this web app's health answer with `form_page`, and records `WEB_APP_ACCESS = domain`. While `domain`:
+  - links and Preview open through the web app (links made earlier are made again even with "only DCs without a link");
+  - the GitHub copy stays in test mode, with a warning;
+  - the panel shows Meesho-only notes on Home and Links.
+
+  Check and save again after the switch to "Anyone" puts everything back.
+- [x] **Security:** a page Google serves can call every public server function, running as the owner. `PP_requireAdminCaller_` lets admin functions run only from inside the Sheet (its menu or the panel window, where `SpreadsheetApp.getUi()` works), in `PP_forPanel_` and every `pp…` menu function. `PP_ensureRoundStore` became private.
+- [x] **Independent review** `wf_8bcc034a-679` (security; behaviour on real Google): 7 findings, all confirmed and fixed.
+  - **SEC-1 (medium):** the first admin check still let the owner and Sheet editors call admin functions from a served page, which runs the form's scripts from GitHub. Now only the Sheet itself can.
+  - **SEC-2 (low):** that check's "same user" shortcut would have let every colleague in, had the web app ever been deployed as "User accessing the web app". Gone with SEC-1's fix.
+  - **F1 (medium):** Start again and Retry reloaded only Google's inner frame. They now reopen the page's own address.
+  - **F2 (medium):** after a switch, "Make the links again" kept the old links. Links with the other address are now made again.
+  - **F3 (medium):** a deployment still running older code was saved as Meesho-only, so its links would show raw JSON. Now refused, with the fix (Version: New version).
+  - **F4 (low):** the page's viewport let the keyboard cover the Next bar. Fixed.
+  - **F5 (low):** when the signed-in check failed, the message hid the reason. It now explains.
+- [x] **Tests:** Google imitation scenario G10 (73 checks), 8 new planted mistakes (41 of 41 caught), a panel-bench step (53), end-to-end scenario Y (the form served from another path with a stand-in `google.script.run`; 24). The full regression at 20:47 IST is green (see Tests).
+- [x] **Docs:** setup guide steps 8–10, user guide (Meesho-only section and troubleshooting), technical contract §2, §12, §13, §18 and §19, data contract, CHANGELOG, spec §4 and §5, CLAUDE.md, README step 4, test guides.
+
+**Known limits on real Google (not testable here):**
+- Voice notes may not work inside Google's page (the microphone in Google's frame); typing always works.
+- The signed-in check can't tell "Anyone within meesho.com" from "Only myself": the panel's note and the setup guide say to check that.
+- The signed-in health check has never run on real Google.
+- With several Google accounts in one Chrome, Google may pick the wrong one: use a Chrome profile signed in only with the Meesho account.
+
 ## Half-done and known gaps
 
 **Must be settled at or before the hand-off:**
@@ -158,9 +194,9 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
 - **Read-aloud on the language screen:** none; whether that's an accepted exception is open question 11, below.
 
 **Not done yet (expected):**
-- **Committed locally, not pushed:** Phase 2 is one commit on top of the Phase 1 commit `25c2bfd`, on branch `main` (21 Oct ~16:55 IST; both rewritten at ~17:35 to remove the folder path and the work email, open question 13).
-- **Not pushed:** nothing is pushed. The remote `origin` = https://github.com/PranavAkellaPS37/NPS-Form-.git is set, and the GitHub repo exists but is empty.
-- **No live deployment:** GitHub Pages isn't on, the Sheet isn't created, and the web app isn't deployed. The form's `survey.json` is still in `mock` mode.
+- **Pushed:** Phase 1 (`25c2bfd`) and Phase 2 (`1c99b5e`) are on GitHub (both rewritten at ~17:35 to remove the folder path and the work email, open question 13).
+- **Committed locally, not pushed:** the Meesho-only mode, one commit on top of `1c99b5e`.
+- **GitHub Pages is on** (Pranav, ~18:00). The Sheet and the web app: Pranav was setting them up when he found "Anyone" missing. The form's `survey.json` stays in `mock` mode until "Anyone" is allowed.
 
 ## Next: Phase 2 remaining work (approved by Pranav, 21 Oct ~08:45 IST; do in this order)
 
@@ -205,10 +241,10 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
 10. ~~**Commit Phase 2 locally**, only with Pranav's OK, and no push.~~ **Done** 21 Oct ~16:55 IST (`git log` shows it on top of `25c2bfd`). Nothing is pushed.
 11. **Phase 2 hand-off checklist** for Pranav (STOP for review). What Pranav does by hand, in this order:
     0. **Decide open questions 11, 12 and 14** (below, and spec §6). Question 13 is decided and done: the commits were cleaned before the first push.
-    1. **Push to GitHub:** README, "Phase 2: go live", Step 1. Make a fine-grained token (only this repository; Contents and Workflows: Read and write), then in Terminal: `cd ~/NPSF` and `git push -u origin main`. Username `PranavAkellaPS37`; the password is the token.
-    2. **Switch on GitHub Pages:** README Step 2 (Settings > Pages > Source: GitHub Actions; run the workflow again). The form shows a TEST MODE banner: send no links yet.
+    1. ~~**Push to GitHub.**~~ **Done** (21 Oct, `1c99b5e`).
+    2. ~~**Switch on GitHub Pages.**~~ **Done** (21 Oct). The form shows a TEST MODE banner: send no links from it yet.
     3. **Create the Sheet, paste the four code files, run Set up or repair, check version 1:** setup guide (`apps-script/README.md`) Parts A–B, steps 1–7.
-    4. **Put the backend online:** check with IT that "Anyone" is offered (step 8), deploy the web app (step 9), record its `/exec` address in the panel with **Check and save** (step 10), and check it in an Incognito window (step 11).
+    4. **Put the backend online:** IT doesn't offer "Anyone" yet (21 Oct), so for now deploy as "Anyone within meesho.com" (the Meesho-only mode; steps under "Exact next action"). Once IT allows "Anyone": Deploy > Manage deployments > Edit > Who has access: Anyone, Check and save again in the panel, Make links again, and check in an Incognito window (setup guide steps 8–11).
     5. **New, 2 minutes: check two Google features.** In the Apps Script editor: **+** > **Script**, name it `checkGoogle`, paste `function checkGoogle() { console.log('getDocumentLock' in LockService, 'requireAllScopes' in ScriptApp); }`, save, pick `checkGoogle` in the function menu, click **Run**, and read the Execution log. It must say `true true` (otherwise admins share the partners' lock, and Google never re-asks for permissions). Then delete that file (⋮ > Delete) and send Claude the result.
     6. **Connect the form:** setup guide Part D, steps 12–13 (the recorded address goes into `web/config/survey.json` through **Publish > Backup copy in GitHub**), then push.
     7. **Live smoke test:** setup guide Part E, steps 14–16. It must end with "All 9 checks passed"; it is safe to run again (a new fake DC each run).
@@ -224,7 +260,7 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
 - an audio-clip editor in the panel;
 - skip downloading the form's own `survey.json` when the live one arrives.
 
-**Estimate (12:15 IST):** item 7 about 1 hour (the review workflow and its fixes), items 10–11 about 30 minutes; hand-off today, ~15:30–16:00 IST.
+**Timing:** the hand-off happened at ~16:55 IST (estimated at 12:15 for ~15:30–16:00); the Meesho-only mode took ~18:00–20:54 IST (estimated ~21:30–22:00).
 
 ## Decisions: all 8 answered on 21 Oct (Pranav accepted every recommendation; details in [spec.md §6](spec.md#6-open-questions))
 
@@ -258,26 +294,28 @@ Four new questions came out of the critics' check on 21 Oct; they're under "Wait
 **At the hand-off:**
 - a GitHub personal access token (this Mac has no GitHub login);
 - the company Google account;
-- an IT check that Apps Script web apps may be shared with "Anyone".
+- **IT permission for "Anyone"** on Apps Script web apps (21 Oct: Meesho's Google offers only "Anyone within Meesho"). Partners outside Meesho can't open the survey until IT allows it; until then only the Meesho-only demo works.
 
 ## Tests: where they live and the last results
 
-All developer suites are in [`tests/`](../tests/README.md): run `cd tests && npm install` once, then each command from the project folder. Results of 21 Oct, after the item 7 review fixes:
+All developer suites are in [`tests/`](../tests/README.md): run `cd tests && npm install` once, then each command from the project folder. Results of 21 Oct, after the Meesho-only review fixes (the code that is committed):
 
 | Suite | Command | Last run (21 Oct, IST) | Result |
 |---|---|---|---|
-| Flow rules | `node tests/flow/flow_test.js` | 16:44 | 8/8 pass |
-| Questionnaire logic | `node tests/model/test_model.js` | 16:44 | 195/195 pass |
-| Shrinking save | `node tests/model/strict/shrink_check.js` | 16:44 | pass |
-| Fix checks | `node tests/fixes/verify.js`, `node tests/fixes/verify-locks.js` | 16:44 | 81/81 and 40/40 pass |
-| Google imitation | `node tests/gas-harness/run-tests.js` | 16:40 | 41 pass, 1 warn (S: Model.gs `var` lists, open question 14), 0 fail; 42 scenarios, 1,821 checks; self-test 41/41; 38 s |
-| Planted mistakes | `cd tests/gas-harness && python3 tools/plant-bugs.py` | 16:20 | 33 of 33 caught |
-| Control panel bench | `node tests/panel/test.js` | 15:20 | 52/52 pass |
-| Form, end to end | `node tests/e2e/e2e.js` | 16:46–16:51 | 23/23 pass |
-| Settings check | `python3 scripts/check_config.py` | 16:44 | 0 errors, 1 expected warning (the demo round is fake); page weight 73% of 300 KB |
-| Smoke test, fresh local test server | `python3 scripts/smoke_test.py --url http://localhost:8867/api` | 16:45 | 9/9 |
-| Smoke test, Google imitation (strict) | `node tests/gas-harness/server.js --setup --open-round SMOKE-R1 --port 8970`, then `--url http://127.0.0.1:8971/exec --secret … --expect-strict` | 12:07 | 9/9 twice |
-| Python compile | (all `scripts/*.py`) | 16:45 | 5/5 |
+| Flow rules | `node tests/flow/flow_test.js` | 20:50 | 8/8 pass |
+| Questionnaire logic | `node tests/model/test_model.js` | 20:50 | 195/195 pass |
+| Shrinking save | `node tests/model/strict/shrink_check.js` | 20:50 | pass |
+| Fix checks | `node tests/fixes/verify.js`, `node tests/fixes/verify-locks.js` | 20:50 | 81/81 and 40/40 pass |
+| Google imitation | `node tests/gas-harness/run-tests.js` | ~20:42 | 42 pass, 1 warn (S: Model.gs `var` lists, open question 14), 0 fail; 43 scenarios, 1,895 checks; 38 s. Self-test 41/41 (20:52) |
+| Planted mistakes | `cd tests/gas-harness && python3 tools/plant-bugs.py` | 20:50 | 41 of 41 caught |
+| Control panel bench | `node tests/panel/test.js` | ~20:44 | 53/53 pass |
+| Form, end to end | `node tests/e2e/e2e.js` | ~20:46 | 24/24 pass |
+| Settings check | `python3 scripts/check_config.py` | 20:50 | 0 errors, 1 expected warning (the demo round is fake); page weight 74% of 300 KB |
+| Smoke test, fresh local test server | `python3 scripts/smoke_test.py --url http://localhost:8992/api` | 20:53 | 9/9 |
+| Smoke test, Google imitation (strict) | `node tests/gas-harness/server.js --setup --open-round SMOKE-R1 --port 8974`, then `--url http://127.0.0.1:8975/exec --secret … --expect-strict` | 20:47 | 9/9 |
+| Python compile | (all `scripts/*.py`) | 20:50 | 5/5 |
+
+The four browser suites ran one after another in one background run that ended at 20:47 (its log is in the session scratchpad, `regression-final.log`); the times marked ~ are estimated from that run.
 
 For comparison, the morning (after item 3): logic 192/192, fix checks 81/81 and 36/36, Google imitation 26 pass / 2 warn / 5 fail (33 scenarios), planted mistakes 7 of 11, bench 50/50, end to end 21/21.
 
@@ -294,7 +332,7 @@ The summary's file sizes were also out of date: Code.gs is 117 KB, Model.gs 183 
 
 ## Environment notes
 
-- **Git:** two commits on branch `main`: `25c2bfd` (Phase 1) and the Phase 2 commit. Their author email is `PranavAkellaPS37@users.noreply.github.com`, also this project's git email. The remote `origin` is `https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git` (the username is in the address because this Mac's Keychain holds a login for another GitHub account). Nothing is pushed yet; a backup bundle of the commits before the clean-up is in the session scratchpad (`before-cleanup.bundle`).
+- **Git:** on branch `main`: `25c2bfd` (Phase 1) and `1c99b5e` (Phase 2), both pushed; then the Meesho-only commit, local only. Their author email is `PranavAkellaPS37@users.noreply.github.com`, also this project's git email. The remote `origin` is `https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git` (the username is in the address because this Mac's Keychain holds a login for another GitHub account). A backup bundle of the commits before the clean-up is in the session scratchpad (`before-cleanup.bundle`).
 - **Tests:** `tests/node_modules/` comes from `npm install` (git-ignored). The suites start their own local servers: run the browser suites one at a time. Claude's agents use a lock for that (scratchpad `lockrun.py`).
 - **Agent runs today:** items 5–6 = workflow `wf_fb839446-008` (done 12:01 IST; every report and verdict is in its journal). The stopped 20 Oct fix run (`wf_c94fdce0-475`) is fully replaced by items 5–6.
 - **Old test server:** gone since the 21 Oct restart. Start a fresh one with `python3 scripts/mock_server.py` when needed.
@@ -303,12 +341,20 @@ The summary's file sizes were also out of date: Code.gs is 117 KB, Model.gs 183 
 
 ## Exact next action
 
-**Saved at 12:15 IST on 21 Oct.**
+**Saved at 20:54 IST on 21 Oct.** The Meesho-only mode is done (see Done): built, reviewed (`wf_8bcc034a-679`, all 7 findings fixed), every suite green, committed locally on top of `1c99b5e` (not pushed). Nothing is running.
 
-1. ~~The full end-to-end run~~ **done: 23/23 at 12:15 IST** (docs updated).
-2. ~~Item 7~~ **done** (see Done; the final end-to-end run passed 23/23 at 16:51).
-3. ~~Item 10~~ **done**: Phase 2 committed locally (not pushed).
-4. **Item 11: the hand-off.** The checklist is in "Next" above (item 11). Claude presents it and STOPS for Pranav's review. Raise open questions 11–14 (spec §6); question 13 must be decided before the first push.
+**Next: Pranav runs the BU head demo** (Claude sent him these steps right after the commit):
+1. **Push** (`cd ~/NPSF`, then `git push`), and wait for the green tick under GitHub > Actions. The survey page loads the form's scripts from GitHub Pages, so the new `web/js` must be online first.
+2. **Paste all four Apps Script files again** (Code.gs, Model.gs, PanelServer.gs, Panel.html), and save.
+3. **Deploy > Manage deployments > Edit (pencil) > Version: New version**, with Execute as: Me and Who has access: Anyone within meesho.com. Deploy.
+4. **Panel > Home > web app address > Check and save.** It must say "Saved as Meesho-only".
+5. **Rounds:** a new test round, e.g. `DEMO-BU1` (DEMO rounds never lock the codes), then open it.
+6. **DCs tab:** a fake DC, e.g. `DC-DEMO-BU`; then **Links > Make links**, and copy that DC's link.
+7. **The BU head** opens the link in Chrome, signed in with their Meesho account.
+
+**Then:** if anything fails on real Google, Pranav sends the exact message and Claude fixes it. When IT allows "Anyone": Deploy > Manage deployments > Edit > Who has access: Anyone (the address stays the same), then Check and save, then Make links again, then Publish > Backup copy in GitHub (hand-off item 6). After that, the hand-off checklist (item 11) and open questions 11, 12 and 14.
+
+**Offered, not decided:** the panel could re-check the web app's access by itself when it opens, so a switch to "Anyone" needs no Check and save.
 
 **Lessons from today:**
 - Read the clock (`date`) before writing any time into this file or the status page. Four times written this morning were estimated ahead and had to be corrected.
