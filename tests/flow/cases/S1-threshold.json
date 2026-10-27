@@ -1,0 +1,18 @@
+{
+ "_about": "Graph format: survey.json's deep_dive > threshold (2) says something else than the flow's own default threshold for the areas (3), which phones follow.",
+ "base": "graph",
+ "survey": {
+  "deep_dive": {
+   "threshold": 2,
+   "when": "after_all_ratings",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error"
+  }
+ ]
+}

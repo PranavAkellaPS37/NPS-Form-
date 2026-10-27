@@ -4,14 +4,15 @@ apps-script/README.md: set up the Google Sheet control panel and the live backen
 ===============================================================================
 What this file is for
   Step-by-step instructions to create the Google Sheet "Valmo Partner Pulse -
-  Control", paste the four Apps Script code files into it, run set-up and
+  Control", paste the five Apps Script code files into it, run set-up and
   publish the first version of the questionnaire, check that Google lets the
   web app be open to "Anyone", put the backend online as a web app and record
   its address in the control panel, point the survey form at it (and push
   that to GitHub), run the smoke test against the live backend, try it on a
   phone, and share the Sheet and its Drive folder with colleagues. Also: how
-  to update the code later, an optional developer route (clasp), and a
-  troubleshooting table.
+  to update the code later (with the checklist for the release that added
+  the route tools and the fifth file, Flow), an optional developer route
+  (clasp), and a troubleshooting table.
 
 Who it is for
   The admin who sets everything up once (a company Google account is needed).
@@ -52,7 +53,7 @@ It takes about **an hour** the first time. Do the steps in order.
 > [!IMPORTANT]
 > **Before you start**
 >
-> 1. **The project must already be on GitHub, with GitHub Pages switched on.** Do steps 1 and 2 of [Phase 2: go live](../README.md#phase-2-go-live) in the main README first. Set-up reads the questionnaire from the GitHub copy, and Part D changes the form online.
+> 1. **The project must already be on GitHub, with GitHub Pages switched on.** Do steps 1 and 2 of [Phase 2: go live](../README.md#phase-2-go-live) in the main README first. Set-up reads the questionnaire from the GitHub copy, Publish first checks that the form on GitHub Pages understands the new version, and Part D changes the form online.
 > 2. **Use your company Google account** (your `@meesho.com` address). Everything (the Sheet, the code, the answers) will belong to this account.
 > 3. **Use a Chrome window where only that Google account is signed in.** When several Google accounts are signed in at once, Apps Script often picks the wrong one and shows errors such as "Sorry, unable to open the file at this time". The simplest way: in Chrome, click your profile picture (top right) > **Add** (or **Add Chrome profile**), sign in with the company account only, and do this whole guide in that window.
 
@@ -97,16 +98,20 @@ It takes about **an hour** the first time. Do the steps in order.
 
 This code is "bound" to the Sheet: it lives inside the Sheet, not as a separate file in Drive. To open it again later, always use **Extensions > Apps Script** from the Sheet.
 
-### Step 3: Add the four code files
+### Step 3: Add the five code files
 
-The code is in the project folder on this Mac, in the `apps-script` folder. The editor needs **four files**:
+The code is in the project folder on this Mac, in the `apps-script` folder. The editor needs **five files**:
 
 | Name to give it in the editor | Kind | Copy its content from |
 |---|---|---|
 | `Code` | Script (already there as **Code.gs**) | `apps-script/Code.gs` |
 | `Model` | Script | `apps-script/Model.gs` |
 | `PanelServer` | Script | `apps-script/PanelServer.gs` |
+| `Flow` | Script | `apps-script/Flow.gs` |
 | `Panel` | HTML | `apps-script/Panel.html` |
+
+> [!NOTE]
+> **What `Flow` is.** The questionnaire's **route code**: which screen comes after which (rules, jumps, questions asked for each area, endings). It is the same code partners' phones run, copied into one file by a command (`python3 scripts/flow.py build-gs`), so never edit it by hand. Without it, the control panel can't check, publish, preview or import the questionnaire, and its Map and Try a path don't work. It is the biggest file, about 480 KB: after pasting, give the editor a moment before you save.
 
 > [!NOTE]
 > **Why "PanelServer" and not "Panel"?** Apps Script does not let a Script file and an HTML file have the same name, and the HTML file **must** be called `Panel` (the code opens the panel by that name). So the panel's script half is called `PanelServer`, in the project folder and in the editor.
@@ -120,7 +125,7 @@ The code is in the project folder on this Mac, in the `apps-script` folder. The 
    LANG=en_US.UTF-8 pbcopy < apps-script/Code.gs
    ```
 
-   For the other files, use the same command with `apps-script/Model.gs`, then `apps-script/PanelServer.gs`, then `apps-script/Panel.html`.
+   For the other files, use the same command with `apps-script/Model.gs`, then `apps-script/PanelServer.gs`, then `apps-script/Flow.gs`, then `apps-script/Panel.html`.
 
    What it does: copies the whole file to the clipboard, as if you had selected it all and pressed Cmd+C. Nothing is printed. (`LANG=en_US.UTF-8` keeps Hindi letters and emoji intact.)
 
@@ -130,7 +135,7 @@ The code is in the project folder on this Mac, in the `apps-script` folder. The 
 
 3. **Paste.** Click the file's name on the left to open it. Click inside the code area, press **Cmd+A** (select everything already there, including Google's sample lines), then **Cmd+V** (paste).
 
-**You should see** four files on the left: **Code.gs**, **Model.gs**, **PanelServer.gs** and **Panel.html**. Each one starts with a long comment explaining what it is.
+**You should see** five files on the left: **Code.gs**, **Model.gs**, **PanelServer.gs**, **Flow.gs** and **Panel.html** (the editor may list them in another order). Each one starts with a long comment explaining what it is.
 
 You do not need `apps-script/appsscript.json` or `apps-script/README.md` in the editor. (The first is only for the optional [clasp route](#optional-the-clasp-route-for-developers).)
 
@@ -152,7 +157,7 @@ Go back to the Sheet's tab and reload the page (**Cmd+R**).
 
 **You should see:** after a few seconds, a new menu **Partner Pulse** to the right of **Help**. It has: **Open control panel**, **Preview the draft form**, **Publish…**, **Generate links…**, then (below a line) **Share the Drive folder with all editors**, **Set up or repair** and **Help**.
 
-**If it goes wrong:** wait 10 seconds and reload again. Still no menu? Check in the Apps Script tab that all four files are saved (step 4).
+**If it goes wrong:** wait 10 seconds and reload again. Still no menu? Check in the Apps Script tab that all five files are saved (step 4).
 
 ### Step 6: Run "Set up or repair", and allow the permissions
 
@@ -172,7 +177,7 @@ Go back to the Sheet's tab and reload the page (**Cmd+R**).
 |---|---|
 | See, edit, create and delete all your Google Sheets spreadsheets | To build the tabs of this Sheet, and to create one **data spreadsheet** per round, where the answers are saved. |
 | See, edit, create and delete all of your Google Drive files | To create the **Valmo Partner Pulse** folder, save each published version of the questionnaire, save partners' voice notes, and share the folder with colleagues when you ask it to. |
-| Connect to an external service | To read the questionnaire from the GitHub copy (set-up, and **Import from GitHub**). |
+| Connect to an external service | To read the questionnaire from the GitHub copy (set-up, and **Import from GitHub**); to check the web app address (**Check and save**); to read the form's route code on GitHub Pages, as text (never run): Publish checks that the form understands the new version, and **Home** compares it with the panel's own; and, in Meesho-only mode (step 8), to fetch the form's page from GitHub Pages. |
 | Display and run third-party web content in prompts and sidebars inside Google applications | To show the control panel window inside the Sheet. |
 | See your primary Google Account email address | To record **who** published each version, saved changes or generated links. |
 
@@ -187,7 +192,7 @@ Set-up now builds the tabs, the Drive folders and the link secret. Because the q
 | **Copy the questionnaire from GitHub** (with an address box) | Leave the box empty and click **OK**. Set-up copies the questionnaire from the GitHub copy of the project into the tabs. |
 | **Publish version 1 now?** | Click **Yes**. This makes the copied questionnaire the live version 1. Nobody can answer yet: a round still has to be opened. |
 
-**You should see:** after up to a minute, a window **Set-up finished**. Under **What set-up did** it lists the tabs and folders it created, "Copied the questionnaire from GitHub (9 screens, 6 areas, 30 problem chips, 132 texts)" and "Published version 1 (p1-…)". Then three **NEXT STEPS**: make the web app, paste its address into the control panel and click **Check and save**, and how to update the code later. That is [Part C](#part-c-put-the-backend-online) below, step by step. The last line says "Web app address recorded in the control panel: none yet (see steps 1 and 2)", which is right for now. Click **OK**.
+**You should see:** after up to a minute, a window **Set-up finished**. Under **What set-up did** it lists the tabs and folders it created, "Copied the questionnaire from GitHub (9 screens, 6 areas, 30 problem chips, 133 texts)" and "Published version 1 (p1-…)". Then three **NEXT STEPS**: make the web app, paste its address into the control panel and click **Check and save**, and how to update the code later. That is [Part C](#part-c-put-the-backend-online) below, step by step. The last line says "Web app address recorded in the control panel: none yet (see steps 1 and 2)", which is right for now. Click **OK**.
 
 In the Sheet, new tabs appear at the bottom:
 
@@ -207,6 +212,9 @@ Behind the scenes, set-up also:
 **If it goes wrong:**
 
 - "Could not copy the questionnaire" in the list of what set-up did: check that you pushed the project (README, Phase 2 step 1) and that the repository is public. Then copy it from the control panel: **Settings**, card **Import from GitHub** > **Import…** > **Import**, and publish (step 7).
+- "Could not copy the questionnaire: The script file "Flow" is missing from the Apps Script project …": the fifth file was not pasted. Add it (step 3), save, and run **Set up or repair** again.
+- "Not published yet: … The form on GitHub is older than this control panel: upload the new form code first, wait for the green tick, then publish.": GitHub Pages still has an older copy of the form, which would not understand version 1. Push the project (README, Phase 2 step 1), wait for the green tick in GitHub's **Actions** tab, then publish (step 7).
+- "Please check: Published, but Partner Pulse could not check that the form on GitHub understands this version (…)": version 1 is live, but Google could not reach the form on GitHub Pages just then. Make sure GitHub Pages is switched on and shows the form (README, Phase 2 step 2). Every later Publish checks again.
 - "Set-up stopped": Google was busy or a permission is missing. Wait a minute and run **Set up or repair** again. Nothing is deleted.
 - "This app is blocked": Meesho's Google admin blocks scripts like this one. Ask IT to allow Apps Script for your account (see [Troubleshooting](#troubleshooting)).
 
@@ -230,6 +238,9 @@ What happened: version 1 was saved as the file `p1.json` in the Drive folder **V
 2. In **A short note for the history**, type `Version 1: questionnaire from GitHub`, and click **Publish version 1**. A window **Publish version 1?** shows your note: click **Publish now**.
 
    **You should see:** a window **Version 1 is live**. Click **OK**.
+
+> [!NOTE]
+> **The Map needs the website `cdn.jsdelivr.net`.** In the control panel, **Questions > Map** draws the route with a drawing library that your browser downloads from `cdn.jsdelivr.net` (about 750 KB, one exact version; the browser refuses any other file). If the company network or a browser setting blocks that website, the Map shows the same route as a list instead, after at most 20 seconds. Everything else in the panel works without it. **[UNCONFIRMED]** that Google's panel window lets the library load at all: it was tested only in Chrome outside Google.
 
 ---
 
@@ -329,10 +340,10 @@ An Incognito window is not signed in to Google, just like a partner's phone.
 **You should see** one line of text like this:
 
 ```json
-{"ok":true,"service":"valmo-partner-pulse","mode":"live","time":"2026-10-20T10:15:00.000Z","live_version":1,"runs_as_owner":true}
+{"ok":true,"service":"valmo-partner-pulse","mode":"live","time":"2026-10-20T10:15:00.000Z","live_version":1,"runs_as_owner":true,"form_page":true,"flow_engine":2,"flow_fingerprint":"b3ab8b63d8f2…"}
 ```
 
-`"live_version":1` means the web app sees version 1, published in step 7. `"runs_as_owner":true` means the web app runs as the account that ran set-up, so answers and voice notes are saved in your Drive. (The answer never shows the email address itself: anyone can ask for it.)
+`"live_version":1` means the web app sees version 1, published in step 7. `"runs_as_owner":true` means the web app runs as the account that ran set-up, so answers and voice notes are saved in your Drive. (The answer never shows the email address itself: anyone can ask for it.) `"flow_engine":2` and `"flow_fingerprint"` (a long code that changes with every new `Flow.gs`; it is written near the top of that file as `PP_FLOW_FINGERPRINT_`) say which route code the web app runs: they come from the **Flow** file. `"flow_engine":null` means the web app runs without it: paste `Flow.gs` (step 3) and deploy a **New version** ([Update the code later](#update-the-code-later-same-address), step 3).
 
 You can also replace `?action=health` with `?action=bootstrap&round=DEMO-R1`. **You should see** a long line starting with `{"ok":true,"draft":false,"round":{"id":"DEMO-R1","status":"draft"},"version":1,...`: the whole published questionnaire. It is public on purpose (it contains no partner data). The unpublished draft is not: adding `&draft=1` answers `{"ok":false,"error":"bad_preview_key"}`, because only preview links made by the control panel carry the private preview key.
 
@@ -542,7 +553,7 @@ Go back to the main README, [Phase 2: go live](../README.md#phase-2-go-live), fo
 When a developer gives you a new version of the code:
 
 1. Open the Sheet > **Extensions > Apps Script**.
-2. Paste the new content into each changed file, exactly as in step 3 (each project file goes into the editor file with the same name). Paste **all** the changed files before you use the panel again: `Panel` and `PanelServer` work as a pair. Save (**Cmd+S**).
+2. Paste the new content into each changed file, exactly as in step 3 (each project file goes into the editor file with the same name). **If a file of the step 3 table is missing in the editor, create it first** (for example `Flow`, new since 26 Oct 2026): **+** next to **Files** > **Script** (**HTML** only for `Panel`), with the name from the table. Paste **all** the changed files before you use the panel again: the files work together (`Panel` and `PanelServer` as a pair, and `Model` with `Flow`). Save (**Cmd+S**).
 3. **Deploy > Manage deployments**. Select the active deployment (`Partner Pulse`), click the **pencil icon** (Edit), set **Version** to **New version**, and click **Deploy**.
 
 **You should see:** the same **Web app URL** as before. Nothing needs to change in `web/config/survey.json`, and the address recorded in the control panel stays as it is.
@@ -552,7 +563,19 @@ Good to know:
 - The **control panel** uses your saved code straight away. The **web app** (what partners use) only changes when you make a **New version** (step 3).
 - **Never** use **Deploy > New deployment** for an update: it creates a **new address**, while the form keeps sending answers to the old one, which keeps running the old code. (If a new address is ever really needed, record it in the panel with **Change**, as in step 10, and put it into `web/config/survey.json`, as in steps 12 and 13.)
 - If the panel says "The script behind this Sheet has no step called …", one of the files was not pasted (usually `PanelServer`). Paste it, save, and open the panel again.
-- If the developer says so, run **Partner Pulse > Set up or repair** afterwards, to add any new tabs or settings.
+- If the developer says so, run **Partner Pulse > Set up or repair** afterwards, to add any new tabs, columns or settings.
+
+### This release: the route tools and the fifth file
+
+The release of 26 Oct 2026 adds jumps, questions asked for each area, extra endings, the Map and Try a path ([control panel guide, Recipes 13 to 20](../docs/control-panel.md#how-the-route-works)). Every Apps Script file changed, and there is a new one, **Flow**. Do it in this order:
+
+1. **Put the new form on GitHub first.** Upload the newest project as in the main README, [Phase 2, step 1](../README.md#step-1-put-the-project-on-github) (`git status --ignored`, then `git add -A`, `git commit -m "…"` and `git push`), and wait for the green tick in GitHub's **Actions** tab. Why first: Publish refuses a questionnaire with the new route while the form on GitHub is older ("The form on GitHub is older than this control panel …"), and in Meesho-only mode the survey page loads the form's scripts from GitHub.
+2. **Paste all five files**: `Code`, `Model`, `PanelServer`, `Panel` and `Flow`. Create `Flow` first (**+** next to **Files** > **Script** > `Flow`). Save (**Cmd+S**). **You should see** five files and no red message.
+3. **Run Partner Pulse > Set up or repair** (in the Sheet; reload the Sheet first if the menu was already open). It adds three columns at the right end of the **Screens** tab: `next` (the panel's "Usually go to"), `jumps` and `repeat` (the panel's "Ask this question"), with a note on each heading and a drop-down list in `repeat`. **You should see** the window **Set-up finished** (it may say that everything was already in place), and those three headings at the end of the **Screens** tab. If you skip this step, the panel's first **Save** adds the three columns too, without the notes.
+4. **Make a New version** of the web app (step 3 of this section). The web app address doesn't change, so the address recorded in the control panel stays as it is: no need to click **Check and save** again, and nothing changes in `web/config/survey.json`. To check it: open the address with `?action=health` in an Incognito window ([step 11](#step-11-quick-check-in-an-incognito-window)). **You should see** `"flow_engine":2` in the line.
+5. **Open the control panel.** **You should see**, on **Home**, no red banner "The form on GitHub does not run the same route code as this control panel" (if there is one, step 1 or 2 is not finished, or GitHub Pages still serves its old copy: wait 10 minutes and open the panel again), and in **Questions** the buttons **Map** and **Try a path**, and below the list the section **Other routes and endings**.
+6. **Run the live smoke test** ([steps 15 and 16](#step-15-copy-the-link-secret)). **You should see** "All 9 checks passed."
+7. **Check the new column of the pings tab.** Control panel > **Rounds** > `SMOKE-R1` > **Answers sheet** > the tab **pings**. **You should see** that the last column's heading is **config_version**, and that the newest row (at the bottom) says `smoke-test` in it. If `SMOKE-R1`'s answers sheet is older than this release, the smoke test's "opened" signal has just added that column, right after **events_json**; older rows stay empty in it. **[UNCONFIRMED]** until you see it: adding that column to an older sheet was tested only in a local imitation of Google.
 
 ---
 
@@ -583,17 +606,17 @@ Good to know:
    printf '{"scriptId":"%s"}\n' "PASTE-THE-SCRIPT-ID" > .clasp.json
    ```
 
-   Why a separate folder: clasp uploads every code file in its folder and replaces the online project with them, so it gets a folder holding only the five files Apps Script needs. Nothing in the project folder changes.
+   Why a separate folder: clasp uploads every code file in its folder and replaces the online project with them, so it gets a folder holding only the six files Apps Script needs (the five code files and the manifest). Nothing in the project folder changes.
 6. Upload the code (every time it changes):
 
    ```bash
    cd ~/NPSF
-   cp apps-script/Code.gs apps-script/Model.gs apps-script/PanelServer.gs apps-script/Panel.html apps-script/appsscript.json ~/partner-pulse-clasp/
+   cp apps-script/Code.gs apps-script/Model.gs apps-script/PanelServer.gs apps-script/Flow.gs apps-script/Panel.html apps-script/appsscript.json ~/partner-pulse-clasp/
    cd ~/partner-pulse-clasp
    clasp push
    ```
 
-   What it does: copies the four code files and the project's manifest (`appsscript.json`, only used on this route) into the upload folder, then uploads them. **`clasp push` replaces every file in the online project**, including anything pasted by hand.
+   What it does: copies the five code files and the project's manifest (`appsscript.json`, only used on this route) into the upload folder, then uploads them. **`clasp push` replaces every file in the online project**, including anything pasted by hand: a file missing from the upload folder (for example `Flow.gs`) disappears from the online project too.
 7. Make the update live for partners as in [Update the code later](#update-the-code-later-same-address), step 3 (**Manage deployments > Edit > New version**). Do not use `clasp` to create deployments: a new deployment gets a new address.
 
 ---
@@ -602,10 +625,15 @@ Good to know:
 
 | What you see | What it means | What to do |
 |---|---|---|
-| No **Partner Pulse** menu after reloading the Sheet | The code is not saved, or not finished loading. | Wait 10 seconds and reload. Check that all four files are saved (step 4). In the Apps Script editor, **Executions** (left, list icon) shows errors in red. |
+| No **Partner Pulse** menu after reloading the Sheet | The code is not saved, or not finished loading. | Wait 10 seconds and reload. Check that all five files are saved (step 4). In the Apps Script editor, **Executions** (left, list icon) shows errors in red. |
+| "The script file "Flow" is missing from the Apps Script project …" (when you check, publish, preview, import or run set-up), or in **Questions** "The route tools … could not start: The script file "Flow" is missing …" | The fifth file was never pasted (or a `clasp push` removed it). | Create it and paste `apps-script/Flow.gs` ([step 3](#step-3-add-the-five-code-files)), save, then make a **New version** ([Update the code later](#update-the-code-later-same-address), step 3). Open the panel again. |
+| `?action=health` shows `"flow_engine":null` | The web app runs without the **Flow** file: it was not pasted, or no **New version** was deployed after pasting it. | Paste `Flow.gs` (step 3), save, and deploy a **New version**. |
+| A red banner on the control panel's **Home**: "The form on GitHub does not run the same route code as this control panel." | The form on GitHub Pages and the `Flow` file come from different copies of the project. | Upload the newest project to GitHub and wait for the green tick, and paste the newest `apps-script/Flow.gs`. Both from the same copy ([This release](#this-release-the-route-tools-and-the-fifth-file), steps 1 and 2). |
+| Publish says "The form on GitHub is older than this control panel: upload the new form code first, wait for the green tick, then publish." | The form on GitHub Pages doesn't understand the new route format yet. Nothing was published. | Upload the newest project to GitHub (main README, [Phase 2, step 1](../README.md#step-1-put-the-project-on-github)), wait for the green tick in **Actions**, then publish again. |
+| The control panel's **Map** shows a list and "The diagram could not be drawn here (…)" | The browser could not load the drawing library from `cdn.jsdelivr.net` within 20 seconds, for example because the network blocks that website. | Nothing breaks: the list shows the same route, and **Open in mermaid.live ↗** draws it in a new tab. If you want the drawing in the panel, ask IT whether `cdn.jsdelivr.net` can be allowed. |
 | "A file with this name already exists" when adding a file | A Script file and the HTML file both have the name `Panel`. | Name the Script file `PanelServer` (step 3). To rename a file: the **⋮** next to its name > **Rename**. |
 | `Syntax error ... line N file X` when saving | A paste was cut short or went into the wrong file. | Copy that file again and paste it over everything (Cmd+A, Cmd+V). Then save. |
-| "Sorry, unable to open the file at this time" | Several Google accounts are signed in, and Google picked the wrong one. | Use a Chrome profile, or an Incognito window, signed in with the company account only. |
+| "Sorry, unable to open the file at this time" | Several Google accounts are signed in, and Google picked the wrong one; or (Meesho-only mode) the link was opened inside another app's built-in browser (Instagram, WhatsApp, Slack…), which isn't signed in to Google; or **Who has access** is **Only myself**. | Use a Chrome profile, or an Incognito window, signed in with the company account only. On a phone, open the link in Chrome or Safari, not inside another app. Check **Deploy > Manage deployments > Who has access**. |
 | "Authorization is required", or "Google says Partner Pulse needs authorization" | Usually Google is using another of your Google accounts (several are signed in to Chrome). Less often, a permission was left unticked. | Open the Sheet in a Chrome profile (or an Incognito window) signed in only with the company account, and try again. If that does not help, use the **Partner Pulse** menu again (for example **Open control panel**): on Google's permission screen, tick **Select all**, then click **Continue**. |
 | "Google has not given Partner Pulse all the permissions it needs", "Google needs all of Partner Pulse's permissions", or "You do not have permission to call…" | A permission was left unticked on Google's permission screen. | Use the **Partner Pulse** menu again (for example **Open control panel**). On Google's permission screen, tick **Select all**, then click **Continue**. |
 | "This app is blocked" | Meesho's Google admin does not allow this kind of script. | Ask IT to allow Google Apps Script for your account (or to trust this script). |

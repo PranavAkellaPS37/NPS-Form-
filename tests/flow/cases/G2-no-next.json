@@ -1,0 +1,18 @@
+{
+ "_about": "A screen that is not an ending and has no \"next\".",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "remove_field",
+   "node": "one_fix",
+   "field": "next"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

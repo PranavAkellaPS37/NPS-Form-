@@ -6,14 +6,21 @@
      columns, copied from docs/control-panel-design.md (sections 3, 5, 6, 11)
      so the tests compare the code against the CONTRACT, not against itself.
      It also reads the repo's own files (survey.json, strings.json, ...) to
-     know what an import from GitHub should produce.
+     know what an import from GitHub should produce. Since 23 Oct 2026 (stage 4
+     of the flow-graph work) the published route is a graph, and since 26 Oct
+     2026 web/config/survey.json holds that graph too (written by "python3
+     scripts/flow.py migrate --write"): repoFacts().graph is the repo's graph
+     without its note, and repoFacts().migrated is the repo file itself. (For
+     a project copy whose flow is still the old list, both are made in memory
+     with web/js/flow.js and web/js/flow-panel.js, as before.)
 
    HOW TO USE IT
      const C = require('./lib/contract');  C.CONTROL_TABS['Texts'] ...
 
    WHAT IT READS
-     the project's web/config/*.json, web/i18n/strings.json and
-     scripts/check_config.py (for FIXED_STRING_KEYS). Never writes anything.
+     the project's web/config/*.json, web/i18n/strings.json,
+     web/js/flow.js, web/js/flow-panel.js and scripts/check_config.py (for
+     FIXED_STRING_KEYS). Never writes anything.
    ============================================================================= */
 'use strict';
 
@@ -30,8 +37,9 @@ const CONTROL_TABS = {
   Areas: ['order', 'area_id', 'threshold', 'active'],
   Chips: ['area_id', 'order', 'chip_code', 'active'],
   Support: ['order', 'item_code', 'active'],
+  // stage 4 of the flow-graph work (23 Oct 2026): next, jumps, repeat after active (docs/flow-engine.md 9.1)
   Screens: ['order', 'screen_id', 'type', 'text_key', 'required', 'show_if', 'skip_if', 'options', 'low_label',
-    'high_label', 'scale_hint', 'body', 'active'],
+    'high_label', 'scale_hint', 'body', 'active', 'next', 'jumps', 'repeat'],
   Texts: ['key'].concat(LANGS, ['note']),
   'What changed': ['round_id', 'order'].concat(LANGS),
   'Audio clips': ['key', 'lang', 'url'],
@@ -62,8 +70,10 @@ const DATA_TABS = {
     'transcript_lang', 'transcribed_at', 'cls_function', 'cls_issue_code', 'cls_severity', 'cls_sentiment',
     'cls_summary_en', 'cls_confidence', 'cls_unmapped', 'cls_new_theme_label', 'cls_provider', 'classified_at'],
   events: ['received_at', 'submission_id', 'session_id', 'dc', 'round', 'seq', 'screen', 'at'],
+  // config_version: the LAST column since 26 Oct 2026 (flow-graph stage 6, Pranav's decision 11;
+  // docs/submission-format.md section 9). Older spreadsheets get it from their first ping (scenario D12).
   pings: ['received_at', 'stage', 'dc', 'round', 'session_id', 'lang', 'screen', 'step_index', 'step_total', 'at',
-    'token_valid', 'mode', 'client_net', 'events_json']
+    'token_valid', 'mode', 'client_net', 'events_json', 'config_version']
 };
 
 // Section 5: every Settings row. [key, type, default, min, max, options]
@@ -137,26 +147,61 @@ function readJson(rel) {
   return JSON.parse(fs.readFileSync(path.join(REPO, rel), 'utf8'));
 }
 
+/* The form's route engine and the panel's helpers, as phones and the command line load them. */
+const FLOW = require(path.join(REPO, 'web/js/flow.js'));
+const FLOW_PANEL = require(path.join(REPO, 'web/js/flow-panel.js'));
+
+/* "node scripts/flow.js map" for a web folder (default: the project's web/): docs/flow.md as that command
+   writes it (read only: it prints to stdout). The panel's GitHub copy must give exactly this text. */
+const mapCache = {};
+function flowMap(webDir) {
+  const root = webDir || path.join(REPO, 'web');
+  if (!Object.prototype.hasOwnProperty.call(mapCache, root)) {
+    mapCache[root] = require('child_process').execFileSync('node', [path.join(REPO, 'scripts/flow.js'), 'map', '--root', root],
+      { encoding: 'utf8', cwd: REPO });
+  }
+  return mapCache[root];
+}
+
+/* A copy without the notes for humans (keys starting with "_"), at every level. */
+function withoutNotes(value) {
+  return JSON.parse(JSON.stringify(value, (k, v) => (typeof k === 'string' && k.startsWith('_') ? undefined : v)));
+}
+
+/* The screen codes of a route, in order: the old list, or a graph's nodes (a group: its own code). */
+function flowIdsOf(flow) {
+  if (Array.isArray(flow)) return flow.map((s) => s.id);
+  return flow && Array.isArray(flow.nodes) ? flow.nodes.map((n) => n.id) : [];
+}
+
 /* What the repo's web/ files contain (the expected result of an import). */
 function repoFacts() {
   const survey = readJson('web/config/survey.json');
   const strings = readJson('web/i18n/strings.json');
   const wc = readJson('web/config/whats_changed.json');
   const clips = readJson('web/config/audio_clips.json');
+  const raw = {
+    'survey.json': fs.readFileSync(path.join(REPO, 'web/config/survey.json'), 'utf8'),
+    'strings.json': fs.readFileSync(path.join(REPO, 'web/i18n/strings.json'), 'utf8'),
+    'whats_changed.json': fs.readFileSync(path.join(REPO, 'web/config/whats_changed.json'), 'utf8'),
+    'audio_clips.json': fs.readFileSync(path.join(REPO, 'web/config/audio_clips.json'), 'utf8')
+  };
+  const isList = Array.isArray(survey.flow);
+  // The route as the control panel publishes it (no notes inside): the repo's graph (since 26 Oct 2026),
+  // or exactly PP.flow.fromLegacy of an old list.
+  const graph = isList ? JSON.parse(JSON.stringify(FLOW.fromLegacy(survey))) : withoutNotes(survey.flow);
+  // survey.json with its flow as the graph: the repo file itself (made in memory only for an old list).
+  const migratedRaw = isList ? FLOW_PANEL.surveyTextWithFlow(raw['survey.json'], graph) : raw['survey.json'];
   return {
-    survey, strings, whats_changed: wc, audio_clips: clips,
-    raw: {
-      'survey.json': fs.readFileSync(path.join(REPO, 'web/config/survey.json'), 'utf8'),
-      'strings.json': fs.readFileSync(path.join(REPO, 'web/i18n/strings.json'), 'utf8'),
-      'whats_changed.json': fs.readFileSync(path.join(REPO, 'web/config/whats_changed.json'), 'utf8'),
-      'audio_clips.json': fs.readFileSync(path.join(REPO, 'web/config/audio_clips.json'), 'utf8')
-    },
+    survey, strings, whats_changed: wc, audio_clips: clips, raw, graph,
+    migrated: { survey: JSON.parse(migratedRaw), raw: migratedRaw },
     languages: survey.languages.map((l) => l.code),
     areas: survey.functions.map((f) => f.id),
     chips: survey.functions.reduce((n, f) => n + f.issues.length, 0),
     chipsByArea: Object.fromEntries(survey.functions.map((f) => [f.id, f.issues])),
     support: survey.support.items,
-    flowIds: survey.flow.map((s) => s.id),
+    // the Screens rows: one per list line, or the rows the panel makes of the graph
+    flowIds: isList ? flowIdsOf(survey.flow) : FLOW_PANEL.toRows(survey.flow, survey).screens.map((s) => s.id),
     textKeys: Object.keys(strings).filter((k) => !k.startsWith('_')),
     rounds: Object.keys(wc.rounds || {}).filter((k) => !k.startsWith('_'))
   };
@@ -170,4 +215,5 @@ function fixedStringKeys() {
 }
 
 module.exports = { REPO, LANGS, CONTROL_TABS, TAB_GROUPS, CHECKBOX_COLUMNS, DATA_TABS, SETTINGS, SETTINGS_GROUPS,
-  SCREEN_TYPES, MODEL_SECTIONS, PHASE2_KEYS, DEFAULT_IMPORT_URL, FORM_URL, repoFacts, fixedStringKeys };
+  SCREEN_TYPES, MODEL_SECTIONS, PHASE2_KEYS, DEFAULT_IMPORT_URL, FORM_URL, repoFacts, fixedStringKeys, flowIdsOf,
+  FLOW, FLOW_PANEL, flowMap };

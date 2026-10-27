@@ -56,13 +56,13 @@
   },
 
   "rating": {
-    "_help": "The 1-5 faces used for area ratings and support ratings, from 1 (worst) to 5 (best). Labels under the faces are strings rating.1 ... rating.5. allow_not_applicable adds a small \"I don't handle this\" option under area ratings (string rating.na); those answers are left out of averages.",
+    "_help": "The 1-5 faces used for area ratings and support ratings, from 1 (worst) to 5 (best). Labels under the faces are strings rating.1 ... rating.5. allow_not_applicable adds a small \"I don't handle this\" option under area ratings (string rating.na); those answers are left out of averages. On phones the area ratings screen in \"flow\" below (node fn_ratings) carries this value itself, as its own \"allow_not_applicable\": the control panel copies it there when it publishes. Editing this file by hand, change both; python3 scripts/flow.py check reports a mismatch.",
     "faces": ["😠", "🙁", "😐", "🙂", "😄"],
     "allow_not_applicable": true
   },
 
   "deep_dive": {
-    "_help": "Every area rated at or below threshold gets a 'What is the main problem?' screen with that area's chips, plus an optional voice note or text. when = after_all_ratings asks the problem screens after all six ratings (recommended: partners cannot learn mid-survey that a low score means extra questions). when = immediate asks right after each low rating. require_chip = a chip must be picked before Next. require_detail_if_other = if the partner picks Other, a voice note or text is required.",
+    "_help": "Every area rated at or below threshold gets a 'What is the main problem?' screen with that area's chips, plus an optional voice note or text. when = after_all_ratings asks the problem screens after all six ratings (recommended: partners cannot learn mid-survey that a low score means extra questions). when = immediate asks right after each low rating. require_chip = a chip must be picked before Next. require_detail_if_other = if the partner picks Other, a voice note or text is required. On phones the problem screen in \"flow\" below (node fn_deep_dives) carries these values itself: \"require_choice\" (= require_chip) and \"require_detail_if_other\" on the node, threshold in \"collections\" > \"areas\" > \"defaults\", and when = immediate puts the problem screen inside the area ratings (a group). The control panel copies them there when it publishes. Editing this file by hand, change both; python3 scripts/flow.py check reports a mismatch.",
     "threshold": 3,
     "when": "after_all_ratings",
     "require_chip": true,
@@ -80,7 +80,7 @@
   "_functions_help": "The areas partners rate, one screen each, in this order. id and issue codes are permanent codes: the sheet, classifier and dashboard use them, so keep them the same from round to round (you may freely reword their labels). Labels live in strings.json as fn.<id>.name, fn.<id>.help and issue.<id>.<code>. An 'Other' chip (code other, string issue.other) is added automatically. Use 4-6 chips per area. To give one area its own threshold add  \"threshold\": 2  next to its id.",
 
   "support": {
-    "_help": "Shown only to partners who answer Yes to the support question. items = the four things rated 1-5 on one screen (labels: support.<item> in strings.json). allow_comment adds an optional voice/text comment (question string: comment_text).",
+    "_help": "Shown only to partners who answer Yes to the support question. items = the four things rated 1-5 on one screen (labels: support.<item> in strings.json). allow_comment adds an optional voice/text comment (question string: comment_text). On phones the support screen in \"flow\" below (node support) carries these values itself: its own \"allow_not_applicable\", and its \"comment\" (there only while allow_comment is true; its \"text\" = comment_text). The control panel copies them there when it publishes. Editing this file by hand, change both; python3 scripts/flow.py check reports a mismatch.",
     "items": ["agent_behaviour", "understood_problem", "time_to_resolve", "kept_updated"],
     "allow_not_applicable": false,
     "allow_comment": true,
@@ -117,16 +117,60 @@
     "enabled": true
   },
 
-  "flow": [
-    { "id": "language",      "type": "language_picker", "skip_if": "lang_in_url" },
-    { "id": "whats_changed", "type": "whats_changed",   "skip_if": "empty" },
-    { "id": "nps",           "type": "nps_0_10",        "text": "q.nps", "low_label": "nps.low", "high_label": "nps.high", "scale_hint": "nps.scale_hint", "required": true },
-    { "id": "fn_ratings",    "type": "function_ratings" },
-    { "id": "fn_deep_dives", "type": "function_deep_dives" },
-    { "id": "support_gate",  "type": "yes_no",          "text": "q.support_gate", "required": true },
-    { "id": "support",       "type": "support_block",   "text": "q.support_block", "show_if": { "answer": "support_gate", "equals": "yes" } },
-    { "id": "one_fix",       "type": "free_text",       "text": "q.one_fix", "required": false },
-    { "id": "thanks",        "type": "thank_you" }
-  ],
-  "_flow_help": "The screens, in order. id = permanent code for the screen (used in the data). type = what kind of screen. Built-in types: language_picker, whats_changed, function_ratings (one screen per area), function_deep_dives (problem screens for low-rated areas), support_block, thank_you (must be last). Generic types you can add freely: nps_0_10, rating_1_5, yes_no, single_choice (needs \"options\": [codes], labels in strings as choice.<id>.<code>), free_text, info_card (needs \"text\" and optional \"body\"). text = string key of the question. required = false adds a Skip button. show_if = only show this screen when an earlier answer matches, e.g. {\"answer\": \"support_gate\", \"equals\": \"yes\"}. Other tests: not_equals, at_most, at_least, in (a list), answered (true/false); combine with {\"all\": [...]} or {\"any\": [...]}. Area ratings can be tested too, e.g. {\"answer\": \"fn_rating:payments\", \"at_most\": 2}. skip_if: lang_in_url (language screen) or empty (what-changed screen)."
+  "flow": {
+    "_help": "The route through the questionnaire (format pp-flow/1, explained in docs/flow-engine.md). nodes = the screens, in the order the control panel lists them. next = where to go after a screen; a list means: the first \"when\" that is true wins, otherwise \"default\". show_if = show the screen only when the rule is true. repeat_for = ask it once per area (where = only the areas rated low). Live, the route is edited in the control panel (Questions), which also writes this copy (Publish > Backup copy in GitHub). Codes (id, store_as) are permanent once partners have answered. After any edit here run:  python3 scripts/flow.py check",
+    "format": "pp-flow/1",
+    "start": "language",
+    "collections": {
+      "areas": { "list": "functions", "defaults": { "threshold": 3 } },
+      "support_items": { "list": "support.items" }
+    },
+    "nodes": [
+      { "id": "language", "type": "language_picker",
+        "show_if": { "fact": "lang_in_url", "equals": false },
+        "next": "whats_changed" },
+
+      { "id": "whats_changed", "type": "whats_changed",
+        "show_if": { "fact": "whats_changed_count", "at_least": 1 },
+        "next": "nps" },
+
+      { "id": "nps", "type": "nps_0_10",
+        "text": "q.nps", "low_label": "nps.low", "high_label": "nps.high", "scale_hint": "nps.scale_hint",
+        "required": true,
+        "next": "fn_ratings" },
+
+      { "id": "fn_ratings", "type": "function_rating", "store_as": "fn_rating:{area}",
+        "repeat_for": { "each": "area", "in": "areas" },
+        "text": "q.fn_rating", "label": "fn.{area}.name", "help": "fn.{area}.help",
+        "issue_code_from": "fn_deep_dive:{area}", "allow_not_applicable": true,
+        "next": "fn_deep_dives" },
+
+      { "id": "fn_deep_dives", "type": "function_deep_dive", "store_as": "fn_deep_dive:{area}",
+        "repeat_for": { "each": "area", "in": "areas", "where": { "answer": "fn_rating:{area}", "at_most": { "var": "area.threshold" } } },
+        "text": "q.deep_dive", "label": "fn.{area}.name", "detail_text": "q.tell_more", "detail_text_required": "q.tell_more_required",
+        "options": { "from": "area.issues", "text": "issue.{area}.{code}", "other": "issue.other" },
+        "rating_from": "fn_rating:{area}", "require_choice": true, "require_detail_if_other": true,
+        "next": "support_gate" },
+
+      { "id": "support_gate", "type": "yes_no",
+        "text": "q.support_gate",
+        "required": true,
+        "next": "support" },
+
+      { "id": "support", "type": "support_block",
+        "show_if": { "answer": "support_gate", "equals": "yes" },
+        "text": "q.support_block",
+        "rows": { "each": "item", "in": "support_items", "store_as": "support:{item}", "text": "support.{item}" },
+        "comment": { "store_as": "support_comment", "text": "q.support_comment" },
+        "allow_not_applicable": false,
+        "next": "one_fix" },
+
+      { "id": "one_fix", "type": "free_text",
+        "text": "q.one_fix",
+        "block": "one_fix", "required": false,
+        "next": "thanks" },
+
+      { "id": "thanks", "type": "thank_you" }
+    ]
+  }
 }

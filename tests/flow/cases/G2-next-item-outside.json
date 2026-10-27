@@ -1,0 +1,19 @@
+{
+ "_about": "\"@next_item\" used outside a group body.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "next",
+   "value": "@next_item"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

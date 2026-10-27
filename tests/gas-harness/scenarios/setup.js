@@ -21,15 +21,15 @@
 const K = require('../lib/testkit');
 const C = require('../lib/contract');
 const H = require('../lib/helpers');
-const { staticChecks } = require('../lib/static-checks');
+const { staticChecks, flowFreshness } = require('../lib/static-checks');
 
 const REQUIRED_FUNCTIONS = ['onOpen', 'ppSetup', 'doGet', 'doPost', 'panelOpen', 'panelLoad', 'panelSave', 'panelValidate',
   'panelPublish', 'panelHistory', 'panelRestore', 'panelSetRoundStatus', 'panelRoundCounts', 'panelGenerateLinks',
   'panelPreviewUrl', 'panelNewPreviewKey', 'panelGetSecret', 'panelImport', 'panelExport', 'panelSetFormUrl',
   'panelSetWebAppUrl', 'PP_readModel', 'PP_writeModel',
   'PP_compile', 'PP_validate', 'PP_importStatic', 'PP_exportStatic', 'PP_publish', 'PP_restore', 'PP_modelFromPublished',
-  'PP_ensureRoundStore_', 'PP_slug', 'PP_derivedTextKeys', 'ppFormRequest'];
-const REQUIRED_CONSTANTS = ['PP_SETTINGS_SCHEMA', 'PP_SCREEN_TYPES', 'PP_FORM_TEXT_KEYS'];
+  'PP_ensureRoundStore_', 'PP_slug', 'PP_derivedTextKeys', 'ppFormRequest', 'PP_flowLib_'];
+const REQUIRED_CONSTANTS = ['PP_SETTINGS_SCHEMA', 'PP_SCREEN_TYPES', 'PP_FORM_TEXT_KEYS', 'PP_FLOW_FINGERPRINT_', 'PP_FLOW_SOURCE_'];
 
 module.exports = function register(add) {
   add('S', 'Static checks: files, syntax rules (no ?. or ??), allowed services, Panel.html, manifest, required functions', async (s) => {
@@ -44,6 +44,19 @@ module.exports = function register(add) {
     }
     s.note(`Files: ${r.files.join(', ')}; Panel.html ${r.panelBytes || 0} bytes, ${r.panelScripts || 0} script block(s), ` +
       `${r.panelDataTests || 0} data-test mentions.`);
+    // Panel.html's one exception (26 Oct 2026): the Map's Mermaid, pinned, with its integrity hash, in a frame
+    // sandboxed without "allow-same-origin" (lib/static-checks.js mapException; any break is a problem above)
+    if (r.acorn) {
+      s.ok(Boolean(r.panelMap), 'Panel.html\'s one exception (the Map\'s drawing library) was checked', 'mapException found no script to check');
+      if (r.panelMap && r.panelMap.mermaid) {
+        s.note(`Panel.html loads only Mermaid from ${r.panelMap.url} (integrity ${String(r.panelMap.sri).slice(0, 18)}...), inside ` +
+          `${r.panelMap.frames} frame(s) sandboxed as ${JSON.stringify(r.panelMap.sandboxes)}.`);
+      }
+    }
+    // Flow.gs (stage 4 of the flow-graph work): the form's own route code, generated, never edited by hand.
+    const fresh = flowFreshness(H.config.appsScriptDir, H.config.webDir);
+    s.ok(fresh.fresh, 'Flow.gs is exactly what scripts/build_flow_gs.js makes from the form\'s web/js files today', fresh.problem);
+    if (fresh.fingerprint) s.note(`Flow.gs is made from ${(fresh.files || []).join(', ')} (fingerprint ${fresh.fingerprint.slice(0, 12)}...).`);
     const h = H.harness();
     s.ok(h.loadErrors.length === 0, 'every .gs file loads into one shared scope (Code, Model, PanelServer order)',
       h.loadErrors.map((e) => `${e.file}: ${e.message}${e.where ? ' at ' + e.where : ''}`).join('; '));
@@ -57,6 +70,11 @@ module.exports = function register(add) {
     const loadUses = h.loadRun ? Array.from(h.loadRun.uses.keys()) : [];
     s.soft(loadUses.length === 0, 'loading the files does not call Google services (top-level code runs on every request)',
       loadUses.join(', '));
+    if (fresh.fingerprint) s.eq(h.get('PP_FLOW_FINGERPRINT_'), fresh.fingerprint, 'PP_FLOW_FINGERPRINT_ is the SHA-256 of those files');
+    const lib = h.evaluate('(function () { var lib = PP_flowLib_(); return [typeof lib.flow.path, lib.flow.ENGINE, typeof lib.flowPanel.fromRows, ' +
+      'typeof lib.flowPanel.toRows, typeof lib.flowPanel.formatFlow, lib === PP_flowLib_(), typeof PP]; })()');
+    s.eq(lib, ['function', 2, 'function', 'function', 'function', true, 'undefined'],
+      'PP_flowLib_() gives the engine (ENGINE 2) and the panel helpers, made once, without a global PP');
   });
 
   add('A1', 'Set up or repair on a brand-new Sheet (accept the GitHub address, publish version 1)', async (s) => {

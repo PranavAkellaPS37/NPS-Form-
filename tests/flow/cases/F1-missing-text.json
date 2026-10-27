@@ -1,0 +1,18 @@
+{
+ "_about": "A yes/no question without its \"text\" (a starred field).",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "remove_field",
+   "node": "support_gate",
+   "field": "text"
+  }
+ ],
+ "expect": [
+  {
+   "code": "F1",
+   "level": "error",
+   "node": "support_gate"
+  }
+ ]
+}

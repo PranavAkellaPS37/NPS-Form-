@@ -1,0 +1,14 @@
+{
+  "_source": "flow audit 22 Oct 2026 (workflow wf_43b4b1dd-f39), form auditor, form/cfgs/",
+  "_note": "the areas reordered",
+  "_expect": "same",
+  "_why": "No chained or forward rule: the new engine must give exactly the old screens, Next rules and message bytes.",
+  "functions": [
+    {"id":"app","issues":["app_slow_crash","scan_issue","wrong_data","login_otp","missing_feature"]},
+    {"id":"losses","issues":["wrong_debit","no_proof","dispute_slow","dispute_rejected","amount_too_high"]},
+    {"id":"payments","issues":["payout_delayed","short_payment","unclear_breakup","invoice_gst","incentive_missing"]},
+    {"id":"linehaul","issues":["late_arrival","trip_missed","damaged_on_arrival","short_receipt","rto_pickup_delay"]},
+    {"id":"consumables","issues":["short_supply","late_supply","poor_quality","wrong_charge","hard_to_request"]},
+    {"id":"orders","issues":["volume_low","volume_spike","forecast_wrong","pincode_mapping","capacity_mismatch"]}
+  ]
+}

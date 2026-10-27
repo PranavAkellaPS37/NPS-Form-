@@ -1,0 +1,24 @@
+{
+ "_about": "Graph format: a screen without its own \"allow_not_applicable\" follows survey.json's setting, so a different survey.json value is no mistake (no S1).",
+ "base": "graph",
+ "survey": {
+  "rating": {
+   "faces": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "allow_not_applicable": false
+  }
+ },
+ "patch": [
+  {
+   "op": "remove_field",
+   "node": "fn_ratings",
+   "field": "allow_not_applicable"
+  }
+ ],
+ "expect_clean": true
+}

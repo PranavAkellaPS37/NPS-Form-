@@ -1,0 +1,22 @@
+{
+ "_about": "A rule on an answer no screen stores (a misspelt area).",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "fn_rating:paymnets",
+    "at_most": 2
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

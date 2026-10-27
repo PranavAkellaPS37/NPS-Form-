@@ -1,0 +1,95 @@
+{
+ "_about": "A group body arrow that leaves the loop for an EARLIER screen.",
+ "base": "graph",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "immediate",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "patch": [
+  {
+   "op": "remove",
+   "node": "fn_deep_dives"
+  },
+  {
+   "op": "replace",
+   "node": "fn_ratings",
+   "value": {
+    "id": "area_loop",
+    "type": "group",
+    "repeat_for": {
+     "each": "area",
+     "in": "areas"
+    },
+    "body": {
+     "start": "fn_ratings",
+     "nodes": [
+      {
+       "id": "fn_ratings",
+       "type": "function_rating",
+       "store_as": "fn_rating:{area}",
+       "text": "q.fn_rating",
+       "label": "fn.{area}.name",
+       "help": "fn.{area}.help",
+       "allow_not_applicable": true,
+       "issue_code_from": "fn_deep_dive:{area}",
+       "next": "fn_deep_dives"
+      },
+      {
+       "id": "fn_deep_dives",
+       "type": "function_deep_dive",
+       "store_as": "fn_deep_dive:{area}",
+       "text": "q.deep_dive",
+       "label": "fn.{area}.name",
+       "rating_from": "fn_rating:{area}",
+       "options": {
+        "from": "area.issues",
+        "text": "issue.{area}.{code}",
+        "other": "issue.other"
+       },
+       "detail_text": "q.tell_more",
+       "detail_text_required": "q.tell_more_required",
+       "require_choice": true,
+       "require_detail_if_other": true,
+       "next": [
+        {
+         "when": {
+          "answer": "fn_rating:{area}",
+          "equals": 1
+         },
+         "goto": "nps"
+        },
+        {
+         "default": "@next_item"
+        }
+       ],
+       "show_if": {
+        "answer": "fn_rating:{area}",
+        "at_most": {
+         "var": "area.threshold"
+        }
+       }
+      }
+     ]
+    },
+    "next": "support_gate"
+   }
+  },
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "next",
+   "value": "area_loop"
+  }
+ ],
+ "expect": [
+  {
+   "code": "L2",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

@@ -1,0 +1,19 @@
+{
+ "_about": "A looped screen whose store_as lacks {area}: every area would overwrite the last.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "fn_ratings",
+   "field": "store_as",
+   "value": "fn_rating"
+  }
+ ],
+ "expect": [
+  {
+   "code": "L1",
+   "level": "error",
+   "node": "fn_ratings"
+  }
+ ]
+}

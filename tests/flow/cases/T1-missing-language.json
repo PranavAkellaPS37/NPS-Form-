@@ -1,0 +1,17 @@
+{
+ "_about": "A text without its Tamil value.",
+ "base": "graph",
+ "strings_delete": [
+  [
+   "q.one_fix",
+   "ta"
+  ]
+ ],
+ "expect": [
+  {
+   "code": "T1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

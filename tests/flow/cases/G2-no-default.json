@@ -1,0 +1,27 @@
+{
+ "_about": "A jump list without a final {\"default\": ...}.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "next",
+   "value": [
+    {
+     "when": {
+      "answer": "nps",
+      "at_least": 9
+     },
+     "goto": "support_gate"
+    }
+   ]
+  }
+ ],
+ "expect": [
+  {
+   "code": "G2",
+   "level": "error",
+   "node": "nps"
+  }
+ ]
+}

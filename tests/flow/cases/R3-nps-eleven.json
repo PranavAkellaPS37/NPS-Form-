@@ -1,0 +1,22 @@
+{
+ "_about": "NPS can never be 11.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "nps",
+    "equals": 11
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R3",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

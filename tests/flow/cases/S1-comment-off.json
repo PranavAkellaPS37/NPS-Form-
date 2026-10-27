@@ -1,0 +1,24 @@
+{
+ "_about": "Graph format: survey.json's support > allow_comment is false, but the support screen still has its comment box (\"comment\").",
+ "base": "graph",
+ "survey": {
+  "support": {
+   "items": [
+    "agent_behaviour",
+    "understood_problem",
+    "time_to_resolve",
+    "kept_updated"
+   ],
+   "allow_not_applicable": false,
+   "allow_comment": false,
+   "comment_text": "q.support_comment"
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

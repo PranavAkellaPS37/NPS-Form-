@@ -1,0 +1,30 @@
+{
+ "_about": "In the panel: a code partners answered under (\"one_fix\") deleted.",
+ "base": "graph",
+ "opts": {
+  "surface": "panel",
+  "everLiveCodes": [
+   "nps",
+   "one_fix",
+   "losses"
+  ]
+ },
+ "patch": [
+  {
+   "op": "remove",
+   "node": "one_fix"
+  },
+  {
+   "op": "set",
+   "node": "support",
+   "field": "next",
+   "value": "thanks"
+  }
+ ],
+ "expect": [
+  {
+   "code": "C1",
+   "level": "error"
+  }
+ ]
+}

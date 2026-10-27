@@ -1,0 +1,18 @@
+{
+ "_about": "An English text still tagged [TRANSLATE].",
+ "base": "graph",
+ "strings_set": [
+  [
+   "q.nps",
+   "en",
+   "[TRANSLATE] q.nps"
+  ]
+ ],
+ "expect": [
+  {
+   "code": "T1",
+   "level": "error",
+   "node": "nps"
+  }
+ ]
+}

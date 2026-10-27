@@ -4,7 +4,7 @@
 
    WHAT THIS FILE IS
      The one command that checks the control panel's server code and the
-     public web app (apps-script/Code.gs, Model.gs, PanelServer.gs, Panel.html)
+     public web app (apps-script/Code.gs, Model.gs, PanelServer.gs, Flow.gs, Panel.html)
      against the contract (docs/control-panel-design.md and
      docs/submission-format.md), using the pretend Google in fake-gas.js:
        self-test  the pretend Google itself behaves like Google (41 checks)
@@ -16,10 +16,11 @@
                   derived-text helpers
        C, C2      doGet (health, bootstrap, draft=1, what changed, cache), and a
                   fully translated questionnaire (cache pieces under 100 KB)
-       D1-D11     doPost (pings, submissions, every data column, voice notes,
+       D1-D12     doPost (pings, submissions, every data column, voice notes,
                   duplicates, refusals, malformed input, busy lock, growth,
-                  texts that look like formulas, size limits), and the links
-                  CSV (D11)
+                  texts that look like formulas, size limits), the links
+                  CSV (D11), and config_version, the last column of the pings
+                  tab, added safely to older spreadsheets (D12, 26 Oct 2026)
        G1-G10     the Google-side fixes of 20-21 Oct: the two locks, the
                   permission re-check, owner hand-over, the web app address,
                   the code lock (test rounds; a real round opened before any
@@ -28,9 +29,18 @@
                   DC ids turned into dates, read-aloud clip addresses, and
                   the Meesho-only mode (G10: the survey page served by the web
                   app, ppFormRequest, links, the admin lock)
+       G11        the route as a graph (23 Oct, flow-graph stage 4): Flow.gs,
+                  the Screens columns next/jumps/repeat, Publish of a graph,
+                  the publish guard (old form, new form, unreachable), the
+                  health fields, the codes lock over every code ever
+                  published (CODES_EVER_LIVE), and import/restore of graphs
+       G12        the reviewers' fixes of 26 Oct: hidden and deleted endings,
+                  the codes lock per area and per question, Publish during a
+                  Google Drive hiccup, Publish's warnings in set-up's notes,
+                  docs/flow.md in the GitHub copy
        E1-E4      the real form in headless Chrome, end to end
        F          the control panel page in Chrome (smoke test)
-     tools/plant-bugs.py checks these tests themselves: it plants 38 known
+     tools/plant-bugs.py checks these tests themselves: it plants 83 known
      mistakes, one at a time, in copies of the code and expects each to be
      caught.
 
@@ -181,6 +191,7 @@ async function main() {
   require('./scenarios/panel')(add);
   require('./scenarios/webapp')(add);
   require('./scenarios/fixes')(add);
+  require('./scenarios/flow')(add);
   if (!ARGS.noBrowser) require('./scenarios/browser')(add, shared);
   const selected = registry.filter((r) => (!ARGS.only.length || matches(r.id, ARGS.only)) && !matches(r.id, ARGS.skip));
   // Old screenshots are removed only when browser scenarios run again.

@@ -1,24 +1,41 @@
 /* =============================================================================
    tests/e2e/e2e.js: end-to-end test of the survey form in a real Chrome.
 
-   WHAT IT CHECKS (24 scenarios, A to Y; there is no O)
+   WHAT IT CHECKS (34 scenarios: A to Y, there is no O, I2 after I, then Z1 to Z9)
      It starts the project's local test server (scripts/mock_server.py) on
-     ports 8791-8795, opens the form in headless Chrome at phone size (360 x 740,
+     ports 8791-8796, opens the form in headless Chrome at phone size (360 x 740,
      an Android user agent) and goes through it like a partner: every screen,
      languages, voice notes (a fake microphone), read-aloud, a bad network with
      retries, closing the page mid-send, two open tabs, settings changed only
      through config, preview links, closed and not-yet-open rounds, and the
      published questionnaire coming from the backend. It then checks what the
      test server stored.
+     Z1 to Z6 (23 Oct 2026) cover the flow engine (docs/flow-engine.md): a
+     questionnaire whose "flow" is a graph (pp-flow/1) with a jump (Z1, served
+     by the test server itself with --survey), a loop written as a group (Z2),
+     two endings (Z3), rules that ignore answers left off the route (Z4),
+     the ?simulate=1 developer drawer in test mode only (Z5), and a flow in
+     an unknown format falling back to the form's own copy (Z6).
+     Since 26 Oct 2026 web/config/survey.json holds the flow as a graph. I, X
+     and Z4 edit the flow as the old LIST (every version published before
+     then is one; frozen in tests/flow/legacy/variants/base.json); I2 makes
+     the same kind of changes on the repo's real graph, and they must pass
+     the flow checker first. Z7: a language switch that takes the screen on
+     show off the route (Back and Next go on, never to the start). Z8: a
+     published graph a phone cannot run (no screens, a start that names no
+     screen, straight to an ending) falls back to the form's own copy. Z9: a
+     screen coded "constructor" is an ordinary screen.
 
    HOW TO RUN IT (Terminal, in the project folder)
      First time only: cd tests && npm install && cd ..
-     node tests/e2e/e2e.js            (about 5 minutes)
-     ONLY=S node tests/e2e/e2e.js     (just one scenario, here S)
-     The last line says how many scenarios passed (24 of 24 expected).
+     node tests/e2e/e2e.js            (about 8 minutes)
+     ONLY=S node tests/e2e/e2e.js     (just one scenario, here S; ONLY=Z1,Z3 for several)
+     The last line says how many scenarios passed (34 of 34 expected).
 
    WHAT IT READS / WRITES
-     Reads web/ and scripts/mock_server.py. Writes screenshots and a server log
+     Reads web/, scripts/mock_server.py and tests/flow/legacy/variants/base.json
+     (and runs web/js/flow-check.js on the edited questionnaires of I2, Z7 and
+     Z9, in Node). Writes screenshots and a server log
      to tests/e2e/shots, and the test server's fake data to folders named
      tests/e2e/data-XXXXXX (both ignored by git). Fake DCs only (DC-E2E-...).
      Never contacts Google.
@@ -143,6 +160,16 @@ async function waitFinal(page, re, timeout = 8000) {
   catch (e) { throw new Error(`expected an end screen matching ${re}, got "${(await finalText(page)).slice(0, 120)}" on ${await screenId(page)}`); }
 }
 const SURVEY_JSON = () => JSON.parse(fs.readFileSync(path.join(REPO, 'web/config/survey.json'), 'utf8'));
+// Since 26 Oct 2026 web/config/survey.json holds the flow as a graph (scripts/flow.js migrate --write). Scenarios
+// that edit the flow as a LIST (I, X, Z4) use today's list instead, frozen in tests/flow/legacy/variants/base.json
+// (every version published before stage 4 is such a list, and the form still reads them). I2 edits the graph itself.
+const LIST_SURVEY_JSON = () => Object.assign(SURVEY_JSON(),
+  { flow: JSON.parse(fs.readFileSync(path.join(REPO, 'tests/flow/legacy/variants/base.json'), 'utf8')).flow });
+// The project's one flow checker (web/js/flow-check.js, on the engine web/js/flow.js), for scenarios that edit
+// the questionnaire: their edits must pass it, as GitHub's deployment check would demand. Node side only.
+const FLOW_CHECK = () => { require(path.join(REPO, 'web/js/flow.js')); return require(path.join(REPO, 'web/js/flow-check.js')); };
+const flowErrors = (cfg, strings) => FLOW_CHECK().check(cfg, strings, { surface: 'repo' }).findings
+  .filter((f) => f.level === 'error').map((f) => `[${f.code}] ${f.message}`);
 const STRINGS_JSON = () => JSON.parse(fs.readFileSync(path.join(REPO, 'web/i18n/strings.json'), 'utf8'));
 const WC_JSON = () => JSON.parse(fs.readFileSync(path.join(REPO, 'web/config/whats_changed.json'), 'utf8'));
 const six = (en) => ({ en, hi: en, ta: '[TRANSLATE] ' + en, te: '[TRANSLATE] ' + en, kn: '[TRANSLATE] ' + en, ml: '[TRANSLATE] ' + en });
@@ -153,6 +180,49 @@ async function quickFinish(page, opts = {}) {
   await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
   await waitScreen(page, 'one_fix'); await page.click('#nav-next');
 }
+
+/* ---- Flow-graph helpers (23 Oct 2026, docs/flow-engine.md) ----
+   Today's questionnaire written as a pp-flow/1 graph, exactly as in
+   docs/flow-graph-proposal.md section 5 (written out here, not converted by
+   the engine, so the scenarios also show what an author's graph does). */
+function todayGraph() {
+  return {
+    format: 'pp-flow/1', start: 'language',
+    collections: { areas: { list: 'functions', defaults: { threshold: 3 } }, support_items: { list: 'support.items' } },
+    nodes: [
+      { id: 'language', type: 'language_picker', show_if: { fact: 'lang_in_url', equals: false }, next: 'whats_changed' },
+      { id: 'whats_changed', type: 'whats_changed', show_if: { fact: 'whats_changed_count', at_least: 1 }, next: 'nps' },
+      { id: 'nps', type: 'nps_0_10', text: 'q.nps', low_label: 'nps.low', high_label: 'nps.high', scale_hint: 'nps.scale_hint', required: true, next: 'fn_ratings' },
+      { id: 'fn_ratings', type: 'function_rating', repeat_for: { each: 'area', in: 'areas' }, store_as: 'fn_rating:{area}',
+        text: 'q.fn_rating', label: 'fn.{area}.name', help: 'fn.{area}.help', allow_not_applicable: true,
+        issue_code_from: 'fn_deep_dive:{area}', next: 'fn_deep_dives' },
+      { id: 'fn_deep_dives', type: 'function_deep_dive',
+        repeat_for: { each: 'area', in: 'areas', where: { answer: 'fn_rating:{area}', at_most: { var: 'area.threshold' } } },
+        store_as: 'fn_deep_dive:{area}', text: 'q.deep_dive', label: 'fn.{area}.name', rating_from: 'fn_rating:{area}',
+        options: { from: 'area.issues', text: 'issue.{area}.{code}', other: 'issue.other' },
+        detail_text: 'q.tell_more', detail_text_required: 'q.tell_more_required',
+        require_choice: true, require_detail_if_other: true, next: 'support_gate' },
+      { id: 'support_gate', type: 'yes_no', text: 'q.support_gate', required: true, next: 'support' },
+      { id: 'support', type: 'support_block', show_if: { answer: 'support_gate', equals: 'yes' }, text: 'q.support_block',
+        rows: { each: 'item', in: 'support_items', store_as: 'support:{item}', text: 'support.{item}' },
+        allow_not_applicable: false, comment: { store_as: 'support_comment', text: 'q.support_comment' }, next: 'one_fix' },
+      { id: 'one_fix', type: 'free_text', text: 'q.one_fix', required: false, block: 'one_fix', next: 'thanks' },
+      { id: 'thanks', type: 'thank_you' }
+    ]
+  };
+}
+const nodeOf = (graph, id) => graph.nodes.find((n) => n.id === id);
+// survey.json with its flow replaced by a graph (change(graph) edits it first).
+function graphSurvey(change) {
+  const cfg = SURVEY_JSON();
+  cfg.flow = todayGraph();
+  if (change) change(cfg.flow, cfg);
+  return cfg;
+}
+// The promoters' jump: NPS 9 or 10 goes straight to the support question.
+const PROMOTER_JUMP = [{ when: { answer: 'nps', at_least: 9 }, goto: 'support_gate' }, { default: 'fn_ratings' }];
+const storedFor = (srv, dc) => readJsonl(path.join(srv.dataDir, 'responses.jsonl')).filter((x) => x.dc === dc);
+const consoleErrors = (page) => page.consoleMessages.filter((m) => /^(error|pageerror)/.test(m) && !/favicon/.test(m));
 
 (async () => {
   const main = await startServer(8791);
@@ -574,7 +644,7 @@ async function quickFinish(page, opts = {}) {
   if (want('I')) try {
     const { page, context } = await newPage(browser);
     await page.setRequestInterception(true);
-    const cfg = JSON.parse(fs.readFileSync(path.join(REPO, 'web/config/survey.json'), 'utf8'));
+    const cfg = LIST_SURVEY_JSON();
     const strings = JSON.parse(fs.readFileSync(path.join(REPO, 'web/i18n/strings.json'), 'utf8'));
     cfg.deep_dive.when = 'immediate';
     cfg.voice.gesture = 'tap'; cfg.voice.max_seconds = 4; cfg.voice.min_seconds = 2;
@@ -693,6 +763,142 @@ async function quickFinish(page, opts = {}) {
     await context.close();
     pass('I: config-only changes (info_card, single_choice, rating_1_5 + show_if, required free_text, immediate mode, tap mode limits, per-area threshold, no read-aloud, no telemetry, support N/A)');
   } catch (e) { fail('I: config-only changes', e); }
+
+  /* ---------------- I2: the same kind of changes made on the repo's real graph (26 Oct 2026) ----------------
+     web/config/survey.json holds the flow as a graph (pp-flow/1) since 26 Oct 2026. Here its nodes are
+     edited the way a developer edits that file: new screens with their own "next", a group for "the problem
+     screen straight after each low rating", the support screen's own "allow_not_applicable", a rule; and
+     survey.json's own settings kept in step with them (the flow check reports S1 otherwise). The edited
+     questionnaire must pass the flow checker, then behave on a phone exactly as written. */
+  if (want('I2')) try {
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    const cfg = SURVEY_JSON();
+    const strings = STRINGS_JSON();
+    const g = cfg.flow;
+    assert.strictEqual(g.format, 'pp-flow/1', 'the repo\'s survey.json holds the graph');
+    const at = (id) => g.nodes.findIndex((x) => x.id === id);
+    const nd = (id) => g.nodes[at(id)];
+    cfg.functions[1].threshold = 2; // payments: a 3 is no longer "low" (the area's own threshold)
+    cfg.read_aloud.enabled = false;
+    cfg.telemetry.enabled = false;
+    // an information card before the NPS question, and two questions after it (one only for nps <= 6)
+    nd('whats_changed').next = 'intro';
+    g.nodes.splice(at('nps'), 0, { id: 'intro', type: 'info_card', text: 'x.intro_title', body: 'x.intro_body', next: 'nps' });
+    nd('nps').next = 'role';
+    g.nodes.splice(at('nps') + 1, 0,
+      { id: 'role', type: 'single_choice', text: 'q.role', options: ['owner', 'captain', 'other'], required: true, next: 'app_ease' },
+      { id: 'app_ease', type: 'rating_1_5', text: 'q.app_ease', required: true, show_if: { answer: 'nps', at_most: 6 }, next: 'area_loop' });
+    // each problem screen straight after its own low rating: the rating and its problem screen in one group per area
+    const rate = nd('fn_ratings');
+    const dive = nd('fn_deep_dives');
+    delete rate.repeat_for;
+    rate.next = 'fn_deep_dives';
+    dive.show_if = dive.repeat_for.where;
+    delete dive.repeat_for;
+    dive.next = '@next_item';
+    g.nodes.splice(at('fn_ratings'), 2, { id: 'area_loop', type: 'group', repeat_for: { each: 'area', in: 'areas' },
+      body: { start: 'fn_ratings', nodes: [rate, dive] }, next: 'support_gate' });
+    cfg.deep_dive.when = 'immediate';             // survey.json's own setting, in step with the group
+    // "I don't handle this" on the support questions: the screen's own setting (phones follow it), and survey.json's
+    nd('support').allow_not_applicable = true;
+    cfg.support.allow_not_applicable = true;
+    // a required note, asked only when the partner answered one_fix
+    nd('one_fix').next = 'callback_note';
+    g.nodes.splice(at('thanks'), 0, { id: 'callback_note', type: 'free_text', text: 'q.callback_note', required: true,
+      show_if: { answer: 'one_fix', answered: true }, next: 'thanks' });
+    Object.assign(strings, {
+      'x.intro_title': six('Two extra questions this round'), 'x.intro_body': six('They take 10 seconds.'),
+      'q.role': six('What is your role?'), 'choice.role.owner': six('Owner'), 'choice.role.captain': six('Captain'), 'choice.role.other': six('Other role'),
+      'q.app_ease': six('How easy is the partner app?'), 'q.callback_note': six('Best time for us to call you back?')
+    });
+    assert.deepStrictEqual(flowErrors(cfg, strings), [], 'the edited graph passes the flow check');
+    // had survey.json's own settings been left behind, the check would refuse the file (S1): phones follow the screens
+    const drifted = JSON.parse(JSON.stringify(cfg));
+    drifted.deep_dive.when = 'after_all_ratings';
+    drifted.support.allow_not_applicable = false;
+    assert.deepStrictEqual(flowErrors(drifted, strings).map((m) => m.slice(0, 4)), ['[S1]', '[S1]'], 'settings left behind: ' + flowErrors(drifted, strings));
+    // the published questionnaire (bootstrap) and the form's own copy are both the edited graph
+    const wcDemo = WC_JSON().rounds['DEMO-R1'];
+    page.on('request', (req) => {
+      if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: 'DEMO-R1', whats_changed: wcDemo }));
+      else if (req.url().endsWith('/config/survey.json')) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(cfg) });
+      else if (req.url().endsWith('/i18n/strings.json')) req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(strings) });
+      else req.continue();
+    });
+    await page.goto(linkFor(main, 'DC-E2E-I2', 'DEMO-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'whats_changed');
+    assert.strictEqual(await page.$$eval('.speak-btn:not([hidden])', (e) => e.length), 0, 'read-aloud disabled by config');
+    await page.click('#nav-next');
+    await waitScreen(page, 'intro');
+    assert.strictEqual(await text(page, '#nav-next'), 'Continue');
+    await page.click('#nav-next');
+    await waitScreen(page, 'nps');
+    await clickNth(page, '.nps-chip', 5);
+    await waitScreen(page, 'role');
+    await clickNth(page, '.chip', 1); // captain
+    await waitScreen(page, 'app_ease'); // shown because nps <= 6
+    await clickNth(page, '.faces .face', 3);
+    await waitScreen(page, 'fn_rating:losses');
+    await clickNth(page, '.faces .face', 1); // 2: its problem screen comes straight away (the group)
+    await waitScreen(page, 'fn_deep_dive:losses');
+    await clickNth(page, '.chip', 0);
+    await page.click('#nav-next');
+    await waitScreen(page, 'fn_rating:payments');
+    await clickNth(page, '.faces .face', 2); // 3: not low for payments (its own threshold 2)
+    for (const fn of ['linehaul', 'consumables', 'orders', 'app']) { await waitScreen(page, 'fn_rating:' + fn); await clickNth(page, '.faces .face', 4); }
+    await waitScreen(page, 'support_gate');
+    await clickNth(page, '.yesno .choice', 0);
+    await waitScreen(page, 'support');
+    assert.strictEqual(await page.$$eval('.srow .na-btn', (e) => e.length), 4, 'an N/A link per row: the support screen\'s own setting');
+    for (let r = 0; r < 3; r++) {
+      const rows = await page.$$('.srow');
+      const f = (await rows[r].$$('.face'))[3];
+      await f.evaluate((e) => e.scrollIntoView({ block: 'center' })); await f.click();
+    }
+    const rows = await page.$$('.srow');
+    const na = await rows[3].$('.na-btn');
+    await na.evaluate((e) => e.scrollIntoView({ block: 'center' })); await na.click();
+    await page.click('#nav-next');
+    await waitScreen(page, 'one_fix');
+    assert.strictEqual(await text(page, '#nav-next'), 'Submit', 'empty one_fix: callback_note is not on the route, so Submit');
+    await tap(page, '.type-row .link-btn');
+    await page.type('.text-input', 'call me');
+    await sleep(200);
+    assert.strictEqual(await text(page, '#nav-next'), 'Next', 'typing in one_fix puts callback_note on the route');
+    await page.click('#nav-next');
+    await waitScreen(page, 'callback_note');
+    await page.click('#nav-next'); // required, empty
+    await sleep(300);
+    assert.strictEqual(await screenId(page), 'callback_note', 'a required free-text screen waits for an answer');
+    await tap(page, '.type-row .link-btn');
+    await page.type('.text-input', 'after 6 pm');
+    await page.click('#nav-next');
+    await waitFinal(page, /Your feedback goes straight/, 10000);
+    await sleep(300);
+    const s = storedFor(main, 'DC-E2E-I2')[0];
+    assert(s, 'stored');
+    assert.deepStrictEqual(s.answers, { nps: 5, role: 'captain', app_ease: 4, support_gate: 'yes' });
+    assert(s.ratings.some((r) => r.block === 'question' && r.item === 'app_ease' && r.rating === 4), 'rating_1_5 in ratings');
+    const losses = s.ratings.find((r) => r.item === 'losses');
+    assert.strictEqual(losses.issue_code, 'wrong_debit', 'the problem picked straight after the rating is on its ratings row');
+    const pay = s.ratings.find((r) => r.item === 'payments');
+    assert.strictEqual(pay.threshold, 2); assert.strictEqual(pay.below_threshold, false);
+    const ku = s.ratings.find((r) => r.block === 'support' && r.item === 'kept_updated');
+    assert.strictEqual(ku.not_applicable, true); assert.strictEqual(ku.rating, null);
+    const ft = Object.fromEntries(s.free_text.map((f) => [f.item_id, f]));
+    assert.deepStrictEqual(Object.keys(ft).sort(), ['callback_note', 'one_fix'], 'typed answers only (no detail on the problem screen)');
+    assert.strictEqual(ft.one_fix.block, 'one_fix'); assert.strictEqual(ft.callback_note.block, 'question');
+    assert.strictEqual(ft.callback_note.text, 'after 6 pm');
+    const ev = s.events.map((e) => e.screen);
+    assert(ev.indexOf('fn_deep_dive:losses') === ev.indexOf('fn_rating:losses') + 1, 'the problem screen right after its rating');
+    assert(ev.indexOf('intro') === ev.indexOf('whats_changed') + 1 && ev.indexOf('role') === ev.indexOf('nps') + 1, 'the new screens where their arrows put them');
+    const pings = readJsonl(path.join(main.dataDir, 'events.jsonl')).filter((p) => p.dc === 'DC-E2E-I2').map((p) => p.stage);
+    assert.deepStrictEqual([...new Set(pings)], ['opened'], 'telemetry off: only the opened check, got ' + pings);
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('I2: the same changes made on the repo\'s graph itself (new nodes and arrows, a group per area, the support screen\'s own N/A, a rule), checked by the flow checker, then on a phone');
+  } catch (e) { fail('I2: changes on the repo\'s graph', e); }
 
   /* ---------------- J: round without what-changed, bad ?lang=, ?mock=1 over live config ---------------- */
   if (want('J')) try {
@@ -1343,7 +1549,7 @@ async function quickFinish(page, opts = {}) {
     await page.setRequestInterception(true);
     // The form's own copy gets an optional note screen after the NPS question,
     // so a Skip tap can show that buttons react once per tap (below).
-    const own = SURVEY_JSON();
+    const own = LIST_SURVEY_JSON();
     own.flow.splice(own.flow.findIndex((x) => x.id === 'nps') + 1, 0, { id: 'extra_note', type: 'free_text', text: 'q.one_fix', required: false });
     page.on('request', async (req) => {
       // Passes the form's first check (flow and languages present), then breaks
@@ -1371,7 +1577,11 @@ async function quickFinish(page, opts = {}) {
       const p = await newPage(browser);
       await p.page.setRequestInterception(true);
       p.page.on('request', async (req) => {
-        if (isBootstrap(req)) { const b = await realBootstrap(req.url()); b.survey.flow = b.survey.flow.map((x) => (x.id === 'nps' ? Object.assign({}, x, { text: undefined }) : x)); respondJSON(req, b); }
+        if (isBootstrap(req)) {
+          const b = await realBootstrap(req.url());
+          (Array.isArray(b.survey.flow) ? b.survey.flow : b.survey.flow.nodes).forEach((x) => { if (x.id === 'nps') delete x.text; });   // a list or a graph
+          respondJSON(req, b);
+        }
         else req.continue();
       });
       await p.page.goto(linkFor(main, 'DC-DEMO-046', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
@@ -1454,6 +1664,530 @@ async function quickFinish(page, opts = {}) {
     await context.close();
     pass('Y: Meesho-only mode: the form inside the web app\'s page talks through google.script.run and loads its files from its own address');
   } catch (e) { fail('Y: Meesho-only mode', e); }
+
+  /* ======================= FLOW GRAPH SCENARIOS (23 Oct 2026) =======================
+     Each one fails on the form before the flow engine (git commit 1c99b5e and
+     earlier), except Z6, which checks a fall-back that form already had. */
+
+  /* ---------------- Z1: a jump in a graph served by the test server itself (--survey) ----------------
+     Promoters (NPS 9-10) skip the area questions. On the old form the graph is
+     refused (its flow is not a list) and the form's own copy asks the areas. */
+  if (want('Z1')) try {
+    const dir = fs.mkdtempSync(path.join(__dirname, 'data-'));
+    const file = path.join(dir, 'graph-survey.json');
+    fs.writeFileSync(file, JSON.stringify(graphSurvey((g) => { nodeOf(g, 'nps').next = PROMOTER_JUMP; }), null, 1));
+    const gsrv = await startServer(8796, ['--survey', file], { dataDir: dir });
+    try {
+      // A promoter: straight from NPS to the support question; nothing about the areas is sent.
+      {
+        const { page, context } = await newPage(browser);
+        await page.goto(linkFor(gsrv, 'DC-E2E-Z1A', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+        await waitScreen(page, 'nps');
+        await clickNth(page, '.nps-chip', 9);
+        await waitScreen(page, 'support_gate');            // the jump
+        await shot(page, 'Z1-01-jump-to-support');
+        await clickNth(page, '.yesno .choice', 1);
+        await waitScreen(page, 'one_fix');
+        assert.strictEqual(await text(page, '#nav-next'), 'Submit', 'one_fix is the last question on this route');
+        await page.click('#nav-next');
+        await waitFinal(page, /Your feedback goes straight/, 10000);
+        await sleep(300);
+        const s = storedFor(gsrv, 'DC-E2E-Z1A');
+        assert.strictEqual(s.length, 1, 'one stored submission');
+        assert.deepStrictEqual(s[0].answers, { nps: 9, support_gate: 'no' });
+        assert.deepStrictEqual(s[0].ratings, [], 'no area ratings on the promoter route');
+        assert.deepStrictEqual(s[0].events.map((e) => e.screen), ['nps', 'support_gate', 'one_fix', 'thanks']);
+        assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+        await context.close();
+      }
+      // Back after the jump returns to the NPS screen; a lower score takes the usual route through the areas.
+      {
+        const { page, context } = await newPage(browser);
+        await page.goto(linkFor(gsrv, 'DC-E2E-Z1B', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+        await waitScreen(page, 'nps');
+        await clickNth(page, '.nps-chip', 10);
+        await waitScreen(page, 'support_gate');
+        await page.click('#nav-back');
+        await waitScreen(page, 'nps');                     // the screen the partner came from
+        await clickNth(page, '.nps-chip', 4);
+        for (const fn of ['losses', 'payments', 'linehaul', 'consumables', 'orders', 'app']) { await waitScreen(page, 'fn_rating:' + fn); await clickNth(page, '.faces .face', 4); }
+        await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+        await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+        await waitFinal(page, /Your feedback goes straight/, 10000);
+        await sleep(300);
+        const s = storedFor(gsrv, 'DC-E2E-Z1B')[0];
+        assert(s, 'stored');
+        assert.deepStrictEqual(s.answers, { nps: 4, support_gate: 'no' });
+        assert.strictEqual(s.ratings.filter((r) => r.block === 'function').length, 6, 'all six areas rated on the usual route');
+        await context.close();
+      }
+      assert(/a flow graph \(pp-flow\/1\) of 9 nodes/.test(gsrv.log()), 'the test server logs the graph and its node count');
+    } finally {
+      gsrv.proc.kill();
+    }
+    pass('Z1: a graph with a jump, served by the test server (--survey): promoters skip the areas, Back returns, other scores take the usual route');
+  } catch (e) { fail('Z1: graph jump', e); }
+
+  /* ---------------- Z2: "problem screen right after each low rating" written as a group ----------------
+     On the old form the graph is refused and the form's own copy asks the
+     problem screens after all six ratings. */
+  if (want('Z2')) try {
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    const cfg = graphSurvey((g) => {
+      const rate = nodeOf(g, 'fn_ratings');
+      const dive = nodeOf(g, 'fn_deep_dives');
+      delete rate.repeat_for; delete dive.repeat_for;
+      rate.next = 'fn_deep_dives';
+      dive.show_if = { answer: 'fn_rating:{area}', at_most: { var: 'area.threshold' } };
+      dive.next = '@next_item';
+      const group = { id: 'area_loop', type: 'group', repeat_for: { each: 'area', in: 'areas' },
+        body: { start: 'fn_ratings', nodes: [rate, dive] }, next: 'support_gate' };
+      g.nodes.splice(g.nodes.indexOf(rate), 2, group);
+      nodeOf(g, 'nps').next = 'area_loop';
+    });
+    page.on('request', (req) => {
+      if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, STRINGS_JSON(), { round: '2026-R1' }));
+      else req.continue();
+    });
+    await page.goto(linkFor(main, 'DC-E2E-Z2', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 7);
+    await waitScreen(page, 'fn_rating:losses'); await clickNth(page, '.faces .face', 1);   // 2: low
+    await waitScreen(page, 'fn_deep_dive:losses');                                       // straight after its rating
+    assert.strictEqual(await text(page, '.area-name'), STRINGS_JSON()['fn.losses.name'].en, 'the area\'s name (label fn.{area}.name)');
+    assert((await text(page, '.your-rating')).endsWith('Bad'), 'its rating shown (rating_from): ' + await text(page, '.your-rating'));
+    await shot(page, 'Z2-01-problem-right-after-rating');
+    await clickNth(page, '.chip', 0); await page.click('#nav-next');
+    await waitScreen(page, 'fn_rating:payments'); await clickNth(page, '.faces .face', 4);
+    await waitScreen(page, 'fn_rating:linehaul'); await clickNth(page, '.faces .face', 4);
+    await waitScreen(page, 'fn_rating:consumables'); await clickNth(page, '.faces .face', 0);  // 1: low
+    await waitScreen(page, 'fn_deep_dive:consumables');
+    await page.click('#nav-back');
+    await waitScreen(page, 'fn_rating:consumables');
+    await clickNth(page, '.faces .face', 3);                                             // 4: no longer low
+    await waitScreen(page, 'fn_rating:orders');                                          // its problem screen left the route
+    for (const fn of ['orders', 'app']) { await waitScreen(page, 'fn_rating:' + fn); await clickNth(page, '.faces .face', 4); }
+    await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+    await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+    await waitFinal(page, /Your feedback goes straight/, 10000);
+    await sleep(300);
+    const s = storedFor(main, 'DC-E2E-Z2')[0];
+    assert(s, 'stored');
+    const fr = Object.fromEntries(s.ratings.filter((r) => r.block === 'function').map((r) => [r.item, r]));
+    assert.strictEqual(fr.losses.rating, 2); assert.strictEqual(fr.losses.issue_code, 'wrong_debit');
+    assert.strictEqual(fr.consumables.rating, 4); assert.strictEqual(fr.consumables.issue_code, null, 'the problem picked before is not sent');
+    const ev = s.events.map((e) => e.screen);
+    assert.strictEqual(ev.indexOf('fn_deep_dive:losses'), ev.indexOf('fn_rating:losses') + 1, 'problem screen right after its rating');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('Z2: a group repeats "rating, then its problem screen if low" per area; changing a rating drops its problem screen');
+  } catch (e) { fail('Z2: group loop', e); }
+
+  /* ---------------- Z3: two endings ----------------
+     "No" to "one more minute?" jumps to a short ending with its own title and
+     text, and sends the answers there; the old form refuses the graph. */
+  if (want('Z3')) try {
+    const strings = STRINGS_JSON();
+    Object.assign(strings, {
+      'x.more_time': six('Do you have one more minute for us?'),
+      'x.end_short_title': six('Thanks, that is all for now'),
+      'x.end_short_body': six('We will ask the rest next round.')
+    });
+    const cfg = graphSurvey((g) => {
+      nodeOf(g, 'nps').next = 'more_time';
+      g.nodes.splice(g.nodes.indexOf(nodeOf(g, 'nps')) + 1, 0, { id: 'more_time', type: 'yes_no', text: 'x.more_time', required: true,
+        next: [{ when: { answer: 'more_time', equals: 'no' }, goto: 'end_short' }, { default: 'fn_ratings' }] });
+      g.nodes.push({ id: 'end_short', type: 'thank_you', text: 'x.end_short_title', body: 'x.end_short_body' });
+    });
+    const setup = async (page, failFirstSubmit) => {
+      let failed = !failFirstSubmit;
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isBootstrap(req)) return respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' }));
+        if (!failed && req.method() === 'POST' && (req.postData() || '').includes('"kind":"submit"')) { failed = true; return req.abort('failed'); }
+        req.continue();
+      });
+    };
+    // The short ending: the first send fails (its title shows with "Could not send"), the retry works.
+    {
+      const { page, context } = await newPage(browser);
+      await setup(page, true);
+      await page.goto(linkFor(main, 'DC-E2E-Z3A', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 6);
+      await waitScreen(page, 'more_time');
+      assert.strictEqual(await text(page, '.q-title'), 'Do you have one more minute for us?');
+      await clickNth(page, '.yesno .choice', 1);                       // No: the jump to the short ending sends
+      await waitFinal(page, /Could not send/, 10000);
+      assert.strictEqual(await text(page, '.final .q-title'), 'Thanks, that is all for now', 'the short ending\'s title while retrying');
+      await waitFinal(page, /We will ask the rest next round\./, 15000);   // the automatic retry worked
+      assert.strictEqual(await text(page, '.final .q-title'), 'Thanks, that is all for now');
+      assert(!(await finalText(page)).includes(strings['thanks.body'].en), 'not the usual thank-you text');
+      assert((await finalText(page)).includes(strings['thanks.close'].en), 'the usual "you can close this page" line');
+      await page.waitForFunction(() => history.state && history.state.pp === 'end_short', { timeout: 5000 });
+      await shot(page, 'Z3-01-short-ending');
+      await sleep(300);
+      const s = storedFor(main, 'DC-E2E-Z3A');
+      assert.strictEqual(s.length, 1, 'sent once');
+      assert.deepStrictEqual(s[0].answers, { nps: 6, more_time: 'no' });
+      assert.deepStrictEqual(s[0].ratings, []);
+      assert.deepStrictEqual(s[0].events.map((e) => e.screen), ['nps', 'more_time', 'end_short']);
+      assert.deepStrictEqual(consoleErrors(page).filter((m) => !/ERR_FAILED|Failed to load resource/.test(m)), [], 'no console errors (apart from the failed send)');
+      await context.close();
+    }
+    // "Yes": the usual route and the usual ending.
+    {
+      const { page, context } = await newPage(browser);
+      await setup(page, false);
+      await page.goto(linkFor(main, 'DC-E2E-Z3B', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 9);
+      await waitScreen(page, 'more_time'); await clickNth(page, '.yesno .choice', 0);
+      for (const fn of ['losses', 'payments', 'linehaul', 'consumables', 'orders', 'app']) { await waitScreen(page, 'fn_rating:' + fn); await clickNth(page, '.faces .face', 4); }
+      await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+      await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+      await waitFinal(page, /Your feedback goes straight/, 10000);
+      assert.strictEqual(await text(page, '.final .q-title'), 'Thank you!');
+      await sleep(300);
+      const s = storedFor(main, 'DC-E2E-Z3B')[0];
+      assert(s && s.answers.more_time === 'yes' && s.ratings.length === 6, 'the usual route sent');
+      assert.strictEqual(s.events[s.events.length - 1].screen, 'thanks');
+      await context.close();
+    }
+    pass('Z3: two endings: a jump to a short ending shows its own title and text (also while retrying) and sends; the usual route ends as before');
+  } catch (e) { fail('Z3: two endings', e); }
+
+  /* ---------------- Z4: rules ignore answers left off the route (the stale-answer fix) ----------------
+     A -> B (only if A = yes) -> C (only if B = yes). Answer yes, yes, 4; go
+     Back to A and change it to no: B leaves the route, so C must not be asked
+     or sent although B's "yes" is still saved on the phone. Run on the list
+     format (the old engine asks C here: the bug itself) and as a graph. */
+  if (want('Z4')) try {
+    const strings = STRINGS_JSON();
+    Object.assign(strings, {
+      'x.q_a': six('Do you run more than one DC?'),
+      'x.q_b': six('Is your second DC in another city?'),
+      'x.q_c': six('How hard is it to run both?')
+    });
+    const own = LIST_SURVEY_JSON();
+    const line = (id) => own.flow.find((x) => x.id === id);
+    const listCfg = SURVEY_JSON();
+    listCfg.flow = [line('language'), line('whats_changed'), line('nps'),
+      { id: 'q_a', type: 'yes_no', text: 'x.q_a', required: true },
+      { id: 'q_b', type: 'yes_no', text: 'x.q_b', required: true, show_if: { answer: 'q_a', equals: 'yes' } },
+      { id: 'q_c', type: 'rating_1_5', text: 'x.q_c', required: true, show_if: { answer: 'q_b', equals: 'yes' } },
+      line('one_fix'), line('thanks')];
+    const graphCfg = SURVEY_JSON();
+    graphCfg.flow = { format: 'pp-flow/1', start: 'nps', collections: {}, nodes: [
+      Object.assign({}, todayGraph().nodes[2], { next: 'q_a' }),
+      { id: 'q_a', type: 'yes_no', text: 'x.q_a', required: true, next: 'q_b' },
+      { id: 'q_b', type: 'yes_no', text: 'x.q_b', required: true, show_if: { answer: 'q_a', equals: 'yes' }, next: 'q_c' },
+      { id: 'q_c', type: 'rating_1_5', text: 'x.q_c', required: true, show_if: { answer: 'q_b', equals: 'yes' }, next: 'one_fix' },
+      Object.assign({}, nodeOf(todayGraph(), 'one_fix'), { next: 'thanks' }),
+      { id: 'thanks', type: 'thank_you' }] };
+    for (const [label, cfg, dc] of [['list', listCfg, 'DC-E2E-Z4L'], ['graph', graphCfg, 'DC-E2E-Z4G']]) {
+      const { page, context } = await newPage(browser);
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' }));
+        else req.continue();
+      });
+      await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 8);
+      await waitScreen(page, 'q_a'); await clickNth(page, '.yesno .choice', 0);
+      await waitScreen(page, 'q_b'); await clickNth(page, '.yesno .choice', 0);
+      await waitScreen(page, 'q_c'); await clickNth(page, '.faces .face', 3);
+      await waitScreen(page, 'one_fix');
+      for (const back of ['q_c', 'q_b', 'q_a']) { await page.click('#nav-back'); await waitScreen(page, back); }
+      await clickNth(page, '.yesno .choice', 1);                      // A = no
+      try { await waitScreen(page, 'one_fix'); }                       // B and C are off the route now
+      catch (err) { throw new Error(label + ': ' + err.message + ' (C was asked although B is no longer on the route)'); }
+      const key = 'vpp:v1:state:2026-R1:' + dc;
+      const kept = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).answers, key);
+      assert(kept.q_b === 'yes' && kept.q_c === 4, label + ': the answers off the route stay on the phone: ' + JSON.stringify(kept));
+      assert.strictEqual(await text(page, '#nav-next'), 'Submit', label + ': one_fix is the last question');
+      // Back on that branch, the saved answers come back.
+      await page.click('#nav-back'); await waitScreen(page, 'q_a');
+      await clickNth(page, '.yesno .choice', 0);                      // A = yes again
+      await waitScreen(page, 'q_b');
+      assert.strictEqual(await text(page, '.yesno .choice.is-selected'), 'Yes', label + ': B\'s saved answer shown again');
+      await page.click('#nav-back'); await waitScreen(page, 'q_a');
+      await clickNth(page, '.yesno .choice', 1);                      // A = no, for good
+      await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+      await waitFinal(page, /Your feedback goes straight/, 10000);
+      await sleep(300);
+      const s = storedFor(main, dc)[0];
+      assert(s, label + ': stored');
+      assert.deepStrictEqual(s.answers, { nps: 8, q_a: 'no' }, label + ': neither B nor C is sent');
+      assert.deepStrictEqual(s.ratings, [], label + ': C\'s rating is not sent');
+      assert.deepStrictEqual(consoleErrors(page), [], label + ': no console errors');
+      await context.close();
+    }
+    pass('Z4: a chained rule ignores answers left off the route: C is neither asked nor sent after A changes (list and graph); the saved answers come back on that branch');
+  } catch (e) { fail('Z4: stale answers', e); }
+
+  /* ---------------- Z5: ?simulate=1: the developer drawer, in test mode only ----------------
+     It comes from the test server (/dev/simulate.js, outside web/). The old form never loads it. */
+  if (want('Z5')) try {
+    assert(!fs.existsSync(path.join(REPO, 'web/dev/simulate.js')) && fs.existsSync(path.join(REPO, 'scripts/dev/simulate.js')),
+      'the drawer lives in scripts/dev/, never in web/ (which GitHub Pages publishes)');
+    const cfg = graphSurvey((g) => { nodeOf(g, 'nps').next = PROMOTER_JUMP; });
+    const devRequests = [];
+    const watch = (page, extra) => page.on('request', (req) => {
+      if (/\/dev\/simulate\.js/.test(req.url())) devRequests.push(req.url());
+      if (isBootstrap(req)) return respondJSON(req, bootstrapFrom(cfg, STRINGS_JSON(), { round: '2026-R1' }));
+      if (extra && extra(req)) return;
+      req.continue();
+    });
+    // Test mode without &simulate=1: no drawer, nothing asked for.
+    {
+      const { page, context } = await newPage(browser);
+      await page.setRequestInterception(true); watch(page);
+      await page.goto(linkFor(main, 'DC-E2E-Z5A', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps');
+      assert.strictEqual(await page.$('#pp-sim-toggle'), null, 'no drawer without &simulate=1');
+      assert.strictEqual(await page.evaluate(() => typeof window.PP.dev), 'undefined');
+      await context.close();
+    }
+    assert.deepStrictEqual(devRequests, [], 'the drawer is not even downloaded without &simulate=1');
+    // Test mode with &simulate=1.
+    {
+      const { page, context } = await newPage(browser);
+      await page.setRequestInterception(true); watch(page);
+      const devStatus = [];
+      page.on('response', (r) => { if (/\/dev\/simulate\.js/.test(r.url())) devStatus.push(r.status()); });
+      await page.goto(linkFor(main, 'DC-E2E-Z5B', '2026-R1', 'en') + '&simulate=1', { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps');
+      await page.waitForSelector('#pp-sim-toggle', { timeout: 5000 });
+      assert.deepStrictEqual(devRequests, [`http://localhost:${main.port}/dev/simulate.js`], 'loaded once, from the test server: ' + devRequests);
+      assert.deepStrictEqual(devStatus, [200]);
+      await page.click('#pp-sim-toggle');
+      await page.waitForSelector('#pp-sim:not([hidden])');
+      await shot(page, 'Z5-01-drawer');
+      const route = () => page.$$eval('#pp-sim-route li', (li) => li.map((x) => x.getAttribute('data-step')));
+      const before = await route();
+      assert.strictEqual(before[0], 'nps');
+      assert(before.includes('fn_rating:losses') && before.includes('support_gate') && before[before.length - 1] === 'thanks', 'route ahead: ' + before);
+      assert(await page.$eval('#pp-sim-route li[data-step="nps"]', (li) => li.classList.contains('sim-here')), 'the screen on show is marked');
+      const why = (id) => page.$eval(`#pp-sim-skipped li[data-skipped="${id}"]`, (li) => li.textContent);
+      assert(/lang_in_url == false \(now: true\)/.test(await why('language')), 'why the language screen is skipped: ' + await why('language'));
+      assert(/support_gate == "yes"/.test(await why('support')), 'why the support screen is skipped: ' + await why('support'));
+      // Paste an answer: NPS 10 takes the promoters' jump.
+      await page.type('#pp-sim-answers', 'nps=10');
+      await page.click('#pp-sim-apply');
+      await page.waitForFunction(() => !document.querySelector('#pp-sim-route li[data-step="fn_rating:losses"]'), { timeout: 5000 });
+      assert.deepStrictEqual(await route(), ['nps', 'support_gate', 'one_fix', 'thanks'], 'the route after the jump');
+      assert(/nps -> support_gate because nps >= 9 \(now: 10\)/.test(await page.$eval('#pp-sim-jumps', (u) => u.textContent)), 'the jump is explained');
+      assert(/not reached/.test(await why('fn_rating:losses')), 'the screens the jump went past');
+      assert.strictEqual(await page.$eval('.nps-chip.is-selected', (b) => b.textContent), '10', 'the form shows the pasted answer');
+      // Go to a screen of the route.
+      await page.click('#pp-sim-route li[data-step="support_gate"] .sim-go');
+      await waitScreen(page, 'support_gate');
+      assert.strictEqual(await page.$eval('#pp-sim', (d) => d.hidden), true, 'the drawer closes after Go');
+      assert.strictEqual(await text(page, '.q-title'), STRINGS_JSON()['q.support_gate'].en);
+      assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+      await context.close();
+    }
+    // Live mode with &simulate=1: no drawer, nothing asked for.
+    {
+      devRequests.length = 0;
+      const live = SURVEY_JSON();
+      live.backend.mode = 'apps_script';
+      live.backend.apps_script_url = `http://127.0.0.1:${main.port}/api`;
+      const { page, context } = await newPage(browser);
+      await page.setRequestInterception(true);
+      watch(page, (req) => {
+        if (!req.url().endsWith('/config/survey.json')) return false;
+        req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(live) });
+        return true;
+      });
+      await page.goto(linkFor(main, 'DC-E2E-Z5C', '2026-R1', 'en') + '&simulate=1', { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps');
+      await sleep(500);
+      assert.strictEqual(await page.$eval('#dev-banner', (e) => e.hidden), true, 'live mode');
+      assert.strictEqual(await page.$('#pp-sim-toggle'), null, 'no drawer in live mode');
+      assert.strictEqual(await page.evaluate(() => typeof window.PP.dev), 'undefined', 'no developer hooks in live mode');
+      assert.deepStrictEqual(devRequests, [], 'the drawer is never downloaded in live mode');
+      await context.close();
+    }
+    pass('Z5: ?simulate=1 loads the developer drawer from the test server in test mode only: route ahead, skipped screens and why, jumps, paste answers, Go');
+  } catch (e) { fail('Z5: simulate drawer', e); }
+
+  /* ---------------- Z6: a flow in an unknown format -> the form's own copy ----------------
+     (The old form also fell back, since it refused every flow that was not a list.) */
+  if (want('Z6')) try {
+    const staticNps = STRINGS_JSON()['q.nps'].en;
+    const strings = STRINGS_JSON();
+    strings['q.nps'] = six('PUBLISHED: must not be shown');
+    const cfg = graphSurvey((g) => { g.format = 'pp-flow/99'; });
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    const seen = [];
+    page.on('request', (req) => {
+      seen.push(req.url());
+      if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: 'DEMO-R1', whats_changed: { title: null, items: [six('PUBLISHED news')] } }));
+      else req.continue();
+    });
+    await page.goto(linkFor(main, 'DC-E2E-Z6', 'DEMO-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'whats_changed');
+    assert(!(await text(page, '.wc-list')).includes('PUBLISHED'), 'the form\'s own "What changed"');
+    assert(seen.some((u) => u.endsWith('/i18n/strings.json')) && seen.some((u) => u.endsWith('/config/whats_changed.json')), 'the form\'s own files were loaded');
+    await page.click('#nav-next');
+    await waitScreen(page, 'nps');
+    assert.strictEqual(await text(page, '.q-title'), staticNps, 'the form\'s own texts');
+    await quickFinish(page);
+    await waitFinal(page, /Your feedback goes straight/, 10000);
+    await sleep(300);
+    const s = storedFor(main, 'DC-E2E-Z6')[0];
+    assert(s && s.config_version === SURVEY_JSON().config_version, 'stamped with the form\'s own version');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('Z6: a flow in an unknown format is not used: the form shows its own copy (and sends with its own version)');
+  } catch (e) { fail('Z6: unknown flow format', e); }
+
+  /* ---------------- Z7: switching language takes the screen on show off the route (26 Oct 2026) ----------------
+     A jump on the partner's language (allowed: the control panel's jump builder offers it) sends English
+     readers to an extra note after the NPS question. A partner on that note switches to Hindi with the button
+     at the top, so the note is no longer on their route. Back must still lead to the NPS question and Next on
+     to the first area rating (where a resumed visit would continue): never back to the first screen, and the
+     history (the phone's back button) keeps working. */
+  if (want('Z7')) try {
+    const cfg = SURVEY_JSON();
+    const g = cfg.flow;
+    g.nodes.find((x) => x.id === 'nps').next = [{ when: { fact: 'lang', equals: 'en' }, goto: 'en_note' }, { default: 'fn_ratings' }];
+    g.nodes.splice(g.nodes.findIndex((x) => x.id === 'fn_ratings'), 0, { id: 'en_note', type: 'info_card', text: 'x.en_note', next: 'fn_ratings' });
+    const strings = STRINGS_JSON();
+    strings['x.en_note'] = six('A note for partners who read English');
+    assert.deepStrictEqual(flowErrors(cfg, strings), [], 'a jump on the language passes the flow check');
+    const dc = 'DC-E2E-Z7';
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' }));
+      else req.continue();
+    });
+    const switchTo = async (i) => {   // the language button at the top: 0 English, 1 Hindi
+      await page.click('#lang-btn');
+      await page.waitForSelector('.sheet .lang-choice');
+      await clickNth(page, '.sheet .lang-choice', i);
+      await sleep(800);
+    };
+    await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 8);
+    await waitScreen(page, 'en_note');
+    // 1. Hindi while on the English-only note: Back is still there and leads to the NPS question
+    await switchTo(1);
+    assert.strictEqual(await screenId(page), 'en_note', 'the note stays on show');
+    assert.strictEqual(await page.$eval('#nav-back', (b) => b.hidden), false, 'Back is still there after the switch');
+    const pct = Number(await page.$eval('#progress', (e) => e.getAttribute('aria-valuenow')));
+    assert(pct > 4, 'the progress bar does not drop back to the start: ' + pct);
+    await page.click('#nav-back');
+    await waitScreen(page, 'nps');
+    // 2. English again, Next to the note; Hindi; Next goes on to the first area rating, not to the first screen
+    await switchTo(0);
+    await page.click('#nav-next');
+    await waitScreen(page, 'en_note');
+    await switchTo(1);
+    assert.strictEqual(await text(page, '#nav-next'), STRINGS_JSON()['ui.continue'].hi, 'the note\'s own Next, in Hindi');
+    await page.click('#nav-next');
+    try { await waitScreen(page, 'fn_rating:losses'); }
+    catch (err) { throw new Error(err.message + ' (Next from the screen that left the route must go on, not back to the start)'); }
+    // 3. Back, Next and the phone's own back button keep working
+    await page.click('#nav-back');
+    await waitScreen(page, 'nps');
+    await page.click('#nav-next');
+    await waitScreen(page, 'fn_rating:losses');
+    await page.goBack();
+    await waitScreen(page, 'nps');
+    await quickFinish(page);
+    await page.waitForFunction(() => document.querySelector('.final'), { timeout: 10000 });
+    let s = null;
+    for (let i = 0; i < 40 && !s; i++) { s = storedFor(main, dc)[0]; if (!s) await sleep(250); }
+    assert(s, 'stored');
+    assert.strictEqual(s.lang, 'hi');
+    assert.deepStrictEqual(s.answers, { nps: 8, support_gate: 'no' });
+    assert(s.events.some((e) => e.screen === 'en_note'), 'the note was seen');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('Z7: a language switch that takes the screen on show off the route: Back and Next go on along the new route (never back to the start), history keeps working');
+  } catch (e) { fail('Z7: language switch off the route', e); }
+
+  /* ---------------- Z8: a published route a phone cannot run -> the form's own copy (26 Oct 2026) ----------------
+     A graph without screens, one whose "start" names no screen, and one that goes straight to an ending:
+     each used to show an empty page that sent nothing. Now the form uses its own copy, as for a flow in an
+     unknown format (Z6): PP.flow.isUsable in net.js, and app.js's check of the route's first screen. */
+  if (want('Z8')) try {
+    const staticNps = STRINGS_JSON()['q.nps'].en;
+    const strings = STRINGS_JSON();
+    strings['q.nps'] = six('PUBLISHED: must not be shown');
+    const variants = [
+      ['no screens', 'A', { format: 'pp-flow/1', start: 'nps', collections: {}, nodes: [] }],
+      ['a start that names no screen', 'B', Object.assign(SURVEY_JSON().flow, { start: 'gone' })],
+      ['a route that goes straight to an ending', 'C', Object.assign(SURVEY_JSON().flow, { start: 'thanks' })]
+    ];
+    for (const [label, tag, flowValue] of variants) {
+      const cfg = SURVEY_JSON();
+      cfg.flow = flowValue;
+      const dc = 'DC-E2E-Z8' + tag;
+      const { page, context } = await newPage(browser);
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' }));
+        else req.continue();
+      });
+      await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      try { await waitScreen(page, 'nps'); }
+      catch (err) { throw new Error(label + ': ' + err.message + ' (the page shows "' + (await page.$eval('#screen', (e) => e.textContent.trim().slice(0, 80))) + '")'); }
+      assert.strictEqual(await text(page, '.q-title'), staticNps, label + ': the form\'s own texts');
+      const others = consoleErrors(page).filter((m) => !/published questionnaire could not be shown/.test(m));
+      assert.deepStrictEqual(others, [], label + ': no other console errors');
+      if (tag === 'C') assert(consoleErrors(page).some((m) => /published questionnaire could not be shown/.test(m)), 'the fall-back is logged: ' + consoleErrors(page));
+      await clickNth(page, '.nps-chip', 6);
+      await waitScreen(page, 'fn_rating:losses');   // the form's own route goes on
+      await context.close();
+      assert.deepStrictEqual(storedFor(main, dc), [], label + ': nothing was sent');
+    }
+    pass('Z8: a published graph without screens, with a start that names no screen, or going straight to an ending is not used: the form shows its own copy');
+  } catch (e) { fail('Z8: unusable published route', e); }
+
+  /* ---------------- Z9: an answer coded "constructor" is an ordinary answer on a phone (26 Oct 2026) ----------------
+     "constructor" is a legal code, but every JavaScript object has a property of that name. A voice-or-typing
+     screen stored under it counted as answered before any tap (Next instead of Skip), showed
+     "function Object() { [native code] }" in its typing box, and sent that as the partner's text. */
+  if (want('Z9')) try {
+    const cfg = SURVEY_JSON();
+    const g = cfg.flow;
+    g.nodes.find((x) => x.id === 'nps').next = 'constructor';
+    g.nodes.splice(g.nodes.findIndex((x) => x.id === 'fn_ratings'), 0,
+      { id: 'constructor', type: 'free_text', text: 'q.one_fix', required: false, next: 'fn_ratings' });
+    const strings = STRINGS_JSON();
+    assert.deepStrictEqual(flowErrors(cfg, strings), [], 'a screen coded "constructor" passes the flow check');
+    const dc = 'DC-E2E-Z9';
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' }));
+      else req.continue();
+    });
+    await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 8);
+    await waitScreen(page, 'constructor');
+    assert.strictEqual(await page.$eval('#nav-skip', (b) => b.hidden), false, 'not answered yet: Skip is offered');
+    assert.strictEqual(await page.$eval('#nav-next', (b) => b.hidden), true, 'not answered yet: no Next');
+    await tap(page, '.type-row .link-btn');
+    assert.strictEqual(await page.$eval('.text-input', (t) => t.value), '', 'the typing box starts empty');
+    await page.click('#nav-skip');
+    for (const fn of ['losses', 'payments', 'linehaul', 'consumables', 'orders', 'app']) { await waitScreen(page, 'fn_rating:' + fn); await clickNth(page, '.faces .face', 4); }
+    await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+    await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+    await waitFinal(page, /Your feedback goes straight/, 10000);
+    await sleep(300);
+    const s = storedFor(main, dc)[0];
+    assert(s, 'stored');
+    assert.deepStrictEqual(s.answers, { nps: 8, support_gate: 'no' });
+    assert.deepStrictEqual(s.free_text, [], 'nothing typed, nothing sent (no "function Object() ...")');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('Z9: a screen coded "constructor" starts unanswered (Skip, an empty typing box) and sends nothing when skipped');
+  } catch (e) { fail('Z9: "constructor" as a code', e); }
 
   await browser.close();
   await browserNoMic.close();

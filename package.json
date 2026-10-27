@@ -1,0 +1,19 @@
+{
+  "_help": [
+    "package.json: short names for the questionnaire's flow tools, for people who use npm.",
+    "WHAT IT IS FOR: 'npm run validate-flow' checks the flow, 'npm run flow-map' rewrites docs/flow.md (the map of the flow), and 'npm run simulate -- --set nps=4 --set support_gate=no' tries out answers.",
+    "HOW TO RUN: in Terminal, in the project folder (the one with web/ and scripts/). Without npm, the same works as: python3 scripts/flow.py check | map --write | simulate ...",
+    "READS / WRITES: see the header of scripts/flow.js. Only flow-map writes a file (docs/flow.md).",
+    "It installs NOTHING: there are no dependencies, so 'npm install' is never needed here. The developer tests have their own package.json in tests/.",
+    "Notes for humans start with an underscore, like this one; npm ignores them."
+  ],
+  "name": "valmo-partner-pulse",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Valmo Partner Pulse: shortcuts for the questionnaire's flow tools (scripts/flow.js). No dependencies.",
+  "scripts": {
+    "validate-flow": "node scripts/flow.js check",
+    "flow-map": "node scripts/flow.js map --write",
+    "simulate": "node scripts/flow.js simulate"
+  }
+}

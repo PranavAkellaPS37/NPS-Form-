@@ -1,0 +1,132 @@
+{
+  "_source": "docs/flow-graph-proposal.md section 5 (23 Oct 2026): the hand-written graph of today's S0-S7 in after_all_ratings mode, copied byte for byte from its JSON block",
+  "flow": {
+    "_help": "The route through the questionnaire. Live, edited in the control panel (Questions). Codes (id, store_as) are permanent once partners have answered. After any edit: python3 scripts/flow.py check",
+    "format": "pp-flow/1",
+    "start": "language",
+    "collections": {
+      "areas": {
+        "list": "functions",
+        "defaults": {
+          "threshold": 3
+        }
+      },
+      "support_items": {
+        "list": "support.items"
+      }
+    },
+    "nodes": [
+      {
+        "id": "language",
+        "type": "language_picker",
+        "show_if": {
+          "fact": "lang_in_url",
+          "equals": false
+        },
+        "next": "whats_changed"
+      },
+      {
+        "id": "whats_changed",
+        "type": "whats_changed",
+        "show_if": {
+          "fact": "whats_changed_count",
+          "at_least": 1
+        },
+        "next": "nps"
+      },
+      {
+        "id": "nps",
+        "type": "nps_0_10",
+        "text": "q.nps",
+        "low_label": "nps.low",
+        "high_label": "nps.high",
+        "scale_hint": "nps.scale_hint",
+        "required": true,
+        "next": "fn_ratings"
+      },
+      {
+        "id": "fn_ratings",
+        "type": "function_rating",
+        "repeat_for": {
+          "each": "area",
+          "in": "areas"
+        },
+        "store_as": "fn_rating:{area}",
+        "text": "q.fn_rating",
+        "label": "fn.{area}.name",
+        "help": "fn.{area}.help",
+        "allow_not_applicable": true,
+        "issue_code_from": "fn_deep_dive:{area}",
+        "next": "fn_deep_dives"
+      },
+      {
+        "id": "fn_deep_dives",
+        "type": "function_deep_dive",
+        "repeat_for": {
+          "each": "area",
+          "in": "areas",
+          "where": {
+            "answer": "fn_rating:{area}",
+            "at_most": {
+              "var": "area.threshold"
+            }
+          }
+        },
+        "store_as": "fn_deep_dive:{area}",
+        "text": "q.deep_dive",
+        "label": "fn.{area}.name",
+        "rating_from": "fn_rating:{area}",
+        "options": {
+          "from": "area.issues",
+          "text": "issue.{area}.{code}",
+          "other": "issue.other"
+        },
+        "detail_text": "q.tell_more",
+        "detail_text_required": "q.tell_more_required",
+        "require_choice": true,
+        "require_detail_if_other": true,
+        "next": "support_gate"
+      },
+      {
+        "id": "support_gate",
+        "type": "yes_no",
+        "text": "q.support_gate",
+        "required": true,
+        "next": "support"
+      },
+      {
+        "id": "support",
+        "type": "support_block",
+        "show_if": {
+          "answer": "support_gate",
+          "equals": "yes"
+        },
+        "text": "q.support_block",
+        "rows": {
+          "each": "item",
+          "in": "support_items",
+          "store_as": "support:{item}",
+          "text": "support.{item}"
+        },
+        "allow_not_applicable": false,
+        "comment": {
+          "store_as": "support_comment",
+          "text": "q.support_comment"
+        },
+        "next": "one_fix"
+      },
+      {
+        "id": "one_fix",
+        "type": "free_text",
+        "text": "q.one_fix",
+        "required": false,
+        "block": "one_fix",
+        "next": "thanks"
+      },
+      {
+        "id": "thanks",
+        "type": "thank_you"
+      }
+    ]
+  }
+}

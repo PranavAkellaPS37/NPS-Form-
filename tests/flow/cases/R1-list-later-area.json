@@ -1,0 +1,22 @@
+{
+ "_about": "List format: a rule on an area rating before the ratings (the old check_config.py case).",
+ "base": "list",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "show_if",
+   "value": {
+    "answer": "fn_rating:payments",
+    "at_most": 2
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "nps"
+  }
+ ]
+}

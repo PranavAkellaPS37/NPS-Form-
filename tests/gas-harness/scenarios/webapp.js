@@ -22,6 +22,10 @@
            token check
        D11 the links CSV (panelGenerateLinks) neutralises cells that would
            run as formulas in Excel or Sheets
+       D12 pings keep config_version (the questionnaire the phone showed) in
+           the last column of the pings tab; a round spreadsheet made before
+           26 Oct 2026 gets that column from its first ping, safely (an
+           admin's own column moves right, a busy lock, two pings at once)
 
    HOW TO USE IT
      Loaded by run-tests.js (node run-tests.js --only C,D).
@@ -56,11 +60,15 @@ module.exports = function register(add) {
     let j = K.webJson(s, K.webGet(h, { action: 'health' }), 'health');
     s.ok(j && j.ok === true && j.service === 'valmo-partner-pulse' && j.mode === 'live' && H.isIso(j.time) && j.live_version === 1,
       'health = { ok: true, service, mode: "live", time, live_version: 1 }', K.show(j));
+    // Since 23 Oct 2026 (flow-graph stage 4): which route code this deployment runs (Flow.gs).
+    s.ok(j && j.flow_engine === 2 && j.flow_fingerprint === h.get('PP_FLOW_FINGERPRINT_') && /^[0-9a-f]{64}$/.test(j.flow_fingerprint || ''),
+      'health also shows flow_engine 2 and flow_fingerprint (Flow.gs\'s SHA-256)', K.show(j && { flow_engine: j.flow_engine, flow_fingerprint: j.flow_fingerprint }));
     j = K.webJson(s, K.webGet(h, { action: 'bootstrap', round: 'DEMO-R1' }), 'bootstrap');
     s.need(j && j.ok === true, 'bootstrap answers ok', K.show(j));
     s.ok(j.draft === false && j.version === 1 && /^p1-\d{4}-\d{2}-\d{2}$/.test(j.config_version), 'bootstrap: draft false, version 1, config_version p1-…', K.show({ draft: j.draft, version: j.version, config_version: j.config_version }));
     s.eq(j.round, { id: 'DEMO-R1', status: 'draft' }, 'bootstrap: round { id, status }');
-    s.eq((j.survey && j.survey.flow || []).map((x) => x.id), facts.flowIds, 'bootstrap: the published flow');
+    s.eq(j.survey && j.survey.flow, facts.graph, 'bootstrap: the published flow (the graph of the repo\'s list)');
+    s.eq(C.flowIdsOf(j.survey && j.survey.flow), facts.flowIds, 'bootstrap: its screens in order');
     s.eq(j.strings && j.strings['q.nps'], facts.strings['q.nps'], 'bootstrap: the published texts');
     s.eq(j.whats_changed, { title: null, items: facts.whats_changed.rounds['DEMO-R1'].items }, 'bootstrap: that round\'s "what changed" block');
     s.eq(j.clips, {}, 'bootstrap: clips');
@@ -152,7 +160,7 @@ module.exports = function register(add) {
     s.need(row, 'the opened ping is stored in the pings tab', K.show(rows('pings')));
     s.ok(H.isIso(row.received_at), 'pings.received_at is an ISO time', K.show(row.received_at));
     const want = { round: '2026-R1', session_id: 'ses_harnessping001', lang: 'hi', screen: 'nps', step_index: 2, step_total: 13,
-      at: '2026-10-20T05:00:00.000Z', token_valid: true, mode: 'live', client_net: '4g' };
+      at: '2026-10-20T05:00:00.000Z', token_valid: true, mode: 'live', client_net: '4g', config_version: 'p1-2026-10-20' };
     for (const [k, v] of Object.entries(want)) s.eq(row[k], v, `pings.${k}`);
     s.ok(H.blankish(row.events_json), 'pings.events_json is empty for "opened"', K.show(row.events_json));
     j = K.webJson(s, K.webPost(h, K.makePing({ stage: 'started', dc: 'DC-DEMO-001', round: '2026-R1', t: tk('DC-DEMO-001') })), 'ping started');
@@ -509,6 +517,122 @@ module.exports = function register(add) {
     if (info && info.sheet_id) s.eq((h.admin.table(info.sheet_id, 'pings') || { rows: [] }).rows.length, 1, 'and the ping is in it');
     const row = h.admin.table(null, 'Rounds').rows.find((r) => r.round_id === '2026-R5');
     s.soft(row && row.data_sheet, 'the Rounds tab shows the new data sheet address', K.show(row));
+    H.contractClean(s, h);
+  });
+
+  // Flow-graph stage 6 (26 Oct 2026, Pranav's decision 11): config_version is the last column of the pings
+  // tab, so the dashboard knows which questionnaire a partner who never finished saw. A round spreadsheet
+  // made before that day gets the column from its first ping (Code.gs PP_pingsTab_), safely.
+  add('D12', 'Pings keep the questionnaire version (config_version) in the last column; a round spreadsheet made before 26 Oct 2026 gets that column safely', async (s) => {
+    const { h, bookId, tk } = openRound(s);
+    const COL = C.DATA_TABS.pings.indexOf('config_version') + 1;
+    s.need(COL > 1 && COL === C.DATA_TABS.pings.length, 'the contract: config_version is the LAST column of the pings tab', K.show(C.DATA_TABS.pings));
+    const tab = () => h.admin.findSheet(bookId, 'pings');
+    const cell = (r, c) => h.admin.cell(bookId, 'pings', r, c);
+    const header = (c) => String(cell(1, c));
+    const used = (run, member) => (run.uses && run.uses.get(member)) || 0;
+    const marker = () => h.admin.cache.entries().find((e) => e.key === 'pingcols:' + bookId);
+    /* One "started" ping (no already-submitted lookup), and the row it landed in. */
+    const send = (o) => {
+      const res = K.webPost(h, K.makePing(Object.assign({ stage: 'started', dc: 'DC-DEMO-001', round: '2026-R1', t: tk('DC-DEMO-001') }, o)));
+      const j = K.webJson(s, res, 'ping');
+      return { j, run: res.run || { uses: new Map(), lockLog: [] }, row: tab().lastRow() };
+    };
+    /* Make the pings tab look like one made before 26 Oct 2026: it ends with events_json, and the rows
+       already in it have no version (as stored before the change). The cache forgets the tab too. */
+    const makeOld = () => {
+      const sh = tab();
+      for (const row of sh.rows) if (row && row.length > COL - 1) row.length = COL - 1;
+      sh.maxCols = COL - 1;
+      h.admin.cache.remove('pingcols:' + bookId);
+    };
+
+    // 1. A spreadsheet made today has the column from the start.
+    s.eq(header(COL), 'config_version', 'a new round\'s pings tab ends with the config_version header');
+    let p = send({ config_version: 'p1-2026-10-20' });
+    s.ok(p.j && p.j.ok === true, 'a ping is accepted', K.show(p.j));
+    s.eq(cell(p.row, COL), 'p1-2026-10-20', 'the published version the phone showed is stored in the last column');
+    p = send({ config_version: '2026-10-19.1' });
+    s.eq(cell(p.row, COL), '2026-10-19.1', 'the version of the form\'s own copy (2026-10-19.1) is stored as text, not as a date or a number');
+    p = send({ drop: ['config_version'] });
+    s.ok(cell(p.row, 2) === 'started' && H.blankish(cell(p.row, COL)), 'a ping without a version is stored with an empty config_version cell', K.show(cell(p.row, COL)));
+    const m = marker();
+    s.ok(m && m.value === String(COL) && m.secondsLeft <= 21600, 'the cache remembers (6 hours at most) that this spreadsheet has every pings column', K.show(m));
+    p = send({});
+    s.ok(used(p.run, 'Sheet.getMaxColumns') === 0 && used(p.run, 'Sheet.insertColumnsAfter') === 0 && p.run.lockLog.length === 0,
+      'after that, a ping reads nothing extra and takes no lock', K.show({ uses: Array.from(p.run.uses.keys()), locks: p.run.lockLog }));
+    s.eq(tab().maxCols, COL, 'the pings tab is exactly as wide as its columns');
+
+    // 2. A spreadsheet made before 26 Oct 2026: the first ping adds the column.
+    makeOld();
+    const before = tab().lastRow();
+    s.need(tab().maxCols === COL - 1 && header(COL - 1) === 'events_json' && before > 1,
+      'set-up: the pings tab now looks like one made before 26 Oct 2026 (it ends with events_json, rows already stored)', K.show({ maxCols: tab().maxCols, last: header(COL - 1) }));
+    p = send({ config_version: 'p2-2026-10-26' });
+    s.ok(p.j && p.j.ok === true, 'a ping to the old tab is accepted', K.show(p.j));
+    s.eq(header(COL), 'config_version', 'the first ping adds the config_version header right after events_json');
+    const styles = h.admin.sheetInfo(bookId, 'pings').header;
+    s.ok(styles[COL - 1] && styles[COL - 1].fontWeight === 'bold' && styles[COL - 1].background === styles[0].background,
+      'in the header style of the other headers (bold, light purple)', K.show(styles[COL - 1]));
+    s.eq(tab().maxCols, COL, 'by adding exactly one column');
+    s.eq(cell(p.row, COL), 'p2-2026-10-26', 'the ping that added it is stored with its version');
+    const olderEmpty = [];
+    for (let r = 2; r <= before; r += 1) olderEmpty.push(H.blankish(cell(r, COL)));
+    s.ok(olderEmpty.every(Boolean), 'the rows stored before keep an empty config_version cell', K.show(olderEmpty));
+    s.eq(p.run.lockLog, ['script:8000', 'script:release'], 'it took the script lock once (waiting 8 s at most) and released it');
+    s.eq(used(p.run, 'Sheet.insertColumnsAfter'), 1, 'one column was inserted');
+    p = send({ config_version: 'p2-2026-10-26' });
+    s.ok(tab().maxCols === COL && cell(p.row, COL) === 'p2-2026-10-26' && p.run.lockLog.length === 0,
+      'the next ping adds nothing more and takes no lock', K.show({ maxCols: tab().maxCols, locks: p.run.lockLog }));
+    h.admin.cache.remove('pingcols:' + bookId);
+    p = send({});
+    s.ok(tab().maxCols === COL && used(p.run, 'Sheet.insertColumnsAfter') === 0 && p.run.lockLog.length === 0,
+      'when the cache has forgotten, a ping looks again, finds the column and adds nothing', K.show({ maxCols: tab().maxCols, locks: p.run.lockLog }));
+
+    // 3. An admin added a column of their own on the right (allowed): it moves one place right, intact.
+    makeOld();
+    const own = [['my_note']];
+    for (let r = 2; r <= tab().lastRow(); r += 1) own.push([`checked ${r}`]);
+    h.admin.writeRange(bookId, 'pings', 1, COL, own);
+    p = send({ config_version: 'p3-2026-10-27' });
+    s.eq([header(COL), header(COL + 1)], ['config_version', 'my_note'],
+      'with a column of the admins\' own after events_json: config_version goes in between, and their column moves one place right');
+    const kept = [];
+    for (let r = 2; r < own.length + 1; r += 1) kept.push(cell(r, COL + 1) === `checked ${r}` && H.blankish(cell(r, COL)));
+    s.ok(kept.every(Boolean), 'every value in the admins\' column is still there, nothing was overwritten', K.show(kept));
+    s.ok(cell(p.row, COL) === 'p3-2026-10-27' && H.blankish(cell(p.row, COL + 1)), 'the new ping fills config_version, not the admins\' column',
+      K.show([cell(p.row, COL), cell(p.row, COL + 1)]));
+    s.eq(tab().maxCols, COL + 1, 'one column was added');
+
+    // 4. The script lock stays busy (many answers being saved): the ping is still stored, without its version.
+    makeOld();
+    h.control.setLockBusy(true);
+    p = send({ config_version: 'p4-2026-10-28' });
+    h.control.setLockBusy(false);
+    s.ok(p.j && p.j.ok === true && cell(p.row, 2) === 'started', 'while the lock is busy, the ping is still stored', K.show(p.j));
+    s.eq(tab().maxCols, COL - 1, 'without adding the column, and without writing past events_json (a cell without a header)');
+    s.ok(!marker(), 'and the cache does not claim that the column is there', K.show(marker()));
+    const meanwhile = p.row;
+    p = send({ config_version: 'p4-2026-10-28' });
+    s.ok(header(COL) === 'config_version' && tab().maxCols === COL && cell(p.row, COL) === 'p4-2026-10-28' && H.blankish(cell(meanwhile, COL)),
+      'once the lock is free, the next ping adds the column; the ping stored meanwhile keeps an empty cell', K.show({ header: header(COL), maxCols: tab().maxCols }));
+
+    // 5. Two pings at once: the other one adds the column while this one waits for the lock.
+    makeOld();
+    let raced = false;
+    h.control.onTryLock((kind) => {
+      if (kind !== 'script' || raced) return;
+      raced = true;
+      const sh = tab();   // what the other ping leaves behind (PP_addPingVersionColumn_)
+      sh.maxCols = COL;
+      sh.setRaw(1, COL, 'config_version');
+    });
+    p = send({ config_version: 'p5-2026-10-29' });
+    h.control.onTryLock(null);
+    s.need(raced, 'set-up: another ping added the column while this one waited for the lock');
+    s.ok(tab().maxCols === COL && header(COL) === 'config_version' && used(p.run, 'Sheet.insertColumnsAfter') === 0,
+      'this ping looks again once it has the lock, and adds no second column', K.show({ maxCols: tab().maxCols, inserted: used(p.run, 'Sheet.insertColumnsAfter') }));
+    s.eq(cell(p.row, COL), 'p5-2026-10-29', 'and stores its version in the one config_version column');
     H.contractClean(s, h);
   });
 };

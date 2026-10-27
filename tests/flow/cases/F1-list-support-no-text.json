@@ -1,0 +1,18 @@
+{
+ "_about": "List format: a support_block without \"text\" (the form stops with an error on it).",
+ "base": "list",
+ "patch": [
+  {
+   "op": "remove_field",
+   "node": "support",
+   "field": "text"
+  }
+ ],
+ "expect": [
+  {
+   "code": "F1",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

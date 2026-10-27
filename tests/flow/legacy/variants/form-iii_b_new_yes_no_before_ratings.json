@@ -1,0 +1,18 @@
+{
+  "_source": "flow audit 22 Oct 2026 (workflow wf_43b4b1dd-f39), form auditor, form/cfgs/",
+  "_note": "a yes/no before the ratings that tests fn_rating:payments (a later answer)",
+  "_expect": "refused",
+  "_why": "A rule reads an answer of a LATER screen (refused by today's checks): rules now only see earlier answers, so differences are expected; only checked that nothing breaks.",
+  "flow": [
+    {"id":"language","type":"language_picker","skip_if":"lang_in_url"},
+    {"id":"whats_changed","type":"whats_changed","skip_if":"empty"},
+    {"id":"nps","type":"nps_0_10","text":"q.nps","low_label":"nps.low","high_label":"nps.high","scale_hint":"nps.scale_hint","required":true},
+    {"id":"payments_callback","type":"yes_no","text":"q.support_gate","required":true,"show_if":{"answer":"fn_rating:payments","at_most":2}},
+    {"id":"fn_ratings","type":"function_ratings"},
+    {"id":"fn_deep_dives","type":"function_deep_dives"},
+    {"id":"support_gate","type":"yes_no","text":"q.support_gate","required":true},
+    {"id":"support","type":"support_block","text":"q.support_block","show_if":{"answer":"support_gate","equals":"yes"}},
+    {"id":"one_fix","type":"free_text","text":"q.one_fix","required":false},
+    {"id":"thanks","type":"thank_you"}
+  ]
+}

@@ -32,6 +32,13 @@
 
   var memory = {}; // storage key -> base64 recording
 
+  /* Own keys only. A legal answer code such as "constructor" must never find
+     what every JavaScript object inherits: the typing box would show
+     "function Object() ..." and a voice note that does not exist would
+     count. web/js/app.js already keeps state.texts and state.audio as maps
+     that inherit nothing; this guards any other caller too. */
+  function own(o, k) { return o !== null && o !== undefined && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined; }
+
   /* Recordings still being finished (stop -> convert -> save). app.js waits
      for these before sending, so a note recorded at the last second is not lost. */
   var busy = 0;
@@ -158,8 +165,9 @@
     var maxChars = (config.text && Number(config.text.max_chars)) || 1500;
     var supported = voice.isSupported(config);
 
-    state.texts = state.texts || {};
-    state.audio = state.audio || {};
+    // maps that inherit nothing, like app.js keeps them (read with own() below)
+    state.texts = state.texts || Object.create(null);
+    state.audio = state.audio || Object.create(null);
 
     /* ---- Build the elements -------------------------------------------- */
     var consentOk = h('button', { type: 'button', 'class': 'btn btn-primary' }, t('voice.consent_ok'));
@@ -182,7 +190,7 @@
       autocomplete: 'off',
       hidden: true
     });
-    textarea.value = state.texts[itemId] || '';
+    textarea.value = own(state.texts, itemId) || '';
 
     var wrap = h('div', { 'class': 'tell' }, [consentBox, micBtn, status, clipRow, typeRow, textarea]);
 
@@ -209,7 +217,7 @@
     }
 
     function idleLabel() {
-      if (state.audio[itemId]) return t('voice.redo');
+      if (own(state.audio, itemId)) return t('voice.redo');
       return holdMode ? t('voice.hold') : t('voice.tap_start');
     }
 
@@ -441,7 +449,7 @@
     }
 
     function showClip() {
-      var clip = state.audio[itemId];
+      var clip = own(state.audio, itemId);
       clipRow.hidden = !clip;
       if (clip) {
         clipTime.textContent = formatSeconds(clip.duration_s);
@@ -453,7 +461,7 @@
       if (!audioEl) {
         if (!objectUrl) {
           var b64 = voice.loadAudio(opts.ns, itemId);
-          var clip = state.audio[itemId];
+          var clip = own(state.audio, itemId);
           if (!b64 || !clip) return;
           try { setLocalBlob(base64ToBlob(b64, clip.mime)); } catch (e) { return; }
         }

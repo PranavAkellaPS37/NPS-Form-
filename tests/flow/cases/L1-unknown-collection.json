@@ -1,0 +1,22 @@
+{
+ "_about": "\"repeat_for\" over a collection that does not exist.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "fn_ratings",
+   "field": "repeat_for",
+   "value": {
+    "each": "area",
+    "in": "regions"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "L1",
+   "level": "error",
+   "node": "fn_ratings"
+  }
+ ]
+}

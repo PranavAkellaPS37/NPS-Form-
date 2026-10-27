@@ -6,7 +6,8 @@ What this file is for
   The first page anyone reads. It says what the project is, the golden rule
   about partner data, what each folder holds, how to try the survey on a
   Mac, and how to go live (GitHub, the Google Sheet control panel, links),
-  step by step.
+  step by step. Also the flow tools: the commands that check, draw and try
+  out the route through the questionnaire (python3 scripts/flow.py ...).
 
 Who it is for
   Ops colleagues. You do not need to know how to code.
@@ -39,7 +40,8 @@ They can use any of six languages, and can tap, type or leave a voice note.
 > **This README grows with each phase.** Today it covers:
 >
 > - **Phase 1**: the survey form, its settings, and a test server that runs on this Mac;
-> - **Phase 2**: going live. The form goes online on GitHub Pages, a Google Sheet becomes the **control panel** where colleagues change the whole questionnaire, and a small Google program (Apps Script) checks every partner's link and saves the answers.
+> - **Phase 2**: going live. The form goes online on GitHub Pages, a Google Sheet becomes the **control panel** where colleagues change the whole questionnaire, and a small Google program (Apps Script) checks every partner's link and saves the answers;
+> - **the route tools** (26 Oct 2026): jumps, questions asked for each area and extra endings in the control panel, and [commands](#the-route-through-the-questionnaire-flow-tools) that check, draw and try out the route on this Mac.
 >
 > Phase 5 will polish it end to end.
 
@@ -53,10 +55,11 @@ They can use any of six languages, and can tap, type or leave a voice note.
 6. [Phase 2: go live](#phase-2-go-live)
 7. [Change the questions](#change-the-questions)
 8. [Translations](#translations)
-9. [What's next](#whats-next)
-10. [Command cheat sheet](#command-cheat-sheet)
-11. [If something goes wrong](#if-something-goes-wrong)
-12. [Words used in this README](#words-used-in-this-readme)
+9. [The route through the questionnaire (flow tools)](#the-route-through-the-questionnaire-flow-tools)
+10. [What's next](#whats-next)
+11. [Command cheat sheet](#command-cheat-sheet)
+12. [If something goes wrong](#if-something-goes-wrong)
+13. [Words used in this README](#words-used-in-this-readme)
 
 ---
 
@@ -120,13 +123,15 @@ Read everything **above** "Ignored files": those files can end up on GitHub. If 
 | Folder or file | What it is | Will you edit it? |
 |---|---|---|
 | `web/` | **The form**: the survey page partners open on their phone. | Only the sub-folders below. |
-| `web/config/` | **Questionnaire settings**: questions, areas, problem chips, colours, voice. Since Phase 2 they are the **backup copy**: the live questionnaire is changed in the [control panel](docs/control-panel.md). | Rarely. See the [settings guide](docs/config-guide.md). |
+| `web/config/` | **Questionnaire settings**: questions, areas, problem chips, colours, voice. Since Phase 2 they are the **backup copy**: the live questionnaire is changed in the [control panel](docs/control-panel.md). (`types.json` there, the list of the kinds of question, is made by a command: never edit it by hand.) | Rarely. See the [settings guide](docs/config-guide.md). |
 | `web/i18n/` | **All six languages**: every word on screen, in `strings.json`. (*i18n* is short for "internationalisation".) Also a backup copy since Phase 2. | Rarely: wording and translations are changed in the control panel. |
 | `web/audio/` | Optional pre-recorded read-aloud clips. Since Phase 2, which clip plays for which text is listed in the Sheet's **Audio clips** tab. See [web/audio/README.md](web/audio/README.md). | Only if you add clips. |
 | `web/index.html`, `web/css/`, `web/js/` | The form's code. | No. |
 | `apps-script/` | **The control panel and the live backend**: the code that is pasted into the Google Sheet, and its [setup guide](apps-script/README.md). | No. You copy the code into the Sheet once (and again when it is updated). |
-| `scripts/` | Tools you run: the test server, the checks, the translation tool and the link generator. | No, you only run them. |
-| `docs/` | Guides: the [control panel guide](docs/control-panel.md), the [settings guide](docs/config-guide.md), the [data format](docs/submission-format.md) and the [technical design of the control panel](docs/control-panel-design.md). | No. |
+| `scripts/` | Tools you run: the test server, the checks, the translation tool, the link generator and the [flow tools](#the-route-through-the-questionnaire-flow-tools) (`flow.py`, which runs `flow.js` with Node.js). | No, you only run them. |
+| `docs/` | Guides: the [control panel guide](docs/control-panel.md), the [settings guide](docs/config-guide.md), the [data format](docs/submission-format.md) and the [technical design of the control panel](docs/control-panel-design.md). Also [`docs/flow.md`](docs/flow.md), the **map of the route** (made by a command, see below), and [`docs/flow-engine.md`](docs/flow-engine.md), how the route works inside (for developers). | No. `docs/flow.md` is made for you: never edit it by hand. |
+| `package.json` | Short names for the flow tools, for people who use npm (`npm run validate-flow`). It installs nothing. | No. |
+| `tests/` | The developers' automatic tests. Running `cd tests && npm install` once also gives the settings check the parser it needs for its ES5 check (Phase 1, [step 3](#step-3-check-python-and-nodejs)). | No. |
 | `sample_data/` | Obviously fake demo data, such as `dcs_fake.csv` (20 fake DCs). The only data folder git is allowed to save. | Only with fake data. |
 | `.github/workflows/` | Instructions GitHub follows by itself: `deploy-pages.yml` checks the settings and publishes `web/` on GitHub Pages after every push. Hidden in Finder, like `.gitignore`. | No. |
 | `local_data/` | **Your test answers and voice notes**, saved by the test server on this Mac. git never saves it. | No. You can clear it with `--reset` (see below). |
@@ -173,7 +178,7 @@ What it does: moves Terminal into the project folder. `~` is short for your home
 
 **If it goes wrong:** "no such file or directory" means the folder is somewhere else. Type `cd` followed by a space, drag the project folder from Finder into the Terminal window, and press Enter.
 
-### Step 3: Check Python
+### Step 3: Check Python and Node.js
 
 ```bash
 python3 --version
@@ -185,21 +190,47 @@ What it does: shows which version of Python is installed. Python is the language
 
 **If it goes wrong:** if you see "command not found" or a number below 3.11, install Python from [python.org/downloads](https://www.python.org/downloads/). Then close Terminal, open it again, and repeat steps 2 and 3. Ask IT if your laptop does not let you install software.
 
+**Then check Node.js.** The settings check (step 4) also checks the route through the questionnaire, with the same code the phones run. That code is JavaScript, so it needs **Node.js 16 or newer** (free).
+
+```bash
+node --version
+```
+
+What it does: shows which version of Node.js is installed.
+
+**You should see:** a version from `v16` up, such as `v20.18.0`.
+
+**If it goes wrong:** if you see "command not found" or a number below 16, install the **LTS** version from [nodejs.org](https://nodejs.org): download it for macOS, open the downloaded file and click through the installer (Continue, Agree, Install). Then close Terminal, open it again, and repeat steps 2 and 3. (If you use Homebrew, `brew install node` works too.)
+
+**Once: the parser for the ES5 check.** Run these two lines:
+
+```bash
+cd tests && npm install
+cd ..
+```
+
+What it does: the first line goes into the `tests` folder and installs the exact tool versions the project pins, into `tests/node_modules` (git never saves that folder). One of them is **acorn** 8.14.0, the parser the settings check uses to make sure every script phones load is plain **ES5**: the older JavaScript that old Android phones (Chrome 61) understand. The other is for the developers' browser tests. It needs the internet, this one time. `cd ..` goes back to the project folder.
+
+**You should see:** a line that starts with `added` and a number of packages (or `up to date`, if it was done before). Without it, the settings check still works, but says "ES5 check skipped: acorn is not installed …" as a warning. GitHub always runs the ES5 check: it installs acorn by itself.
+
 ### Step 4: Check the settings (a good habit)
 
 ```bash
 python3 scripts/check_config.py
 ```
 
-What it does: checks every settings file and every translation, and reports the *page weight*. Page weight is how much data a phone must download to open the form. The limit is 300 KB, so the form opens quickly on slow mobile data.
+What it does: checks every settings file and every translation, and reports the *page weight*. Page weight is how much data a phone must download to open the form. The limit is 300 KB, so the form opens quickly on slow mobile data. With Node.js (step 3) it also checks the route through the questionnaire, the map of the route (`docs/flow.md`), the list of the kinds of question (`web/config/types.json`), and that every script phones load is ES5.
 
 **You should see:** a report in three parts, ending with a line that starts with **All good**:
 
 - **ERRORS**: must be fixed, or the form may break. There should be none.
 - **WARNINGS**: worth a look, but they will not break the form. On a fresh copy of the project there is one, and it is normal: round "DEMO-R1" is fake test content.
-- **SUMMARY**: the number of screens and areas, how much is still to translate in each language, and the page weight.
+- **SUMMARY**: the number of screens and areas, where answers go, the kinds of screen, the ES5 check ("all ES5"), the longest route, how much is still to translate in each language, and the page weight.
 
-**If it goes wrong:** the last line says "Please fix the errors above", and each error says in plain English what to fix. If you have not edited anything yet, send the message to whoever set up the project.
+**If it goes wrong:** the last line says "Please fix the errors above", and each error says in plain English what to fix. If you have not edited anything yet, send the message to whoever set up the project. Two cases that come from this Mac, not from the settings:
+
+- an error that the flow "could not be checked" because "The flow tools need Node.js (free), and it was not found on this Mac": install Node.js (step 3);
+- a second warning "ES5 check skipped: acorn is not installed …": run `cd tests && npm install` once (step 3).
 
 ### Step 5: Start the test server
 
@@ -553,7 +584,7 @@ Do them in this order. Steps 3 to 8 are in the [setup guide for the Sheet and th
 |---|---|---|
 | 1 | Put the project on GitHub (with a personal access token, because this Mac has no GitHub login yet) | [Below](#step-1-put-the-project-on-github) |
 | 2 | Switch on GitHub Pages (**Source: GitHub Actions**) | [Below](#step-2-switch-on-github-pages) |
-| 3 | Create the Sheet, paste the four code files (`Code`, `Model`, `PanelServer`, `Panel`), run **Set up or repair** and publish version 1 | [Setup guide](apps-script/README.md), Parts A–B |
+| 3 | Create the Sheet, paste the five code files (`Code`, `Model`, `PanelServer`, `Flow`, `Panel`), run **Set up or repair** and publish version 1 | [Setup guide](apps-script/README.md), Parts A–B |
 | 4 | Check that Google offers **Anyone** for the web app (if not, ask IT, and meanwhile use the Meesho-only mode for colleagues: setup guide, step 8), then deploy it, copy its `/exec` address and record it in the control panel (**Check and save**) | [Setup guide](apps-script/README.md#part-c-put-the-backend-online), Part C |
 | 5 | Connect the form: the `/exec` address into `web/config/survey.json` (`"mode": "apps_script"`), then push | [Setup guide](apps-script/README.md#part-d-connect-the-form), Part D |
 | 6 | Run the smoke test against the live backend | [Setup guide](apps-script/README.md#part-e-run-the-smoke-test-against-the-live-backend), Part E |
@@ -613,9 +644,9 @@ This Mac remembers the token (in the Mac's Keychain), so `git push` will not ask
 | `Authentication failed` | The token was pasted wrongly, has expired, or lacks **Contents: Read and write**. Make a new one (1a) and push again. |
 | `refusing to allow a Personal Access Token to create or update workflow` | The token lacks **Workflows: Read and write**. Make a new token with it. Then open the **Keychain Access** app, search for `github.com`, and delete that entry, so the Mac forgets the old token. Push again. |
 | `Updates were rejected because the remote contains work that you do not have locally` | Something was added on GitHub directly (for example a README created there). Do not force anything: ask a developer. |
-| `Permission to PranavAkellaPS37/NPS-Form-.git denied to <another account>` | This Mac already has a GitHub login for another account saved in its Keychain, and git used it instead of asking for your token. | Put the account name into the upload address, so git asks for this account's token instead (the other login stays as it is): `git remote set-url origin https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git`, then push again. Terminal now asks only for the password: paste the token. |
+| `Permission to PranavAkellaPS37/NPS-Form-.git denied to <another account>` | This Mac already has a GitHub login for another account saved in its Keychain, and git used it instead of asking for your token. Put the account name into the upload address, so git asks for this account's token instead (the other login stays as it is): `git remote set-url origin https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git`, then push again. Terminal now asks only for the password: paste the token. |
 | `GH007: Your push would publish a private email address` | GitHub is protecting your email address. On GitHub: **Settings > Emails**, untick **Block command line pushes that expose my email**, and push again. Or ask a developer. |
-| `Please tell me who you are` (on commit) | git needs your name once: run `git config user.name "Your Name"` and `git config user.email "you@meesho.com"`, then commit again. |
+| `Please tell me who you are` (on commit) | git needs your name once: run `git config user.name "Your Name"` and `git config user.email "YOUR-GITHUB-NAME@users.noreply.github.com"` (GitHub's private no-reply address: GitHub > Settings > Emails shows yours), then commit again. Don't use your work email: this repository is public, and every commit shows its author's email. |
 
 ### Step 2: Switch on GitHub Pages
 
@@ -624,7 +655,7 @@ This Mac remembers the token (in the Mac's Keychain), so `git push` will not ask
 3. Click the repository's **Actions** tab, then **Deploy the form to GitHub Pages** on the left. The run started by your push has probably failed (red cross), because Pages was not switched on yet. That is expected: click **Run workflow** (right) > **Run workflow**.
 4. Wait for the green tick (1–2 minutes).
 
-What it does: from now on, after every push, GitHub runs `python3 scripts/check_config.py` and, only if it finds no errors, publishes the `web/` folder. The steps are in [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml).
+What it does: from now on, after every push, GitHub runs `python3 scripts/check_config.py` and, only if it finds no errors, publishes the `web/` folder. To run that check it first installs Node.js 20 and acorn 8.14.0 by itself, so the route check and the ES5 check run there too. The steps are in [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml).
 
 **You should see** the form at https://pranavakellaps37.github.io/NPS-Form-/ with the yellow **TEST MODE** banner. The form is online, but still in test mode: it cannot save answers yet. **Do not send any links yet.**
 
@@ -634,7 +665,7 @@ What it does: from now on, after every push, GitHub runs `python3 scripts/check_
 
 Follow the [setup guide for the Sheet and the live backend](apps-script/README.md) from Part A to Part F. It takes about an hour and covers, in this order:
 
-- creating the Sheet **Valmo Partner Pulse - Control** and pasting the four code files into it (`Code`, `Model`, `PanelServer` as Script files, `Panel` as an HTML file);
+- creating the Sheet **Valmo Partner Pulse - Control** and pasting the five code files into it (`Code`, `Model`, `PanelServer` and `Flow` as Script files, `Panel` as an HTML file);
 - running **Partner Pulse > Set up or repair**, which builds the tabs and the Drive folder, copies the questionnaire from GitHub and publishes version 1;
 - checking that Google offers **Who has access: Anyone** for the web app (Meesho's Google Workspace settings may block it: the guide has a message to send to IT), then deploying the web app and copying its address ending in `/exec`;
 - recording that address in the control panel (**Home > Quick links**, **Check and save**), which checks that partners' phones can reach it. The panel's GitHub copy of the questionnaire takes the address from there;
@@ -690,7 +721,7 @@ What it does: makes one link per DC and saves them in `links-2026-R1.csv`, next 
 ## Change the questions
 
 > [!IMPORTANT]
-> **Once the control panel is set up ([Phase 2](#phase-2-go-live)), change the live questionnaire in the control panel**, not in these files: see the [control panel guide](docs/control-panel.md). What you publish there is what partners see, and it wins over these files.
+> **Once the control panel is set up ([Phase 2](#phase-2-go-live)), change the live questionnaire in the control panel**, not in these files: see the [control panel guide](docs/control-panel.md). What you publish there is what partners see, and it wins over these files. That includes the **route** (which screen comes after which: jumps, questions asked for each area, extra endings), which you change in **Questions** and see on its **Map** ([Recipes 13 to 20](docs/control-panel.md#how-the-route-works)).
 >
 > The files in `web/config/` and `web/i18n/` then serve as the **backup copy**: the form uses them only when Google does not answer in time, and the test server on this Mac uses them. Refresh them from the panel after important changes ([Recipe 12](docs/control-panel.md#recipe-12-refresh-the-github-copy)). The rest of this section explains how to edit the files themselves.
 
@@ -773,6 +804,66 @@ The [settings guide](docs/config-guide.md#recipe-14-translate-a-language-with-a-
 
 ---
 
+## The route through the questionnaire (flow tools)
+
+The **route** (or *flow*) is which screen a partner sees after which: the order, the "show only if" rules, jumps, questions asked once per area, and the endings that send the answers.
+
+**Where you change it: the control panel.** In **Questions**: each question's **After this question** and **Ask this question** cards, **Add an ending**, and the **Map** and **Try a path** to see and test the draft before you publish ([control panel guide, Recipes 13 to 20](docs/control-panel.md#how-the-route-works)). The backup copy is the `"flow"` part of `web/config/survey.json` ([settings guide](docs/config-guide.md#flow-the-screens-in-order)).
+
+**The map: [`docs/flow.md`](docs/flow.md).** A picture of every route a partner can take, a table of every screen and three example routes. Open it on GitHub to see the drawing. It is made from `web/config/survey.json` by a command, never typed by hand: the control panel's **Download files for the GitHub copy** gives you a fresh one with the other files ([Recipe 12](docs/control-panel.md#recipe-12-refresh-the-github-copy)), and the settings check warns when it no longer matches.
+
+**The flow tools** are commands that check, draw and try out the route on this Mac. They use the same code as the phones, so they can never disagree with the form. They need Node.js 16 or newer ([Phase 1, step 3](#step-3-check-python-and-nodejs)). Run them in Terminal, in the project folder (`cd ~/NPSF` first). They only read, except where it says they write. The settings check (`python3 scripts/check_config.py`) already runs the check, the map check, the kinds check and the ES5 check for you.
+
+### Check the route
+
+```bash
+python3 scripts/flow.py check
+```
+
+What it does: looks for mistakes in the route of `web/config/survey.json`: screens nobody can reach, dead ends, rules that test an answer that doesn't exist yet, impossible values (such as 11 on the 0–10 question), and more.
+
+**You should see:** "ERRORS (must fix): 0" and "WARNINGS (worth a look): 0", perhaps a few NOTES (for example how many texts still need a translation), a **Size** line, and at the end "All good: no errors." Each problem has a code such as `[R1]`, explained in [docs/flow-engine.md](docs/flow-engine.md), section 6.
+
+- `npm run validate-flow` does the same (npm comes with Node.js).
+- To check a version published from the control panel, download its file (for example `p7.json`, from the Drive folder **Valmo Partner Pulse > published**) and run `python3 scripts/flow.py check --published ~/Downloads/p7.json`. A file name without `--published` is refused, with "Did you mean --published …?", so a check never runs on the wrong questionnaire.
+
+### Try out answers
+
+```bash
+python3 scripts/flow.py simulate --set nps=4 --set fn_rating:payments=2 --set support_gate=no
+```
+
+What it does: shows what a partner with these answers would see. Each `--set` is one answer: a number (`nps=4`), a code (`support_gate=no`), `na`, `text:` followed by typed words, or `voice`. Add `--lang hi` for another language, `--lang-in-url` for a link that names the language, `--whats-changed 2` for a round with two "What changed" items, and `--submission` to see the whole message that would be sent.
+
+**You should see:** "Screens, in order (12):" with the screens numbered, "Not on this route (7):" with the reason each other screen is skipped, the screens where Next would wait for an answer, and "What would be sent". An answer name no screen stores (a typo such as `nsp=4`) is ignored, with a note saying so.
+
+### Draw the map
+
+```bash
+python3 scripts/flow.py map --write
+```
+
+What it does: writes `docs/flow.md` from `web/config/survey.json` (without `--write` it only shows it). You need it only after changing `survey.json`'s route by hand: the GitHub copy from the control panel already brings a fresh map. `npm run flow-map` does the same.
+
+**You should see:** "Wrote docs/flow.md (… lines). Commit it together with the questionnaire."
+
+### More commands
+
+| Command (in the project folder) | What it does | You should see (today's project) |
+|---|---|---|
+| `python3 scripts/flow.py paths` | Lists every distinct route, trying the boundary values of every answer a rule tests, each with an example and how often it occurs. | "16 distinct routes through web/config/survey.json, from 512 answer sets …", then the routes, such as "language > nps > fn_ratings x6 > …". |
+| `python3 scripts/flow.py compare ~/Downloads/p7.json web/config/survey.json` | Do two versions (a `survey.json`, a published `p7.json`, or a `web` folder) show the same screens and send the same data for the same answers? The only command that takes file names on their own. | "The same screens and the same data for all … answer sets tried", or "Different for … of … answer sets" with the first differences. |
+| `python3 scripts/flow.py screens` | The list of screens as JSON, for the Phase 4 dashboard: each screen's name exactly as the **events** and **pings** tabs show it, its kind, its area and its English question. Add `--published p7.json` for a published version. | A list starting with `[`, then `"screen": "language"`. |
+| `python3 scripts/flow.py migrate` | For developers: turns an old-style list in `survey.json`'s `"flow"` into the route format the panel writes, after proving that both show the same screens and send the same data. Writes only with `--write`. | "… already holds the flow as the graph (format pp-flow/1) …: nothing to do." |
+| `python3 scripts/flow.py build-gs` | For developers: makes `apps-script/Flow.gs` (the fifth Apps Script file) from the route code in `web/js/`. **Writes** that file; with `--check` it only says whether it is up to date. After a new `Flow.gs`, paste it into the Apps Script project ([setup guide](apps-script/README.md#update-the-code-later-same-address)). | With `--check`: "apps-script/Flow.gs is up to date (fingerprint …)." |
+| `python3 scripts/flow.py types` | For developers: the list of the kinds of question (`web/config/types.json`) and the control panel's copy of it in `apps-script/Model.gs`. **Writes** both only with `--write`; `--check` only says whether they are up to date. Adding a kind: [settings guide](docs/config-guide.md#how-to-add-a-question-type-for-a-developer). | With `--check`: "web/config/types.json is up to date (12 kinds of screen: 12 built in, none added)." |
+| `python3 scripts/flow.py es5` | Checks that every script phones load is ES5, which old Android phones (Chrome 61) can run. Needs acorn (`cd tests && npm install`, once). | "All ES5: old Android phones (Chrome 61) can run every one of them." |
+| `python3 scripts/flow.py help` | Every command and option. | The list of commands. |
+
+Every flow command ends with an exit code, for automation: 0 = all good, 1 = problems found, 2 = it could not run (for example Node.js is missing: the command then explains how to install it).
+
+---
+
 ## What's next
 
 - **Phase 2: Go live** (this version). The form online on GitHub Pages, the Google Sheet control panel, the live Apps Script backend, and a personal link for every DC. See [Phase 2: go live](#phase-2-go-live).
@@ -801,8 +892,17 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 | `python3 scripts/smoke_test.py` | Check that the running test server answers correctly (PASS/FAIL lines). Add `--expect-strict` if the server runs with `--strict`. |
 | `python3 scripts/smoke_test.py --url <web app address ending in /exec> --secret "$(pbpaste)" --expect-strict` | Check the **live** backend. Copy the link secret first (control panel > **Links > Show the link secret**). [Details](apps-script/README.md#step-16-run-the-smoke-test-against-the-live-backend). |
 | `python3 scripts/generate_links.py --dcs ~/Documents/dcs.csv --round 2026-R1` | Make every DC's personal link from a CSV file (column `dc_id`; optional `language`, `dc_name`, `state`, `region`, `active`), offline. Asks for the link secret. Add `--help` to see all the options. |
-| `LANG=en_US.UTF-8 pbcopy < apps-script/Code.gs` | Copy a code file, to paste it into the Apps Script editor ([setup guide](apps-script/README.md#step-3-add-the-four-code-files)). |
-| `python3 scripts/check_config.py` | Check all settings and texts, and report the page weight. **Run after every edit.** |
+| `LANG=en_US.UTF-8 pbcopy < apps-script/Code.gs` | Copy a code file, to paste it into the Apps Script editor ([setup guide](apps-script/README.md#step-3-add-the-five-code-files)). |
+| `python3 scripts/check_config.py` | Check all settings and texts, and report the page weight. With Node.js it also checks the route, `docs/flow.md`, the kinds of question and ES5. **Run after every edit.** |
+| `node --version` | Show the Node.js version (16 or newer needed). [Phase 1, step 3](#step-3-check-python-and-nodejs). |
+| `cd tests && npm install`, then `cd ..` | Once: install the parser (acorn) the settings check needs for its ES5 check. |
+| `python3 scripts/flow.py check` | Check the route through the questionnaire. `npm run validate-flow` does the same. [The flow tools](#the-route-through-the-questionnaire-flow-tools). |
+| `python3 scripts/flow.py simulate --set nps=4 --set support_gate=no` | Show the screens a partner with these answers sees, and what would be sent. |
+| `python3 scripts/flow.py map --write` | Write the map of the route, `docs/flow.md`. |
+| `python3 scripts/flow.py paths` | List every distinct route, with examples. |
+| `python3 scripts/flow.py compare A B` | Do two versions (two files) show the same screens and send the same data? |
+| `python3 scripts/flow.py screens` | The list of screens as JSON (for the dashboard). |
+| `python3 scripts/flow.py migrate`, `build-gs`, `types`, `es5` | For developers: convert an old route list, make `apps-script/Flow.gs`, refresh the list of the kinds of question, check ES5. See [More commands](#more-commands). |
 | `python3 scripts/strings_csv.py export --out translations.csv` | Make a translation spreadsheet. Add `--only-untranslated` and/or `--lang ta` to narrow it down. |
 | `python3 scripts/strings_csv.py import translations.csv --dry-run` | Preview a translation import without changing anything. |
 | `python3 scripts/strings_csv.py import translations.csv` | Import translations into `strings.json`. |
@@ -823,6 +923,12 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 | A message that port 8787 is already in use | The server is already running in another tab or window. | Use that one, or stop it there with Ctrl+C. Or add `--port 8788` and open `localhost:8788`. |
 | Chrome says "This site can't be reached" | The server is not running, or the address is wrong. | Start the server (step 5) and check the address. |
 | The page is blank or shows an error after you edited a settings file | A settings file has a mistake. | Run `python3 scripts/check_config.py`, fix what it lists, and reload. |
+| The settings check or a flow command says "The flow tools need Node.js (free), and it was not found on this Mac" | Node.js is not installed. The settings check then reports an error, because the route could not be checked. | Install Node.js ([Phase 1, step 3](#step-3-check-python-and-nodejs)), open a new Terminal window, and run the command again. |
+| "The Node.js on this Mac is version …, which is too old: the flow tools need version 16 or newer." | An old Node.js. | Install the LTS version from [nodejs.org](https://nodejs.org), then open a new Terminal window. |
+| A warning "ES5 check skipped: acorn is not installed …" | The parser for the ES5 check is not installed on this Mac. Not an error: GitHub runs that check anyway. | Run `cd tests && npm install` once, then `cd ..`, and run the check again. |
+| A warning "The map of the questionnaire (docs/flow.md) is out of date …" (or missing) | `web/config/survey.json` changed, but its map did not. | Run `python3 scripts/flow.py map --write`, and commit `docs/flow.md` together with the questionnaire. After a GitHub copy from the control panel, copy its `flow.md` into `docs/` ([Recipe 12](docs/control-panel.md#recipe-12-refresh-the-github-copy)). |
+| "Could not run: check does not take a file name on its own (…). Did you mean --published …?" | A flow command was given a file name without `--published` (only `compare` takes file names on their own). | Put `--published` before the file name. |
+| An error about `web/config/types.json` ("… is missing" or "… no longer matches the form's code") | The list of the kinds of question was not made again after a change to the form's code. | For a developer: run `node scripts/flow.js types --write`, and commit the result. |
 | Your change does not show | Chrome is showing an old copy, or old saved answers. | Press Cmd+Shift+R, or open the survey in a new Incognito window. |
 | "This link is not valid" | The server was started with `--strict` and the link's token is wrong. | Use a demo link the server printed, or restart without `--strict`. |
 | "Already received" when you open the survey again | This browser remembers that you finished the survey for this link. | Tap **Start again (test mode)**, or open the link in a new Incognito window. |
@@ -865,6 +971,9 @@ Run all of these from the project folder (`cd ~/NPSF` first, in every new Termin
 | **DC** | Delivery centre: a partner's site. |
 | **NPS** | Net Promoter Score. Partners answer 0–10: 9–10 are *promoters*, 0–6 are *detractors*. NPS = % promoters minus % detractors. |
 | **Token** | The secret code in each partner's link (`t=…`) that proves the link is genuine. |
+| **Route, flow** | Which screen a partner sees after which: the order, rules, jumps, per-area questions and endings. Changed in the control panel; its map is `docs/flow.md`. |
+| **Node.js** | A free program that runs JavaScript on the Mac. The flow tools and the settings check need it. |
+| **ES5** | The older JavaScript that old Android phones (Chrome 61) understand. Every script phones load must be written in it. |
 | **git, commit** | git saves versions of this folder and uploads them to GitHub. A commit is one saved snapshot. |
 
-**More guides:** [control panel guide](docs/control-panel.md) · [setup guide for the Sheet and the live backend](apps-script/README.md) · [settings guide](docs/config-guide.md) · [data format](docs/submission-format.md) · [technical design of the control panel](docs/control-panel-design.md) · [read-aloud clips](web/audio/README.md) · [changelog](CHANGELOG.md)
+**More guides:** [control panel guide](docs/control-panel.md) · [setup guide for the Sheet and the live backend](apps-script/README.md) · [settings guide](docs/config-guide.md) · [data format](docs/submission-format.md) · [technical design of the control panel](docs/control-panel-design.md) · [map of the route](docs/flow.md) · [how the route works inside](docs/flow-engine.md) · [read-aloud clips](web/audio/README.md) · [changelog](CHANGELOG.md)

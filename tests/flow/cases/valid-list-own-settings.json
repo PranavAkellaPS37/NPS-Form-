@@ -1,0 +1,34 @@
+{
+ "_about": "The list format takes deep_dive, rating and support from survey.json itself (there is nothing to disagree with): other values than today's give no S1.",
+ "base": "list",
+ "survey": {
+  "deep_dive": {
+   "threshold": 2,
+   "when": "after_all_ratings",
+   "require_chip": false,
+   "require_detail_if_other": false
+  },
+  "rating": {
+   "faces": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "allow_not_applicable": false
+  },
+  "support": {
+   "items": [
+    "agent_behaviour",
+    "understood_problem",
+    "time_to_resolve",
+    "kept_updated"
+   ],
+   "allow_not_applicable": true,
+   "allow_comment": false,
+   "comment_text": "q.support_comment"
+  }
+ },
+ "expect_clean": true
+}

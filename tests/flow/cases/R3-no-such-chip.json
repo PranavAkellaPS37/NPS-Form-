@@ -1,0 +1,22 @@
+{
+ "_about": "A problem chip that the area does not have.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "fn_deep_dive:payments",
+    "equals": "no_such_chip"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R3",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

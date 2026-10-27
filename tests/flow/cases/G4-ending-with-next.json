@@ -1,0 +1,19 @@
+{
+ "_about": "An ending with a \"next\" but no show_if: the arrow is never used.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "thanks",
+   "field": "next",
+   "value": "nps"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G4",
+   "level": "error",
+   "node": "thanks"
+  }
+ ]
+}

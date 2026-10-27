@@ -18,6 +18,9 @@
     config/audio_clips.json   optional pre-recorded read-aloud clips
 
   YOU SHOULD NOT NEED TO EDIT THIS FILE to change the questionnaire.
+  The one exception: a NEW KIND of question (a new "type", which needs code)
+  is one file in js/types/ plus one <script> line below, where the comment
+  says (docs/config-guide.md, "How to add a question type").
 
   HOW TO OPEN IT LOCALLY
     python3 scripts/mock_server.py      then click a link it prints
@@ -47,7 +50,11 @@
   <script defer src="js/speech.js"></script>
   <script defer src="js/voice.js"></script>
   <script defer src="js/net.js"></script>
-  <script defer src="js/screens.js"></script>
+  <script defer src="js/ui.js"></script>
+  <script defer src="js/types.js"></script>
+  <!-- New kinds of question go here, one line each (after types.js, before app.js), e.g.
+       <script defer src="js/types/stars_1_10.js"></script>
+       then run:  node scripts/flow.js types --write  -->
   <script defer src="js/app.js"></script>
 </head>
 <body>

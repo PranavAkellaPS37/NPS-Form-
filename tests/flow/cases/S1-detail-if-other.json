@@ -1,0 +1,19 @@
+{
+ "_about": "Graph format: the problem screen says \"require_detail_if_other\": false, but survey.json's deep_dive > require_detail_if_other is true.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "fn_deep_dives",
+   "field": "require_detail_if_other",
+   "value": false
+  }
+ ],
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+{
+ "_about": "A screen no arrow leads to.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "add",
+   "after": "one_fix",
+   "value": {
+    "id": "orphan",
+    "type": "yes_no",
+    "text": "q.callback",
+    "next": "thanks"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "G1",
+   "level": "error",
+   "node": "orphan"
+  }
+ ]
+}

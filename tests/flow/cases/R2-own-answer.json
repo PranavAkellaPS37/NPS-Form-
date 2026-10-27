@@ -1,0 +1,22 @@
+{
+ "_about": "A show_if that tests its own screen.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "support_gate",
+   "field": "show_if",
+   "value": {
+    "answer": "support_gate",
+    "equals": "yes"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R2",
+   "level": "error",
+   "node": "support_gate"
+  }
+ ]
+}

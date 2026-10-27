@@ -23,15 +23,29 @@
      these functions.
 
    WHAT IT READS AND WRITES
-     - The questionnaire tabs (through Model.gs: PP_readModel / PP_writeModel).
+     - The questionnaire tabs (through Model.gs: PP_readModel / PP_writeModel),
+       including the Screens columns next, jumps and repeat (the route, since
+       23 Oct 2026): they travel to the panel in model.screens and back on Save.
      - Rounds, DCs, Links, Publish history and _meta tabs.
      - The Drive folder "Valmo Partner Pulse" (published versions, round data).
      - Script Properties: LINK_SECRET, the live version, each round's status,
        PREVIEW_KEY, OWNER_EMAIL, WEB_APP_URL (the web app address, recorded
-       by panelSetWebAppUrl after a check) and ROUNDS_EVER_OPENED (set the
+       by panelSetWebAppUrl after a check), ROUNDS_EVER_OPENED (set the
        first time a real round opens; from then on codes are locked. Test
-       rounds, whose id starts with SMOKE, DEMO or TEST, never set it).
+       rounds, whose id starts with SMOKE, DEMO or TEST, never set it) and
+       CODES_EVER_LIVE (read: every code live since then, kept by Publish).
      - The User Property "panel_section" (which section the panel opens on).
+     - The route code (since 26 Oct 2026, stage 4 of the flow-graph work):
+       panelFlowCode hands the panel window the text of Flow.gs
+       (PP_FLOW_SOURCE_: the form's web/js/flow.js, flow-panel.js and
+       flow-check.js), so the panel's map, "Try a path", jump builder and
+       warning badges run exactly the rules partners' phones run.
+       panelFlowStatus reads the same three files from the form's address
+       on GitHub Pages AS TEXT (never runs them) to tell whether the form and
+       the panel run the same route code; the answer is kept for 10 minutes
+       in the script cache (key "form_flow_fp:<form address>").
+       panelLiveSurvey sends the live version's questionnaire and texts, for
+       the panel's Map of the live version.
 
    RULES EVERY FUNCTION HERE FOLLOWS (contract: docs/control-panel-design.md,
    section 13)
@@ -85,6 +99,10 @@ function panelOpen() {
  *   codes_locked          true once any real round has been opened (Code.gs,
  *                         PP_codesLocked_; test rounds don't count). Before
  *                         that live_ids is empty: nothing is locked yet.
+ *   live_ids              the codes that can't be deleted or re-coded: the
+ *                         live version's, plus every code published since
+ *                         the first real round (CODES_EVER_LIVE), so a
+ *                         question that was hidden and published stays locked.
  *   live_ids_unknown      true when codes are locked but the live codes
  *                         can't be read: Google Drive had a passing problem
  *                         reading the live version, or a real round was
@@ -119,7 +137,7 @@ function panelLoad() {
         form_text_keys: PP_FORM_TEXT_KEYS
       },
       live: PP_liveSummary_(ss, live),
-      live_ids: PP_liveIdsOf_(locked ? live : null),
+      live_ids: PP_liveIdsOf_(locked ? live : null, locked ? PP_codesEverLive_() : null),
       live_ids_unknown: Boolean(locked && !live),
       codes_locked: locked,
       draft_differs_from_live: PP_draftDiffersFromLive_(model, live),
@@ -167,13 +185,16 @@ function panelSave(baseRevision, model) {
 /**
  * Tidies the draft sent by the panel before it is written:
  *   - PP_normalizeModel (Model.gs) gives every field its proper type;
+ *   - the route columns (next, jumps, repeat) of a screen the panel sent
+ *     without them at all (a panel window opened before an update) are kept
+ *     from the saved draft, so a save never wipes them;
  *   - the translation helpers mark texts still to translate (see the contract,
  *     panelSave), comparing with the draft as it was saved before;
  *   - rounds keep the status and data links that only the script may change.
  */
 function PP_prepareDraft_(ss, model) {
   const previous = PP_readModel(ss);
-  const draft = PP_normalizedCopy_(model);
+  const draft = PP_normalizedCopy_(PP_carryFlowColumns_(model, previous));
   // Model.gs: the OLD model (as saved before) comes first, the new one second.
   const helped = PP_applyTranslationHelpers(previous, draft, PP_todayInIndia_()) || draft;
   helped.rounds = PP_settleRounds_(helped.rounds, previous.rounds);
@@ -187,6 +208,28 @@ function PP_normalizedCopy_(model) {
 }
 
 /**
+ * A copy of the panel's model in which every screen that has NO next, jumps
+ * or repeat field at all gets the saved draft's value (same screen code). A
+ * field the panel sent, even empty, always wins.
+ */
+function PP_carryFlowColumns_(model, previous) {
+  const copy = PP_plain_(model);
+  if (!PP_isPlainObject_(copy) || !Array.isArray(copy.screens)) return copy;
+  const saved = {};
+  ((previous && previous.screens) || []).forEach(screen => {
+    if (screen && screen.id && !PP_own_(saved, '#' + screen.id)) saved['#' + screen.id] = screen;
+  });
+  copy.screens.forEach(screen => {
+    const old = PP_isPlainObject_(screen) && screen.id ? saved['#' + screen.id] : null;
+    if (!old) return;
+    ['next', 'jumps', 'repeat'].forEach(key => {
+      if (!PP_own_(screen, key) && old[key] !== undefined) screen[key] = PP_plain_(old[key]);
+    });
+  });
+  return copy;
+}
+
+/**
  * Checks a draft (as it is in the panel, saved or not) and lists errors and
  * warnings. The "a code partners answered is missing" warnings only start
  * once a round has been opened (Code.gs, PP_liveDocForChecks_).
@@ -194,7 +237,7 @@ function PP_normalizedCopy_(model) {
 function panelValidate(model) {
   return PP_forPanel_(() => {
     PP_requireModelShape_(model);
-    return PP_plain_(PP_validate(PP_normalizedCopy_(model), PP_liveDocForChecks_()));
+    return PP_plain_(PP_validate(PP_normalizedCopy_(model), PP_liveDocForChecks_(), PP_codesEverLiveForChecks_()));
   });
 }
 
@@ -586,8 +629,14 @@ function panelImport(baseUrl) {
 }
 
 /**
- * The four files of the GitHub copy, made from the saved draft (for
- * "Download files"). When the draft is exactly the live version, the files
+ * The files of the GitHub copy, made from the saved draft (for "Download
+ * files"): the four questionnaire files and, since 26 Oct 2026, docs/flow.md
+ * ("flow.md": the map of the route, made by Flow.gs from that survey.json
+ * and strings.json exactly as "python3 scripts/flow.py map --write" makes
+ * it, so GitHub's settings check doesn't warn that the map is out of date).
+ * survey.json carries the route ("flow") as the graph,
+ * laid out by Flow.gs exactly as "python3 scripts/flow.py migrate" writes it.
+ * When the draft is exactly the live version, the files
  * carry the live version's name (for example p7-2026-10-21), so answers sent
  * while the form uses this back-up copy still say which questionnaire it was.
  * survey.json gets the web app address recorded in the panel. While none is
@@ -671,6 +720,217 @@ function PP_webAppAccess_() {
 function PP_linkBaseUrl_(settings) {
   const formUrl = PP_requireFormUrl_(settings);
   return PP_webAppAccess_() === 'domain' ? PP_webAppUrl_() : formUrl;
+}
+
+
+// =============================================================================
+// The route tools in the panel window (stage 4 of the flow-graph work, 26 Oct 2026)
+// =============================================================================
+
+/** The form's route files, in the order scripts/build_flow_gs.js fingerprints them. */
+const PP_FLOW_FILES_ = ['js/flow.js', 'js/flow-panel.js', 'js/flow-check.js'];
+
+/** How long the answer of panelFlowStatus is remembered (seconds). */
+const PP_FLOW_STATUS_SECONDS_ = 600;
+
+/** What to say when the fifth script file (Flow.gs) was never pasted in. */
+const PP_FLOW_MISSING_ = 'The script file "Flow" is missing from the Apps Script project, so the control panel ' +
+  'cannot show the map, "Try a path" or the jumps. In the Sheet: Extensions > Apps Script > + > Script, name it ' +
+  'Flow, paste the whole of apps-script/Flow.gs from the GitHub project into it and save. Then open the panel again.';
+
+/**
+ * The route code for the control panel window: the text of the form's own
+ * route files as Flow.gs carries them (PP_FLOW_SOURCE_: web/js/flow.js,
+ * flow-panel.js and flow-check.js, one after the other) and their
+ * fingerprint (PP_FLOW_FINGERPRINT_). The window runs that text with a
+ * private "root", exactly as PP_flowLib_ does here, so the panel never needs
+ * a second copy of any route rule. The code is the same public code GitHub
+ * Pages serves to every phone; nothing secret is in it.
+ * Answers { source, fingerprint }.
+ */
+function panelFlowCode() {
+  return PP_forPanel_(() => {
+    if (typeof PP_FLOW_SOURCE_ !== 'string' || typeof PP_FLOW_FINGERPRINT_ !== 'string') {
+      throw new Error(PP_FLOW_MISSING_);
+    }
+    return { source: PP_FLOW_SOURCE_, fingerprint: PP_FLOW_FINGERPRINT_ };
+  });
+}
+
+/**
+ * Does the form at the form address run the same route code as this control
+ * panel? formUrl = the form address the panel shows (Settings > form_url).
+ * Reads <form address>js/flow.js, js/flow-panel.js and js/flow-check.js as
+ * text (they are never run here) and computes their SHA-256 exactly as
+ * scripts/build_flow_gs.js computes PP_FLOW_FINGERPRINT_: the three files'
+ * bytes one after the other, in that order. The answer is remembered for
+ * 10 minutes. Answers
+ *   { panel, form, same, form_url, checked_at, problem }
+ * same = true or false, or null when the form could not be reached (or the
+ * address is not valid): then the panel shows nothing.
+ */
+function panelFlowStatus(formUrl) {
+  return PP_forPanel_(() => {
+    const panel = typeof PP_FLOW_FINGERPRINT_ === 'string' ? PP_FLOW_FINGERPRINT_ : '';
+    const base = PP_text_(formUrl).trim();
+    const remote = PP_formFlowFingerprint_(base);
+    return {
+      panel: panel,
+      form: remote.fingerprint,
+      same: remote.fingerprint && panel ? remote.fingerprint === panel : null,
+      form_url: base,
+      checked_at: remote.checked_at,
+      problem: remote.problem
+    };
+  });
+}
+
+/**
+ * The SHA-256 (hex) of the route files at a form address, remembered for 10
+ * minutes: { fingerprint, checked_at, problem }. fingerprint is null when
+ * flow.js could not be read (the form can't be reached: nothing to compare).
+ * When flow.js is there but another file is missing, the form is older than
+ * this panel: the fingerprint of what is there is still given, so the two
+ * differ and the panel says so.
+ */
+function PP_formFlowFingerprint_(base) {
+  const result = { fingerprint: null, checked_at: PP_nowIso_(), problem: '' };
+  if (!/^https:\/\/[^\s"'<>?#]+\/$/.test(base)) {
+    result.problem = 'The form address is missing or not valid.';
+    return result;
+  }
+  const cacheKey = 'form_flow_fp:' + base;
+  const cacheable = cacheKey.length <= 240;
+  const cached = cacheable ? PP_cacheGetOrNull_(cacheKey) : null;
+  if (cached) {
+    try {
+      const known = JSON.parse(cached);
+      if (PP_isPlainObject_(known) && PP_own_(known, 'fingerprint')) return known;
+    } catch (err) {
+      // a damaged cache entry: read the files again
+    }
+  }
+  const bytes = [];
+  let reachable = true;
+  for (let i = 0; i < PP_FLOW_FILES_.length && reachable; i += 1) {
+    const url = base + PP_FLOW_FILES_[i];
+    let response;
+    try {
+      response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+    } catch (err) {
+      const permission = PP_permissionError_(err);
+      if (permission) throw permission;
+      result.problem = 'Could not reach ' + url + ' (Google said: ' + PP_rawErrorText_(err) + ').';
+      reachable = false;
+      continue;
+    }
+    const code = response.getResponseCode();
+    if (code !== 200) {
+      result.problem = url + ' answered ' + code + '.';
+      // No flow.js (or a server error): the form can't be compared. Another file missing
+      // while flow.js is there means an older form: what is there still gets a fingerprint.
+      if (i === 0 || code !== 404) reachable = false;
+      continue;
+    }
+    PP_utf8Bytes_(String(response.getContentText('UTF-8') || '')).forEach(b => bytes.push(b));
+  }
+  if (reachable) result.fingerprint = PP_sha256Hex_(bytes);
+  if (cacheable) PP_cachePutSafely_(cacheKey, JSON.stringify(result), PP_FLOW_STATUS_SECONDS_);
+  return result;
+}
+
+/**
+ * The live version's questionnaire and texts, for the panel's Map of what
+ * partners see now. Answers { live: { version, config_version }, survey,
+ * strings }, or { live: null } when nothing is published yet.
+ */
+function panelLiveSurvey() {
+  return PP_forPanel_(() => {
+    const live = PP_liveDocForAdmin_();
+    if (!live || !PP_isPlainObject_(live.survey)) return { live: null };
+    return PP_plain_({ live: { version: live.version, config_version: live.config_version }, survey: live.survey,
+      strings: PP_isPlainObject_(live.strings) ? live.strings : {} });
+  });
+}
+
+/**
+ * Text as UTF-8 bytes (numbers 0 to 255), the way the files are stored on
+ * GitHub. The form's files are read as UTF-8 text and turned back into the
+ * same bytes here, so their fingerprint can be computed with only the Google
+ * methods the contract allows (UrlFetchApp ... getContentText).
+ */
+function PP_utf8Bytes_(text) {
+  const out = [];
+  for (let i = 0; i < text.length; i += 1) {
+    let c = text.charCodeAt(i);
+    if (c >= 0xD800 && c <= 0xDBFF && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xDC00 && low <= 0xDFFF) {
+        c = 0x10000 + ((c - 0xD800) << 10) + (low - 0xDC00);
+        i += 1;
+      }
+    }
+    if (c < 0x80) out.push(c);
+    else if (c < 0x800) out.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+    else if (c < 0x10000) out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else out.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+  }
+  return out;
+}
+
+/** SHA-256's 64 round constants (FIPS 180-4, section 4.2.2). */
+const PP_SHA256_K_ = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+];
+
+/**
+ * The standard SHA-256 (FIPS 180-4) of a list of bytes, as 64 hex characters:
+ * the same value as Node's crypto.createHash('sha256') in
+ * scripts/build_flow_gs.js (tests/panel/test.js checks that they agree).
+ * Written out here because the contract's list of Google methods (docs/
+ * control-panel-design.md section 2) has no Utilities.computeDigest.
+ */
+function PP_sha256Hex_(bytes) {
+  const K = PP_SHA256_K_;
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const length = bytes.length;
+  const data = bytes.slice();
+  data.push(0x80);
+  while (data.length % 64 !== 56) data.push(0);
+  const high = Math.floor(length / 0x20000000);   // the length in bits, as two 32-bit halves
+  const low = (length * 8) >>> 0;
+  data.push((high >>> 24) & 255, (high >>> 16) & 255, (high >>> 8) & 255, high & 255,
+    (low >>> 24) & 255, (low >>> 16) & 255, (low >>> 8) & 255, low & 255);
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  const w = new Array(64);
+  for (let at = 0; at < data.length; at += 64) {
+    for (let t = 0; t < 16; t += 1) {
+      const p = at + 4 * t;
+      w[t] = ((data[p] << 24) | (data[p + 1] << 16) | (data[p + 2] << 8) | data[p + 3]) >>> 0;
+    }
+    for (let t = 16; t < 64; t += 1) {
+      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let t = 0; t < 64; t += 1) {
+      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) >>> 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0;
+      d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  }
+  return H.map(x => ('00000000' + x.toString(16)).slice(-8)).join('');
 }
 
 
@@ -883,13 +1143,14 @@ function PP_liveSummary_(ss, live) {
 }
 
 /**
- * The codes partners already answered in the live version (Model.gs:
- * PP_liveIds). panelLoad passes null until a round has been opened: then
- * every list is empty and nothing is locked.
+ * The codes partners already answered: the live version's and every code
+ * published since the first real round (everLive, CODES_EVER_LIVE; Model.gs:
+ * PP_liveIds). panelLoad passes null for both until a round has been opened:
+ * then every list is empty and nothing is locked.
  */
-function PP_liveIdsOf_(live) {
-  if (!live) return { screens: [], areas: [], chips: {}, support: [], options: {} };
-  return PP_liveIds(live);
+function PP_liveIdsOf_(live, everLive) {
+  if (!live && !(Array.isArray(everLive) && everLive.length)) return { screens: [], areas: [], chips: {}, support: [], options: {} };
+  return PP_liveIds(live, everLive);
 }
 
 /**

@@ -3,7 +3,7 @@
    =============================================================================
 
    WHAT THIS FILE IS
-     One of the four code files that live inside the Google Sheet
+     One of the five code files that live inside the Google Sheet
      "Valmo Partner Pulse - Control" (open the Sheet, then Extensions >
      Apps Script). This file does the jobs that are not the control panel's
      screens:
@@ -22,16 +22,18 @@
        6. Link tokens: the code inside each partner link that proves the link
           is genuine.
      The other files: PanelServer.gs (what the control panel asks the Sheet to do),
-     Model.gs (reading, checking and compiling the questionnaire) and
-     Panel.html (the control panel's screens).
+     Model.gs (reading, checking and compiling the questionnaire), Panel.html
+     (the control panel's screens) and Flow.gs (the questionnaire's route: the
+     same code partners' phones run, generated from the GitHub project by
+     node scripts/build_flow_gs.js).
 
    HOW TO INSTALL IT (copy and paste, no programming needed)
      1. In the Sheet: Extensions > Apps Script.
      2. Create a Script file named exactly "Code" and paste this whole file
         into it (replace anything that is there). Do the same with Model.gs
         (Script file "Model"), PanelServer.gs (Script file "PanelServer": Apps
-        Script refuses two files called "Panel") and Panel.html (HTML file
-        "Panel").
+        Script refuses two files called "Panel"), Flow.gs (Script file "Flow")
+        and Panel.html (HTML file "Panel").
      3. Save, close the Apps Script tab, reload the Sheet, then click
         Partner Pulse > Set up or repair. Google asks for permission the first
         time: tick "Select all", then allow it. (If a permission was left
@@ -73,11 +75,20 @@
                               of questions, areas and problems are locked.
                               Test rounds (ids starting with SMOKE, DEMO or
                               TEST) never set it (PP_isTestRound_)
+         CODES_EVER_LIVE      every code of every version that was live since
+                              the first real round opened (a JSON list such as
+                              ["screen:nps", "area:payments", ...], kept by
+                              Publish): those codes stay locked even after a
+                              question was hidden, published and deleted
      - The script cache (a short-term memory that keeps the web app fast).
      - Each round's data spreadsheet, tabs: responses, function_ratings,
        free_text, events, pings. These tabs are written by the script only.
        Never insert or move columns in them (extra columns on the right are
-       fine): the script writes each column in a fixed place.
+       fine): the script writes each column in a fixed place. The last column
+       of pings, config_version (the questionnaire version the phone showed),
+       came on 26 Oct 2026: in a spreadsheet made before that day, the first
+       ping after the update adds it as a new column on the right of
+       events_json (a column of your own there moves one place right).
      - Files a co-admin creates (a round's data spreadsheet and folders, a
        published version, the main folder if they had to create it) and voice
        notes saved while the web app runs as a co-admin are handed over to
@@ -93,9 +104,11 @@
        links, form address, preview key, round status) wait for each other
        (the DOCUMENT lock of this Sheet). Partners never wait for them, and
        they never wait for partners.
-     - One exception: creating a round's data spreadsheet (the first time a
-       round opens) also takes the script lock for a moment, so the same
-       spreadsheet can never be created twice.
+     - Two exceptions take the script lock for a moment too: creating a
+       round's data spreadsheet (the first time a round opens), so the same
+       spreadsheet can never be created twice; and adding the config_version
+       column to the pings tab of a spreadsheet made before 26 Oct 2026 (once,
+       by the first ping that finds it missing), so it is never added twice.
 
    SAFETY
      - Partner data (the DC list, links, answers, voice notes) stays in Google.
@@ -163,6 +176,8 @@ const PP_SRV = Object.freeze({
   MAX_PING_CHARS: 60000,                     // one progress ping, events included
   DRAFT_CACHE_SECONDS: 30,                   // a preview's compiled draft is reused this long
   FORM_PAGE_CACHE_SECONDS: 600,              // Meesho-only mode: the form's index.html and address are reused this long
+  FORM_ENGINE_CACHE_SECONDS: 600,            // Publish: a form found new enough (js/flow.js) is trusted this long
+  FLOW_ENGINE_NEEDED: 2,                     // the oldest form engine (flow.js ENGINE) that understands a route graph
   EMBED_PARAMS: ['dc', 't', 'round', 'lang', 'preview', 'pk'],   // the link details the survey page passes on to the form
   HEADER_COLOUR: '#EDE7F6',                  // light purple, row 1 of every tab
   TAB_COLOURS: { config: '#7E57C2', operations: '#43A047', system: '#9E9E9E' },
@@ -213,6 +228,7 @@ const PP_SRV = Object.freeze({
     WEB_APP_URL: 'WEB_APP_URL',              // the checked /exec address (recorded in the control panel)
     WEB_APP_ACCESS: 'WEB_APP_ACCESS',        // "anyone", or "domain": open only to people signed in with a company account (Meesho-only mode)
     ROUNDS_EVER_OPENED: 'ROUNDS_EVER_OPENED',  // "1" once a real (not test) round was opened: codes are locked from then on
+    CODES_EVER_LIVE: 'CODES_EVER_LIVE',      // JSON list of every code live since then (Model.gs PP_mdlCodesOfDoc_)
     PANEL_SECTION: 'panel_section'           // a User Property: which panel section to open
   }
 });
@@ -220,6 +236,10 @@ const PP_SRV = Object.freeze({
 /**
  * The tabs of each round's data spreadsheet and their columns, in order
  * (contract section 11). The script writes each column in exactly this place.
+ * A new column only ever goes at the END of a tab, so no column moves:
+ * config_version, the last column of pings, came on 26 Oct 2026 (Pranav's
+ * decision 11 of the flow-graph work). A round's spreadsheet made before that
+ * day gets it from its first ping after the update (PP_pingsTab_).
  */
 const PP_DATA_TABS = Object.freeze({
   responses: ['received_at', 'submission_id', 'dc', 'round', 'lang', 'nps', 'support_contacted',
@@ -236,7 +256,7 @@ const PP_DATA_TABS = Object.freeze({
     'cls_confidence', 'cls_unmapped', 'cls_new_theme_label', 'cls_provider', 'classified_at'],
   events: ['received_at', 'submission_id', 'session_id', 'dc', 'round', 'seq', 'screen', 'at'],
   pings: ['received_at', 'stage', 'dc', 'round', 'session_id', 'lang', 'screen', 'step_index',
-    'step_total', 'at', 'token_valid', 'mode', 'client_net', 'events_json']
+    'step_total', 'at', 'token_valid', 'mode', 'client_net', 'events_json', 'config_version']
 });
 
 /**
@@ -478,8 +498,13 @@ function PP_controlTabSpecs_(languageCodes) {
     { name: 'Chips', colour: purple, checkboxes: ['active'],
       notes: { chip_code: '"Other" is added by the form automatically: never list it here.' } },
     { name: 'Support', colour: purple, checkboxes: ['active'] },
-    { name: 'Screens', colour: purple, checkboxes: ['active'], lists: { type: PP_screenTypeNames_() },
-      notes: { required: 'TRUE, FALSE or empty (empty = the usual for this type of screen).' } },
+    { name: 'Screens', colour: purple, checkboxes: ['active'],
+      lists: { type: PP_screenTypeNames_(), repeat: ['each_area', 'each_low_area'] },
+      notes: { required: 'TRUE, FALSE or empty (empty = the usual for this type of screen).',
+        next: 'Where to go after this screen: the code of a LATER row or an ending. Empty = the following row.',
+        jumps: 'Exceptions, checked first, written by the control panel: [{"when": rule, "goto": "code of a later row"}].',
+        repeat: 'Empty = ask once. each_area = once per area. each_low_area = once per area rated low. ' +
+          'Ordinary questions only.' } },
     { name: 'Texts', colour: purple, required: ['key', 'note'], widths: { key: 240 },
       notes: { note: 'Message for translators, for example "English changed: please re-check".' } },
     { name: 'What changed', colour: purple, required: ['round_id', 'order'] },
@@ -737,6 +762,8 @@ function PP_offerFirstPublish_(ss, ui, notes) {
     const result = PP_withAdminLock_(() => PP_publish(ss, 'Version 1, copied from GitHub during set-up', user));
     if (result.ok) {
       notes.push('Published version ' + result.version + ' (' + result.config_version + ').');
+      // What Publish wants looked at (for example: the form on GitHub could not be checked): never only in the log.
+      (Array.isArray(result.warnings) ? result.warnings : []).forEach(warning => notes.push('Please check: ' + warning));
     } else {
       notes.push('Not published yet: ' + result.errors.length + ' problem(s) to fix first, for example: ' +
         result.errors[0].message + ' See the control panel > Publish > Check for problems.');
@@ -965,25 +992,167 @@ function PP_fetchJson_(url, required) {
 
 /**
  * Publishes the SAVED draft. Callers hold the admin lock (see PP_withAdminLock_).
- * Returns { ok: true, version, config_version } or { ok: false, errors }.
+ * Returns { ok: true, version, config_version } (plus warnings: [text] when
+ * something needs a look) or { ok: false, errors }.
  * Order matters: the version only goes live once its file and cache are ready.
  * The file type is written out as 'application/json': Google's MimeType list
  * has no JSON entry.
+ * Since 23 Oct 2026 the route ("flow") is published as a graph, which only
+ * forms with the new engine understand: Publish first checks the form on
+ * GitHub (PP_formEngineGuard_) and refuses while it is older. Once a real
+ * round has been opened, every published code is also remembered for good
+ * (PP_recordCodesEverLive_), so the codes lock covers hidden questions too;
+ * from then on Publish stops with "try again in a minute" while Google Drive
+ * cannot read the live version (PP_requireLiveWhileLocked_), instead of
+ * publishing without checking and remembering its codes.
  */
 function PP_publish(ss, note, user) {
   const draft = PP_readModel(ss);
-  const check = PP_validate(draft, PP_liveDocForChecks_());
+  const live = PP_liveDocForChecks_();
+  PP_requireLiveWhileLocked_(live);
+  const check = PP_validate(draft, live, PP_codesEverLiveForChecks_());
   if (check.errors && check.errors.length) return { ok: false, errors: check.errors };
   const version = PP_nextVersion_(ss);
   const stamp = { version: version, published_at: PP_nowIso_(), published_by: user || PP_currentUser_(),
     note: PP_cleanNote_(note) };
   const doc = PP_compile(draft, stamp);
+  const warnings = [];
+  if (PP_mdlIsGraph_(doc.survey.flow)) {
+    const guard = PP_formEngineGuard_(draft.settings.form_url);
+    if (!guard.ok) return { ok: false, errors: [{ section: 'settings', ref: 'Settings > form_url', message: guard.message }] };
+    if (guard.warning) warnings.push(guard.warning);
+  }
   const text = JSON.stringify(doc);
   const file = PP_folders_().published.createFile('p' + version + '.json', text, 'application/json');
   PP_giveToOwner_(file, 'the published version p' + version + '.json');
   PP_makeLive_(version, file.getId(), text);
   PP_recordPublish_(ss, doc, stamp, file.getUrl());
-  return { ok: true, version: version, config_version: doc.config_version };
+  const kept = PP_recordCodesEverLive_(live, doc);
+  if (kept) warnings.push(kept);
+  const answer = { ok: true, version: version, config_version: doc.config_version };
+  if (warnings.length) {
+    warnings.forEach(warning => console.log('Publish p' + version + ': ' + warning));
+    answer.warnings = warnings;
+  }
+  return answer;
+}
+
+/**
+ * The publish guard for a route graph. The survey on GitHub Pages (form_url)
+ * must have the new engine, whose web/js/flow.js says "ENGINE = 2" (or more):
+ * an older form treats a graph as unusable and silently shows its own copy.
+ * The file is read as text and never run. Answers { ok: true } (a new form,
+ * remembered for 10 minutes), { ok: false, message } (an older form: refused),
+ * or { ok: true, warning } when the form could not be reached (Publish goes on).
+ */
+function PP_formEngineGuard_(formUrl) {
+  const base = PP_text_(formUrl);
+  const needed = Math.max(PP_SRV.FLOW_ENGINE_NEEDED, PP_flowEngine_() || 0);
+  const cacheKey = 'form_engine:' + base;
+  const known = parseInt(PP_cacheGetOrNull_(cacheKey), 10);
+  if (known >= needed) return { ok: true };
+  const unreachable = why => ({ ok: true, warning: 'Published, but Partner Pulse could not check that the form on ' +
+    'GitHub understands this version (' + why + '). If partners keep seeing the old questions, upload the new form ' +
+    'code to GitHub, wait for the green tick, then publish again.' });
+  if (!/^https:\/\/[^\s"'<>?#]+\/$/.test(base)) return unreachable('the form address is not valid');
+  let response;
+  try {
+    response = UrlFetchApp.fetch(base + 'js/flow.js', { muteHttpExceptions: true, followRedirects: true });
+  } catch (err) {
+    const permission = PP_permissionError_(err);
+    if (permission) throw permission;
+    return unreachable('Google said: ' + PP_rawErrorText_(err));
+  }
+  const code = response.getResponseCode();
+  if (code !== 200) return unreachable(base + 'js/flow.js answered ' + code);
+  const match = /\bENGINE\s*=\s*(\d+)/.exec(String(response.getContentText() || ''));
+  const engine = match ? parseInt(match[1], 10) : 0;
+  if (engine < needed) {
+    return { ok: false, message: 'The form on GitHub is older than this control panel: upload the new form code first, ' +
+      'wait for the green tick, then publish.' };
+  }
+  PP_cachePutSafely_(cacheKey, String(engine), PP_SRV.FORM_ENGINE_CACHE_SECONDS);
+  return { ok: true };
+}
+
+/** The route engine of this control panel (Flow.gs: flow.js's ENGINE), or null without Flow.gs. */
+function PP_flowEngine_() {
+  try {
+    return typeof PP_flowLib_ === 'function' ? PP_flowLib_().flow.ENGINE : null;
+  } catch (err) {
+    console.error('Flow.gs could not be run: ' + err);
+    return null;
+  }
+}
+
+/** Which route code this script runs (Flow.gs's SHA-256 of its source files), or null without Flow.gs. */
+function PP_flowFingerprint_() {
+  return typeof PP_FLOW_FINGERPRINT_ === 'string' ? PP_FLOW_FINGERPRINT_ : null;
+}
+
+/**
+ * Once codes are locked (a real round has opened), Publish needs the live
+ * version: its codes are checked against the draft and then remembered for
+ * good (CODES_EVER_LIVE). When a version is live but Google Drive could not
+ * read it just now (live = null), Publish stops with a plain message instead
+ * of going on without those codes, which would let a version partners
+ * answered escape the codes lock for good (26 Oct 2026, review finding 9).
+ * Nothing is published, so the person simply tries again.
+ */
+function PP_requireLiveWhileLocked_(live) {
+  if (live || !PP_codesLocked_()) return;
+  const version = parseInt(PP_props_()[PP_SRV.KEYS.LIVE_VERSION], 10) || 0;
+  if (version < 1) return;
+  throw new Error('Nothing was published: Google Drive could not read the live version (version ' + version + ') just ' +
+    'now, and Publish needs it to protect the codes partners have answered. Try again in a minute. If this keeps ' +
+    'happening, check that the file p' + version + '.json is still in the Drive folder "Valmo Partner Pulse/' +
+    'published", or ask whoever maintains the scripts.');
+}
+
+/** CODES_EVER_LIVE as a list of codes ([] when there is none, or when it is damaged: that is logged). */
+function PP_codesEverLive_() {
+  const raw = PP_props_()[PP_SRV.KEYS.CODES_EVER_LIVE];
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    if (Array.isArray(list)) return list.filter(code => typeof code === 'string' && code);
+  } catch (err) {
+    // reported below
+  }
+  console.error('Script Property ' + PP_SRV.KEYS.CODES_EVER_LIVE + ' is damaged; it is ignored until the next Publish.');
+  return [];
+}
+
+/** The codes ever live, for the checks: only once codes are locked (like PP_liveDocForChecks_), else null. */
+function PP_codesEverLiveForChecks_() {
+  return PP_codesLocked_() ? PP_codesEverLive_() : null;
+}
+
+/**
+ * After a Publish, once codes are locked: remembers for good every code of
+ * the version that was live until now and of the one just published
+ * (Script Property CODES_EVER_LIVE). Without this, a question hidden and
+ * published could later be deleted unnoticed (the "hide-and-publish hole").
+ * Returns a warning when the list is nearly full (Google keeps at most 9 KB
+ * in one Script Property) or could not grow, else ''.
+ */
+function PP_recordCodesEverLive_(previousLive, doc) {
+  if (!PP_codesLocked_()) return '';
+  const before = PP_codesEverLive_();
+  const codes = PP_mdlMergeCodes_(PP_mdlMergeCodes_(before, PP_mdlCodesOfDoc_(previousLive)), PP_mdlCodesOfDoc_(doc));
+  const text = JSON.stringify(codes);
+  if (text.length > PP_MDL_EVER_LIVE_MAX_CHARS_) {
+    return 'The list of codes partners have answered is full (' + text.length + ' characters; Google keeps at most about ' +
+      PP_MDL_EVER_LIVE_MAX_CHARS_ + '), so the codes added in this version are not protected yet. Ask whoever maintains ' +
+      'the scripts to move the list (Script Property ' + PP_SRV.KEYS.CODES_EVER_LIVE + ').';
+  }
+  if (codes.length !== before.length || text !== JSON.stringify(before)) PP_setScriptProp_(PP_SRV.KEYS.CODES_EVER_LIVE, text);
+  if (text.length >= PP_MDL_EVER_LIVE_WARN_CHARS_) {
+    return 'The list of codes partners have answered is nearly full (' + text.length + ' of about ' +
+      PP_MDL_EVER_LIVE_MAX_CHARS_ + ' characters). Ask whoever maintains the scripts to move it (Script Property ' +
+      PP_SRV.KEYS.CODES_EVER_LIVE + ').';
+  }
+  return '';
 }
 
 function PP_cleanNote_(note) {
@@ -1583,11 +1752,14 @@ function PP_answerGet_(params) {
  * runs_as_owner: true when the web app runs as the person who set Partner
  * Pulse up (OWNER_EMAIL), so the files it creates land in their Drive. The
  * email itself is never sent: this answer is public.
+ * flow_engine / flow_fingerprint: which route code this deployment runs
+ * (Flow.gs: the engine version and the SHA-256 of its source files), or null
+ * when Flow.gs was not pasted.
  */
 function PP_health_() {
   const version = parseInt(PP_props_()[PP_SRV.KEYS.LIVE_VERSION], 10) || null;
   return { ok: true, service: PP_SRV.SERVICE_NAME, mode: 'live', time: PP_nowIso_(), live_version: version,
-    runs_as_owner: PP_runsAsOwner_(), form_page: true };
+    runs_as_owner: PP_runsAsOwner_(), form_page: true, flow_engine: PP_flowEngine_(), flow_fingerprint: PP_flowFingerprint_() };
 }
 
 /**
@@ -1689,7 +1861,8 @@ function PP_handlePing_(message) {
   if (!PP_pingAllowed_(message.dc, message.round)) return { ok: true };   // over the rate limit: not stored
   const store = PP_openRoundStore_(message.round, round);
   if (!store) return PP_busyAnswer_();
-  PP_dataSheet_(store.book, 'pings').appendRow(PP_pingRow_(message));
+  const pings = PP_pingsTab_(store.book, store.info.sheet_id);
+  pings.sheet.appendRow(PP_pingRow_(message).slice(0, pings.width));
   if (message.stage !== 'opened') return { ok: true };
   return { ok: true, token_valid: true, already_submitted: PP_dcHasResponse_(store.book, message.dc),
     round_status: round.status };
@@ -1742,7 +1915,12 @@ function PP_pingAllowed_(dc, roundId) {
   }
 }
 
-/** One row of the pings tab. */
+/**
+ * One row of the pings tab. config_version (the last column) is the
+ * questionnaire version the phone showed, as in the responses tab: the
+ * published one ("p7-2026-10-21") or the form's own copy ("2026-10-19.1").
+ * It lets the dashboard tell which screens a partner who never finished saw.
+ */
 function PP_pingRow_(message) {
   const client = PP_isPlainObject_(message.client) ? message.client : {};
   const values = {
@@ -1750,9 +1928,65 @@ function PP_pingRow_(message) {
     session_id: message.session_id, lang: message.lang, screen: message.screen,
     step_index: message.step_index, step_total: message.step_total, at: message.at, token_valid: true,
     mode: message.mode, client_net: client.net,
-    events_json: Array.isArray(message.events) ? JSON.stringify(message.events) : ''
+    events_json: Array.isArray(message.events) ? JSON.stringify(message.events) : '',
+    config_version: message.config_version
   };
   return PP_DATA_TABS.pings.map(name => PP_cell_(values[name]));
+}
+
+/**
+ * The pings tab of a round's data spreadsheet, and how many columns of the
+ * ping row may be written there: { sheet, width }.
+ * A spreadsheet made before 26 Oct 2026 has a pings tab without its last
+ * column, config_version. The first ping that finds it missing adds it
+ * (PP_addPingVersionColumn_). After that, the script cache remembers for up
+ * to 6 hours that this spreadsheet has every column ("pingcols:<spreadsheet
+ * id>"), so a ping normally reads nothing extra. If the column cannot be
+ * added right now (the lock stays busy for 8 seconds, or Google refuses), the
+ * ping is still stored, without its version: a ping is never lost for this,
+ * and nothing is ever written into a column that is not config_version.
+ */
+function PP_pingsTab_(book, bookId) {
+  const sheet = PP_dataSheet_(book, 'pings');
+  const all = PP_DATA_TABS.pings.length;
+  const key = 'pingcols:' + (bookId || book.getId());
+  if (PP_cacheGetOrNull_(key) === String(all)) return { sheet: sheet, width: all };
+  let ready = false;
+  try {
+    // Checked again inside the lock: another ping may have added it while this one waited.
+    ready = PP_hasPingVersionColumn_(sheet) || PP_withScriptLock_(PP_SRV.SUBMIT_LOCK_MS,
+      () => PP_hasPingVersionColumn_(sheet) || PP_addPingVersionColumn_(sheet)) === true;
+  } catch (err) {
+    console.error('Could not add the config_version column to the pings tab; this ping is stored without it: ' + err);
+  }
+  if (!ready) return { sheet: sheet, width: PP_DATA_TABS.pings.indexOf('config_version') };
+  PP_cachePutSafely_(key, String(all), PP_SRV.LONG_CACHE_SECONDS);
+  return { sheet: sheet, width: all };
+}
+
+/** True when the pings tab has its config_version column (that header, in its place). */
+function PP_hasPingVersionColumn_(sheet) {
+  const column = PP_DATA_TABS.pings.indexOf('config_version') + 1;
+  return sheet.getMaxColumns() >= column && PP_text_(sheet.getRange(1, column).getValue()) === 'config_version';
+}
+
+/**
+ * Adds the config_version column to a pings tab made before 26 Oct 2026: a
+ * NEW, empty column right after events_json, so nothing is overwritten (a
+ * column of the admins' own on the right moves one place right), with its
+ * header in row 1 in the header style. The rows already there keep an empty
+ * cell. Runs inside the script lock (PP_pingsTab_). Returns true.
+ */
+function PP_addPingVersionColumn_(sheet) {
+  const column = PP_DATA_TABS.pings.indexOf('config_version') + 1;
+  const after = Math.min(column - 1, sheet.getMaxColumns());   // a tab that lost columns is widened first
+  sheet.insertColumnsAfter(after, column - after);
+  const header = sheet.getRange(1, column);
+  header.setValue('config_version');
+  header.setFontWeight('bold');
+  header.setBackground(PP_SRV.HEADER_COLOUR);
+  console.log('Added the config_version column to the pings tab of a data spreadsheet made before 26 Oct 2026.');
+  return true;
 }
 
 /**

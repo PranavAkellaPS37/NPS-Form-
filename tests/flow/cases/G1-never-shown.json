@@ -1,0 +1,31 @@
+{
+ "_about": "A screen whose rule can never be true (nps at most 3 and at least 9): a warning.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "all": [
+     {
+      "answer": "nps",
+      "at_most": 3
+     },
+     {
+      "answer": "nps",
+      "at_least": 9
+     }
+    ]
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "G1",
+   "level": "warning",
+   "node": "one_fix"
+  }
+ ],
+ "expect_no_errors": true
+}

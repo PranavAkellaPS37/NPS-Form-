@@ -18,11 +18,23 @@
 # WHAT IT DOES, IN ORDER
 #   1. Downloads the project files.
 #   2. Installs Python 3.12.
-#   3. Runs  python3 scripts/check_config.py  (the same settings check you run
+#   3. Installs Node.js 20. The settings check uses it to run the flow checker
+#      (web/js/flow-check.js): the screens, their order, rules, jumps, loops
+#      and endings are checked by the same code the phones and the control
+#      panel use.
+#   4. Installs "acorn" 8.14.0 (exactly the version tests/package.json pins),
+#      a JavaScript parser, into a temporary folder outside the project. The
+#      settings check uses it to make sure every script phones load is plain
+#      ES5, the JavaScript old Android phones (Chrome 61) understand: a file
+#      with newer syntax would be skipped whole on such a phone. Its folder
+#      is handed to the check as ACORN_PATH, so here the ES5 check always
+#      runs (if acorn could not be installed, the check stops the deployment
+#      instead of skipping it).
+#   5. Runs  python3 scripts/check_config.py  (the same settings check you run
 #      on your Mac). If it finds ERRORS, the deployment STOPS here and the form
-#      that is already online stays as it was. So a broken settings file never
-#      reaches partners.
-#   4. Packs ONLY the web/ folder and publishes it on GitHub Pages. Nothing
+#      that is already online stays as it was. So a broken settings file, or a
+#      script old phones cannot run, never reaches partners.
+#   6. Packs ONLY the web/ folder and publishes it on GitHub Pages. Nothing
 #      outside web/ is put online by this workflow.
 #
 # ONE-TIME SETUP (do this once, right after the first git push)
@@ -55,6 +67,9 @@
 #     commit code after @; the "# vN" comment says which release it is). A
 #     version label like @v5 can be moved by whoever controls the action, so
 #     an exact code means nobody can swap in different code behind our back.
+#   - acorn is installed at one exact version (8.14.0), without running any
+#     install scripts, into the runner's temporary folder: it never enters
+#     the repository or the published web/ folder.
 #
 # Who maintains it: you should not need to edit this file. If GitHub one day
 # says an action version is too old, a developer can update each line to the
@@ -96,7 +111,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The settings check runs the flow checker with Node.js (scripts/flow.js).
+      - name: Install Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      # The ES5 check (node scripts/flow.js es5, run by the settings check) parses every
+      # script phones load with acorn; exactly the version tests/package.json pins.
+      - name: Install the ES5 checker (acorn 8.14.0)
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/acorn" acorn@8.14.0
+
       - name: Check the settings (stops the deployment if there are errors)
+        env:
+          ACORN_PATH: ${{ runner.temp }}/acorn/node_modules/acorn
         run: python3 scripts/check_config.py
 
       - name: Prepare GitHub Pages

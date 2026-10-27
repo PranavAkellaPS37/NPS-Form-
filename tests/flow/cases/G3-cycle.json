@@ -1,0 +1,18 @@
+{
+ "_about": "An arrow back to an earlier screen: a circle.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "next",
+   "value": "nps"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G3",
+   "level": "error"
+  }
+ ]
+}

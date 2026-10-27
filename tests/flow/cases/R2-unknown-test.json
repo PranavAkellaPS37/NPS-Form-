@@ -1,0 +1,22 @@
+{
+ "_about": "An unknown test (\"greater_than\").",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "nps",
+    "greater_than": 6
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

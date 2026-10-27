@@ -1,0 +1,34 @@
+{
+ "_about": "List format, \"immediate\" mode: the problem-screens line is not right below the area ratings; the form ignores its position (a warning).",
+ "base": "list",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "immediate",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "patch": [
+  {
+   "op": "remove",
+   "node": "fn_deep_dives"
+  },
+  {
+   "op": "add",
+   "after": "support_gate",
+   "value": {
+    "id": "fn_deep_dives",
+    "type": "function_deep_dives"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "P3",
+   "level": "warning",
+   "node": "fn_deep_dives"
+  }
+ ],
+ "expect_no_errors": true
+}

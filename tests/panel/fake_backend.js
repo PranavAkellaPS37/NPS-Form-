@@ -17,11 +17,35 @@
      until a round has opened; live_ids are then empty), web_app_url ('' until
      recorded) and web_app_url_recorded; panelSetWebAppUrl checks and records the
      address; panelNewPreviewKey exists. The bench starts with no address recorded.
+   - Since stage 4 of the flow-graph work (26 Oct 2026), like PanelServer.gs:
+       panelFlowCode    the route code for the panel window: PP_FLOW_SOURCE_ and
+                        PP_FLOW_FINGERPRINT_ read from the repo's real
+                        apps-script/Flow.gs (made by scripts/build_flow_gs.js)
+       panelFlowStatus  does "the form" run the same route code? By default the
+                        form is the repo's own web/js files (SHA-256 the same way
+                        build_flow_gs.js computes it); the bench can pretend
+                        another fingerprint or an unreachable form
+                        (setFormFlow, POST /control/flow_status)
+       panelLiveSurvey  the live version's survey and strings, for the Map
+   - Since the reviewers' fixes (26 Oct 2026): panelPublish can answer
+     "warnings" like PP_publish does (the bench sets them: setPublishWarnings,
+     POST /control/publish_warnings), the bench can put a whole draft in the
+     Sheet at once (setModel, POST /control/model), and panelExport brings
+     docs/flow.md ("flow.md") because it is the real Model.gs PP_exportStatic.
+   - Also since 26 Oct 2026: the bench can hand the panel an OLDER route code
+     (setFlowCode('older'), POST /control/flow_code {older: true}): the
+     repo's Flow.gs as it was before the checker said where each finding is
+     and had answersAt, so the panel's fallbacks are tested; or one whose
+     answersAt fails (setFlowCode('failing'), {failing: true}); and another list
+     of kinds of screen (setScreenTypes, POST /control/screen_types {types}),
+     for example the one "node scripts/flow.js types --write" makes with a
+     kind added in web/js/types/ (its row carries the kind's "catalogue").
    ============================================================================= */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const vm = require('vm');
 
 const REPO = process.env.PP_REPO || path.resolve(__dirname, '..', '..');   // the project folder
 /* When apps-script/Model.gs exists, the bench uses its REAL logic (catalogue,
@@ -118,6 +142,27 @@ function readRepoFiles() {
   return { survey: read('config/survey.json'), strings: read('i18n/strings.json'), whats_changed: read('config/whats_changed.json'), audio_clips: read('config/audio_clips.json') };
 }
 
+/* ---- The route code (Flow.gs) and "the form's" copy of it --------------------- */
+/* PP_FLOW_SOURCE_ and PP_FLOW_FINGERPRINT_ of the repo's real apps-script/Flow.gs
+   (read on every call, so a freshly built Flow.gs is used at once). */
+function readFlowGs() {
+  const file = path.join(REPO, 'apps-script', 'Flow.gs');
+  if (!fs.existsSync(file)) return null;
+  const ctx = vm.createContext({});
+  vm.runInContext(fs.readFileSync(file, 'utf8'), ctx, { filename: 'Flow.gs' });
+  return { source: vm.runInContext('PP_FLOW_SOURCE_', ctx), fingerprint: vm.runInContext('PP_FLOW_FINGERPRINT_', ctx) };
+}
+/* The SHA-256 of the form's route files as scripts/build_flow_gs.js computes it:
+   web/js/flow.js, flow-panel.js, flow-check.js, their bytes one after the other. */
+function repoFormFingerprint() {
+  const hash = crypto.createHash('sha256');
+  ['flow.js', 'flow-panel.js', 'flow-check.js'].forEach((f) => {
+    const file = path.join(REPO, 'web', 'js', f);
+    if (fs.existsSync(file)) hash.update(fs.readFileSync(file));
+  });
+  return hash.digest('hex');
+}
+
 /* ---- PP_importStatic (reduced) --------------------------------------------- */
 function importStatic(files) {
   const sv = files.survey;
@@ -135,7 +180,9 @@ function importStatic(files) {
   const chips = [];
   sv.functions.forEach((f) => f.issues.forEach((code) => chips.push({ area: f.id, code, active: true })));
   const support = sv.support.items.map((code) => ({ code, active: true }));
-  const screens = sv.flow.map((e) => ({
+  /* Since 26 Oct 2026 the repo's flow may be the graph: the form's own converter makes it rows. */
+  const lines = Array.isArray(sv.flow) ? sv.flow : require(path.join(REPO, 'web', 'js', 'flow-panel.js')).toRows(sv.flow, sv).screens;
+  const screens = lines.map((e) => ({
     id: e.id, type: e.type, text: e.text || '', required: typeof e.required === 'boolean' ? e.required : null,
     show_if: e.show_if || null, skip_if: e.skip_if || '', options: e.options || [], low_label: e.low_label || '',
     high_label: e.high_label || '', scale_hint: e.scale_hint || '', body: e.body || '', active: true
@@ -452,8 +499,35 @@ function fresh() {
     openSection: null, user: 'tester@example.com', failNext: {}, calls: [],
     webAppUrl: '',          // recorded web app address ('' = not recorded yet), see panelSetWebAppUrl
     previewKeys: 0,         // how many times panelNewPreviewKey ran
-    liveUnknown: false      // pretend Drive had a passing problem: the live codes are unknown (live_ids_unknown)
+    liveUnknown: false,     // pretend Drive had a passing problem: the live codes are unknown (live_ids_unknown)
+    formFlow: 'repo',       // panelFlowStatus: 'repo' (the repo's web/js files), 'unreachable', or a fingerprint to pretend
+    publishWarnings: [],    // what the next successful panelPublish answers as "warnings" (like PP_publish)
+    flowCode: 'current',    // panelFlowCode: 'current' (the repo's Flow.gs), 'older' (as before 26 Oct 2026, see olderFlowSource) or 'failing'
+    screenTypes: null       // panelLoad's list of kinds of screen: null = the real Model.gs PP_SCREEN_TYPES
   };
+}
+
+/* The repo's route code as a Flow.gs from before 26 Oct 2026 would send it: the checker
+   without answersAt, findings without their place (site, target, index), and every jump
+   called "its jump to ..." (two jumps to one screen were not told apart). Each change must
+   apply exactly once; when the code moved on, this says so instead of testing nothing. */
+function olderFlowSource(source) {
+  const changes = [
+    ['  api.answersAt = function (survey, nodeId, opts) {', '  api.answersAtNotYet = function (survey, nodeId, opts) {'],
+    ["    if (isObj(extra)) {\n      ['site', 'target', 'index'].forEach(", "    if (false) {\n      ['site', 'target', 'index'].forEach("],
+    ["twin ? 'its jump ' + (t.i + 1) + ' (to ' + q(t.to) + ')' : 'its jump to ' + q(t.to)", "'its jump to ' + q(t.to)"]
+  ];
+  return changes.reduce((text, [from, to]) => {
+    const n = text.split(from).length - 1;
+    if (n !== 1) throw new Error('The bench\'s older route code (fake_backend.js olderFlowSource) no longer applies: "' + from.slice(0, 50) + '" is in Flow.gs ' + n + ' times. Update it.');
+    return text.replace(from, to);
+  }, source);
+}
+/* The repo's route code with an answersAt that always fails (the panel must keep its route tools). */
+function failingFlowSource(source) {
+  const from = '  api.answersAt = function (survey, nodeId, opts) {';
+  if (source.split(from).length !== 2) throw new Error('The bench\'s failing route code (fake_backend.js failingFlowSource) no longer applies: update it.');
+  return source.replace(from, from + "\n    throw new Error('The bench makes answersAt fail.');");
 }
 let state = fresh();
 
@@ -514,7 +588,7 @@ const api = {
     const unknown = codesLocked() && (!d || state.liveUnknown);
     return {
       revision: state.revision, model: clone(state.model),
-      catalog: { settings_schema: clone(logic.schema), screen_types: clone(logic.types), form_text_keys: logic.formKeys.slice() },
+      catalog: { settings_schema: clone(logic.schema), screen_types: clone(state.screenTypes || logic.types), form_text_keys: logic.formKeys.slice() },
       live: d ? { version: d.version, config_version: d.config_version, published_at: d.published_at, published_by: d.published_by, note: d.note } : null,
       live_ids: codesLocked() && !unknown ? liveIds() : { screens: [], areas: [], chips: {}, support: [], options: {} },
       live_ids_unknown: unknown,
@@ -546,7 +620,10 @@ const api = {
     const doc = logic.compile(state.model, stamp);
     state.published.push({ version, doc, file: 'https://drive.google.com/file/d/FAKE-P' + version + '/view' });
     state.liveVersion = version;
-    return { ok: true, version, config_version: doc.config_version };
+    const answer = { ok: true, version, config_version: doc.config_version };
+    /* Like PP_publish: what needs a look (the form on GitHub could not be checked, the codes list is nearly full). */
+    if (state.publishWarnings.length) { answer.warnings = state.publishWarnings.slice(); state.publishWarnings = []; }
+    return answer;
   },
   panelHistory() {
     return state.published.slice().reverse().map((p) => ({
@@ -663,6 +740,31 @@ const api = {
     state.model.settings.form_url = String(url);
     state.revision += 1;
     return { ok: true };
+  },
+  /* Like PanelServer.gs: the text of Flow.gs's route files, for the panel window. */
+  panelFlowCode() {
+    const flow = readFlowGs();
+    if (!flow) throw new Error('The script file "Flow" is missing from the Apps Script project, so the control panel cannot show the map, "Try a path" or the jumps.');
+    const source = state.flowCode === 'older' ? olderFlowSource(flow.source) : state.flowCode === 'failing' ? failingFlowSource(flow.source) : flow.source;
+    return { source, fingerprint: flow.fingerprint };
+  },
+  /* Like PanelServer.gs: does the form at formUrl run the same route code as the panel? */
+  panelFlowStatus(formUrl) {
+    const flow = readFlowGs();
+    const panel = flow ? flow.fingerprint : '';
+    const base = String(formUrl || '').trim();
+    const out = { panel, form: null, same: null, form_url: base, checked_at: nowIso(), problem: '' };
+    if (!/^https:\/\/[^\s"'<>?#]+\/$/.test(base)) { out.problem = 'The form address is missing or not valid.'; return out; }
+    if (state.formFlow === 'unreachable') { out.problem = 'Could not reach ' + base + 'js/flow.js (the bench pretends).'; return out; }
+    out.form = state.formFlow === 'repo' ? repoFormFingerprint() : String(state.formFlow);
+    out.same = !!panel && out.form === panel;
+    return out;
+  },
+  /* Like PanelServer.gs: the live version's questionnaire and texts (for the Map). */
+  panelLiveSurvey() {
+    const d = liveDoc();
+    if (!d || !d.survey) return { live: null };
+    return { live: { version: d.version, config_version: d.config_version }, survey: d.survey, strings: d.strings || {} };
   }
 };
 
@@ -690,9 +792,27 @@ module.exports = {
   },
   setOpenSection(s) { state.openSection = s; },
   setWebAppUrl(url) { state.webAppUrl = String(url || ''); },
+  /* What panelFlowStatus finds at the form address: 'repo', 'unreachable' or a fingerprint. */
+  setFormFlow(value) { state.formFlow = value === undefined || value === null || value === '' ? 'repo' : String(value); },
   setLiveUnknown(on) { state.liveUnknown = !!on; },
+  /* The next successful panelPublish answers these warnings (PP_publish's "warnings"). */
+  setPublishWarnings(list) { state.publishWarnings = Array.isArray(list) ? list.map(String) : []; },
+  /* panelFlowCode hands the window the repo's route code ('current'), an older one ('older', olderFlowSource),
+     or one whose answersAt fails ('failing'). */
+  setFlowCode(which) { state.flowCode = which === 'older' || which === 'failing' ? which : 'current'; },
+  /* panelLoad's list of kinds of screen (null: the real one); for example with a kind added in web/js/types/. */
+  setScreenTypes(list) { state.screenTypes = Array.isArray(list) ? clone(list) : null; },
+  /* Puts a whole draft in the Sheet (as if saved by someone): tidied like panelSave does, revision + 1. */
+  setModel(model) {
+    state.model = REAL ? REAL.normalizeModel(clone(model)) : clone(model);
+    state.revision += 1;
+    state.saved_by = 'bench@example.com';
+    state.saved_at = nowIso();
+    return { revision: state.revision };
+  },
   failNext(fn, message) { state.failNext[fn] = message; },
   FUNCTIONS: Object.keys(api),
   LOGIC: logic.name,
-  _internals: { compile, validate, importStatic, readRepoFiles, token }
+  REAL,
+  _internals: { compile, validate, importStatic, readRepoFiles, token, readFlowGs, repoFormFingerprint }
 };

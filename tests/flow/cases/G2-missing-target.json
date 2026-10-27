@@ -1,0 +1,19 @@
+{
+ "_about": "An arrow to a screen that does not exist.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "next",
+   "value": "nowhere"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

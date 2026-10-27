@@ -32,10 +32,18 @@ WHAT IT READS AND WRITES
     panelLoad, panelSave, panelValidate, panelPublish, panelHistory,
     panelRestore, panelSetRoundStatus, panelRoundCounts, panelGenerateLinks,
     panelPreviewUrl, panelNewPreviewKey, panelGetSecret, panelImport, panelExport,
-    panelSetWebAppUrl.
+    panelSetWebAppUrl, panelFlowCode, panelFlowStatus, panelLiveSurvey.
   While you edit, the whole questionnaire is held in this window (the "model",
   described in docs/control-panel-design.md, section 4). Save sends it back
   in one piece.
+  The route ("which screen comes after which": jumps, questions asked once per
+  area, several endings) is worked out by the form's OWN route code, the same
+  files every partner's phone runs (web/js/flow.js, flow-panel.js and
+  flow-check.js). panelFlowCode sends their text (Flow.gs) to this window
+  once, and PART 5b runs it here. The panel never has a second copy of a
+  route rule. If that code can't be loaded, the panel still works; only the
+  map, "Try a path", the jumps and the route badges are missing, and a short
+  note in Questions says why.
 
 SAFETY
   - Nothing is saved until you press Save. Nothing reaches partners until you
@@ -62,22 +70,47 @@ SAFETY
 
 FOR WHOEVER MAINTAINS THIS FILE
   - One self-contained file: the page, then the look (the "style" section),
-    then the behaviour (the "script" section). No external libraries and no
-    Apps Script template tags, so it also runs in a normal browser with a test
-    stand-in for google.script.run (the local test bench).
+    then the behaviour (the "script" section). No Apps Script template tags,
+    so it also runs in a normal browser with a test stand-in for
+    google.script.run (the local test bench).
+  - No external libraries in the page itself. The ONE exception is the Map
+    (Questions > Map), which draws the route with Mermaid 11.4.1 from
+    cdn.jsdelivr.net (MERMAID_URL). It runs only inside a sandboxed frame
+    ("srcdoc", sandbox="allow-scripts" without "allow-same-origin"), so it
+    can't reach this page, google.script.run or the Sheet; the frame only
+    sends back "drawn" or "failed". The script is pinned with Subresource
+    Integrity (MERMAID_SRI): the browser refuses any file whose bytes differ.
+    The hash was computed from the real file (sha384 of
+    dist/mermaid.min.js, 2,571,900 bytes, 26 Oct 2026), and that file was
+    checked to be byte-for-byte the one in npm's mermaid-11.4.1.tgz (whose
+    sha512 matches the npm registry). The Map shows the same route as a
+    text outline straight away, with an "Open in mermaid.live" link, and
+    replaces the outline with the drawing once the frame says "drawn". The
+    library is large (about 750 KB to download), so after 6 seconds a note
+    says it is still loading; after 20 seconds (Google may block the
+    library) the panel stops waiting and keeps the outline (26 Oct 2026,
+    review finding 11). [UNCONFIRMED] on real Google: the bench proves the
+    outline, the waiting and the swap when the frame says "drawn", but not
+    that Google lets the library load.
   - The script is split into numbered parts. Search for "PART" to jump:
       1 talking to the server      2 what the panel remembers
       3 small helpers              4 questionnaire helpers (and the recovery copy)
-      5 "show this question only if" rules
+      5 "show this question only if" rules (and the jumps' conditions)
+      5b the route tools: the form's own engine and checker in this window
       6 the frame (top bar, menu, banner)
-      7 Home          8 Questions          9 Areas & problems   10 Support
+      7 Home          8 Questions (list, editor, Map, Try a path)
+      9 Areas & problems   10 Support
       11 the text boxes for every language, used by all the editors
       12 Texts & translations    13 Look & feel    14 Rounds    15 Links
       16 Publish and Settings    17 loading, saving, previewing, publishing
       18 pop-ups and messages    19 start-up
   - The server's catalogue (Model.gs: PP_SETTINGS_SCHEMA, PP_SCREEN_TYPES)
     gives the names, help texts and fields shown here. To reword a setting's
-    name or help, change it there, not in this file.
+    name or help, change it there, not in this file. The kinds of screen
+    ("Add a question": their names, icons, order, editor fields, standard
+    codes) come only from PP_SCREEN_TYPES, which is made from the form's
+    catalogue of question types (web/config/types.json; docs/config-guide.md,
+    "How to add a question type"), so this file keeps no list of them.
   - Every button, box and switch has a data-test="..." name so automatic tests
     can find it. Keep these names when you change things.
   - On a small laptop screen the window shrinks itself to fit (Google's
@@ -421,6 +454,33 @@ input[readonly] { background: var(--surface); }
 }
 .sentence strong { color: #0F2F5F; }
 
+/* ---- The route: jumps, repeats, endings, Map, Try a path ------------------ */
+.badge-route { background: #EAF2FB; color: #1A4FA0; border-color: #C6D6F5; }
+.badge-end { background: var(--success-soft); color: var(--success); }
+.qsection-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 22px 0 4px; }
+.qsection-head h2 { font-size: 15.5px; margin: 0; }
+.qsection-help { margin: 0 0 10px; color: var(--muted); font-size: 13px; max-width: 760px; }
+.jump-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #FDFCFE; margin-top: 10px; }
+.jump-row .cond { background: #F7F5FB; }
+.jump-goto { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: center; margin-top: 8px; }
+.jump-goto .field-label { white-space: nowrap; }
+.route-list { margin: 6px 0 0; padding-left: 18px; }
+.route-list li + li { margin-top: 4px; }
+.map-frame { display: block; width: 100%; height: 480px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+/* While the drawing loads, its frame stays out of sight (but laid out, so the drawing library can measure its text). */
+.map-frame.is-loading { height: 2px; opacity: 0; border: 0; pointer-events: none; }
+.outline { margin: 8px 0 0; padding-left: 22px; }
+.outline > li { padding: 6px 0; border-top: 1px solid var(--border); }
+.outline > li:first-child { border-top: 0; }
+.outline .why { display: block; color: var(--muted); font-size: 12.5px; }
+.outline ol { margin: 4px 0 0; padding-left: 20px; }
+.try-grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 14px; align-items: start; }
+.try-grid > .card { margin-bottom: 0; }
+.try-steps { margin: 6px 0 0; padding-left: 22px; }
+.try-steps li { padding: 3px 0; }
+.try-steps li .badge { margin-left: 6px; }
+.try-sent pre { max-height: 320px; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* ---- Type picker ---------------------------------------------------------- */
 .type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .type-opt {
@@ -630,6 +690,7 @@ details.group > .group-body { padding: 0 16px 14px; }
   .cond > .cond-test { grid-area: test; }
   .cond > .cond-value { grid-area: value; }
   .cond > .cond-remove { grid-area: remove; }
+  .try-grid { grid-template-columns: minmax(0, 1fr); }
 }
 /* Short windows (small laptops): a tighter menu, so every section's button
    stays in view without scrolling the menu. */
@@ -781,7 +842,14 @@ details.group > .group-body { padding: 0 16px 14px; }
     savingPromise: null,
     changeSeq: 0,              // goes up on every edit
     undo: null,                // { snapshot, seq } for the "Undo" button after a delete
+    /* The route code (PART 5b): the form's own engine, panel helpers and
+       checker, run in this window. lib = { flow, flowPanel, flowCheck }. */
+    flow: { lib: null, loading: false, error: '', fingerprint: '' },
+    flowStatus: null,          // panelFlowStatus: does the form on GitHub run the same route code?
     ui: {
+      qview: 'list',           // Questions: 'list', 'map' or 'try' (Try a path)
+      map: { which: 'draft', live: null, liveLoading: false, liveError: '' },
+      tryPath: { answers: {}, lang: '', langInUrl: false, wc: '0', round: '' },
       editing: null,           // Questions: code of the question open in the editor
       openArea: null,          // Areas: code of the area that is open
       texts: { q: '', lang: null, onlyTodo: false },
@@ -1122,36 +1190,9 @@ details.group > .group-body { padding: 0 16px 14px; }
     ur: 'Urdu', ne: 'Nepali', kok: 'Konkani', mai: 'Maithili', sd: 'Sindhi', sa: 'Sanskrit'
   };
 
-  var TYPE_ICON = {
-    language_picker: '🌐', whats_changed: '📰', function_ratings: '⭐',
-    function_deep_dives: '🔍', support_block: '🎧', thank_you: '🙏',
-    nps_0_10: '🔟', rating_1_5: '🙂', yes_no: '👍',
-    single_choice: '☑️', free_text: '🎙️', info_card: 'ℹ️'
-  };
-
-  /* Used only if the server's catalogue is missing a type. */
-  var TYPE_FALLBACK = {
-    language_picker: { label: 'Language choice', description: 'Partners pick their language.', builtin: true, needs_text: false, fields: ['skip_if'] },
-    whats_changed: { label: 'What changed', description: 'Shows what Valmo changed since the last round.', builtin: true, needs_text: false, fields: ['skip_if'] },
-    function_ratings: { label: 'Area ratings', description: 'One faces screen for each area.', builtin: true, needs_text: false, fields: [] },
-    function_deep_dives: { label: 'Problem screens', description: '“What is the main problem?” for each area rated low.', builtin: true, needs_text: false, fields: [] },
-    support_block: { label: 'Support ratings', description: 'Partners rate the support items on one screen.', builtin: true, needs_text: true, fields: [] },
-    thank_you: { label: 'Thank you', description: 'The last screen. It sends the answers.', builtin: true, needs_text: false, fields: [] },
-    nps_0_10: { label: '0 to 10 scale', description: 'Numbers from 0 to 10, like “How likely are you to recommend…”.', builtin: false, needs_text: true, fields: ['low_label', 'high_label', 'scale_hint', 'required'] },
-    rating_1_5: { label: 'Faces rating (1 to 5)', description: 'Five faces, from very bad to very good.', builtin: false, needs_text: true, fields: ['required'] },
-    yes_no: { label: 'Yes / No question', description: 'Two big buttons: Yes and No.', builtin: false, needs_text: true, fields: ['required'] },
-    single_choice: { label: 'Pick one answer', description: 'A list of answers. The partner taps one.', builtin: false, needs_text: true, fields: ['options', 'required'] },
-    free_text: { label: 'Voice note or typing', description: 'The partner records a voice note or types an answer.', builtin: false, needs_text: true, fields: ['required'] },
-    info_card: { label: 'Information card', description: 'A message with no answer, for example an instruction.', builtin: false, needs_text: true, fields: ['body'] }
-  };
-  var TYPE_ORDER = ['nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'free_text', 'info_card',
-    'language_picker', 'whats_changed', 'function_ratings', 'function_deep_dives', 'support_block', 'thank_you'];
-  /* The standard text of built-in screens that have one. */
-  var BUILTIN_TEXT_KEYS = { support_block: 'q.support_block' };
-  var BUILTIN_IDS = {
-    language_picker: 'language', whats_changed: 'whats_changed', function_ratings: 'fn_ratings',
-    function_deep_dives: 'fn_deep_dives', support_block: 'support', thank_you: 'thanks'
-  };
+  /* The kinds of screen, their icons, order and standard codes: only the
+     server's catalogue (S.catalog.screen_types = Model.gs PP_SCREEN_TYPES,
+     made from web/config/types.json). See typeInfo and allTypes. */
 
   /* Texts that built-in screens show, so they can be edited with the screen. */
   var BUILTIN_SCREEN_TEXTS = {
@@ -1228,7 +1269,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     ['support.', 'Support'], ['wc.', 'What changed'], ['ui.', 'Buttons and messages'],
     ['lang.', 'Buttons and messages'], ['link.', 'Buttons and messages'], ['already.', 'Buttons and messages'],
     ['resume.', 'Buttons and messages'], ['net.', 'Buttons and messages'], ['voice.', 'Voice notes'],
-    ['text.', 'Typing'], ['thanks.', 'Sending and thank you'], ['submit.', 'Sending and thank you'],
+    ['text.', 'Typing'], ['thanks.', 'Sending and thank you'], ['end.', 'Sending and thank you'], ['submit.', 'Sending and thank you'],
     ['round.', 'Round not open or closed'], ['dev.', 'Test and preview messages']
   ];
 
@@ -1281,9 +1322,26 @@ details.group > .group-body { padding: 0 16px 14px; }
       show_if: rule && typeof rule === 'object' ? rule : null,
       skip_if: str(s.skip_if), options: arr(options).map(str),
       low_label: str(s.low_label), high_label: str(s.high_label), scale_hint: str(s.scale_hint),
-      body: str(s.body), active: s.active !== false
+      body: str(s.body), active: s.active !== false,
+      /* The route columns (Screens tab: next, jumps, repeat; docs/flow-engine.md 9.1). */
+      next: str(s.next).trim(), jumps: normaliseJumps(s.jumps), repeat: str(s.repeat).trim()
     });
   }
+
+  /* A row's jumps: a list of { when, goto }, or { unreadable: "the text as
+     typed" } when the jumps column could not be read (the editor then offers
+     to remove them). */
+  function normaliseJumps(j) {
+    if (j === null || j === undefined || j === '') return [];
+    if (typeof j === 'string') {
+      try { j = JSON.parse(j); } catch (e) { return { unreadable: j }; }
+    }
+    if (Array.isArray(j)) return j;
+    if (j && typeof j === 'object' && j.unreadable !== undefined) return { unreadable: str(j.unreadable) };
+    return { unreadable: JSON.stringify(j) };
+  }
+  function jumpsOf(s) { return Array.isArray(s.jumps) ? s.jumps : []; }
+  function jumpsUnreadable(s) { return !!s.jumps && !Array.isArray(s.jumps); }
 
   function normaliseLiveIds(x) {
     x = obj(x);
@@ -1325,8 +1383,10 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   /* Two questions fill their own columns of every round's answers sheet:
      their codes never change and they can't be deleted, only hidden
-     (Pranav's decision, 21 Oct 2026; Model.gs PP_mdlCheckDataColumns_ warns
-     if one goes missing anyway). */
+     (Pranav's decision, 21 Oct 2026). If one goes missing anyway (an edit in
+     the Sheet), Publish's check says so: the flow checker's D1 and D2 in
+     Flow.gs, worded by Model.gs PP_mdlReportDataColumn_ (deleted or re-typed:
+     an error, so Publish waits; hidden: a warning). */
   var DATA_COLUMN_SCREENS = { nps: 'nps', support_gate: 'support_contacted' };
   function isDataColumnScreen(id) { return Object.prototype.hasOwnProperty.call(DATA_COLUMN_SCREENS, id); }
 
@@ -1531,24 +1591,27 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   /* ---- Screens, areas, chips, support ---------------------------------------- */
 
+  /* A kind of screen as the catalogue describes it (Model.gs PP_SCREEN_TYPES,
+     made from the form's web/config/types.json): label, description, builtin,
+     needs_text, fields, required_default, icon, order, default_id,
+     default_text, after_note. A kind the catalogue does not know (a row typed
+     by hand in the Sheet) gets plain stand-ins. */
   function typeInfo(type) {
     var list = arr(S.catalog.screen_types), found = null;
     for (var i = 0; i < list.length; i++) if (list[i].type === type) found = list[i];
-    var fb = TYPE_FALLBACK[type] || { label: type || 'Unknown screen', description: '', builtin: false, needs_text: true, fields: [] };
-    var out = Object.assign({}, fb, found || {});
-    out.fields = arr(found && found.fields ? found.fields : fb.fields);
-    out.icon = TYPE_ICON[type] || '❓';
+    var out = Object.assign({ label: type || 'Unknown screen', description: '', builtin: false, needs_text: true }, found || {});
+    out.fields = arr(found && found.fields);
+    out.icon = found && typeof found.icon === 'string' && found.icon ? found.icon : '❓';
     return out;
   }
+  /* Every kind of screen in the catalogue, in its "order" (then the catalogue's own). */
   function allTypes() {
     var seen = {}, out = [];
-    arr(S.catalog.screen_types).forEach(function (t) { if (!seen[t.type]) { seen[t.type] = true; out.push(t.type); } });
-    TYPE_ORDER.forEach(function (t) { if (!seen[t]) { seen[t] = true; out.push(t); } });
-    out.sort(function (a, b) {
-      var ia = TYPE_ORDER.indexOf(a), ib = TYPE_ORDER.indexOf(b);
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    arr(S.catalog.screen_types).forEach(function (t, i) {
+      if (t && typeof t.type === 'string' && !seen[t.type]) { seen[t.type] = true; out.push({ type: t.type, order: typeof t.order === 'number' ? t.order : 1e6, i: i }); }
     });
-    return out;
+    out.sort(function (a, b) { return (a.order - b.order) || (a.i - b.i); });
+    return out.map(function (x) { return x.type; });
   }
   function findScreen(id) { return M().screens.filter(function (s) { return s.id === id; })[0] || null; }
   function screenPos(id) {
@@ -1576,6 +1639,32 @@ details.group > .group-body { padding: 0 16px 14px; }
   function faceLabel(n) { return en('rating.' + n); }
   function standardThreshold() { return settingNum('deep_dive.threshold', 3); }
 
+  /* Endings (thank-you screens). The FIRST one is the main ending: the main
+     route ends there. Rows after it are other routes and endings, reached
+     only by a jump (docs/flow-engine.md 9.1). */
+  function mainEndIndex() {
+    var list = M().screens;
+    for (var i = 0; i < list.length; i++) if (list[i].type === 'thank_you') return i;
+    return -1;
+  }
+  function isExtraEnding(s, i) { return s.type === 'thank_you' && i !== mainEndIndex(); }
+
+  /* Every row whose "usually go to" or a jump points at this code: [{ s, index, how }]. */
+  function arrowsInto(id) {
+    var out = [];
+    M().screens.forEach(function (s, i) {
+      if (s.id === id) return;
+      if (s.next === id) out.push({ s: s, index: i, how: 'next' });
+      jumpsOf(s).forEach(function (j) { if (j && j['goto'] === id) out.push({ s: s, index: i, how: 'jump' }); });
+    });
+    return out;
+  }
+  function arrowNames(list) {
+    var seen = {};
+    return list.filter(function (a) { if (seen[a.index]) return false; seen[a.index] = true; return true; })
+      .map(function (a) { return 'question ' + (a.index + 1); });
+  }
+
   /* What a question says in English (or a plain description for built-ins). */
   function screenEnglish(s) {
     if (s.text && en(s.text)) return en(s.text);
@@ -1587,30 +1676,39 @@ details.group > .group-body { padding: 0 16px 14px; }
     return '';
   }
 
-  /* Every place a rule ("show this question only if") tests an answer. */
+  /* Every place a rule tests an answer: "show this question only if" and the
+     conditions of every jump. */
   function forEachCondition(fn) {
-    M().screens.forEach(function (s) { walkRule(s.show_if, fn); });
+    M().screens.forEach(function (s) {
+      walkRule(s.show_if, fn);
+      jumpsOf(s).forEach(function (j) { if (j && typeof j === 'object') walkRule(j.when, fn); });
+    });
   }
   function walkRule(rule, fn) {
     if (!rule || typeof rule !== 'object') return;
     if (Array.isArray(rule.all)) rule.all.forEach(function (r) { walkRule(r, fn); });
     if (Array.isArray(rule.any)) rule.any.forEach(function (r) { walkRule(r, fn); });
+    if (rule.not && typeof rule.not === 'object') walkRule(rule.not, fn);
     if (typeof rule.answer === 'string') fn(rule);
   }
-  /* The questions whose rule tests an answer. short = numbers only (for messages). */
+  /* The questions whose rule or jumps test an answer. short = numbers only (for messages). */
   function rulesUsing(match, short) {
     var names = [];
     M().screens.forEach(function (s, i) {
       var uses = false;
       walkRule(s.show_if, function (c) { if (match(c.answer)) uses = true; });
+      jumpsOf(s).forEach(function (j) { if (j && typeof j === 'object') walkRule(j.when, function (c) { if (match(c.answer)) uses = true; }); });
       if (uses) names.push(short ? 'question ' + (i + 1) : quote(shorten(screenEnglish(s) || typeInfo(s.type).label, 50)) + ' (question ' + (i + 1) + ')');
     });
     return names;
   }
+  /* Answer codes a row's answers are stored under when it is asked once per
+     area: "<code>:<area>". */
+  function isRepeatedRef(ref, screenId) { return ref.indexOf(screenId + ':') === 0; }
   /* Changes answer values inside rules (used when a chip or option code changes). */
   function renameRuleValue(answer, oldCode, newCode) {
     forEachCondition(function (c) {
-      if (c.answer !== answer) return;
+      if (c.answer !== answer && !isRepeatedRef(c.answer, answer)) return;
       ['equals', 'not_equals'].forEach(function (t) { if (c[t] === oldCode) c[t] = newCode; });
       if (Array.isArray(c['in'])) c['in'] = c['in'].map(function (v) { return v === oldCode ? newCode : v; });
     });
@@ -1726,8 +1824,33 @@ details.group > .group-body { padding: 0 16px 14px; }
   var TESTS_FOR = {
     number: ['equals', 'not_equals', 'at_most', 'at_least', 'in', 'answered', 'not_answered'],
     choice: ['equals', 'not_equals', 'in', 'answered', 'not_answered'],
-    text: ['answered', 'not_answered']
+    text: ['answered', 'not_answered'],
+    fact: ['equals', 'not_equals', 'in']
   };
+  /* "Show this question only if…" also offers the language and the round,
+     like the jumps: since 26 Oct 2026 the server checks every rule with the
+     form's own checker (Model.gs PP_validate through Flow.gs, docs/flow-
+     engine.md 9.4), which knows those facts, and the form's engine tests
+     them on phones. */
+  var SHOW_IF_FACTS = true;
+
+  /* The facts a jump can test besides answers (docs/flow-engine.md 2.3). In
+     the builder they look like answers whose code starts with "@", which no
+     real answer code can (codes are a-z, 0-9 and _). */
+  function factAnswers() {
+    var out = [];
+    var langs = activeLangs();
+    if (langs.length) {
+      out.push({ ref: '@lang', fact: 'lang', label: 'The partner’s language', subject: 'the partner’s language', asked: 'the partner’s language',
+        kind: 'fact', values: langs.map(function (L) { return { v: L.code, label: englishName(L.code) }; }), group: 'The partner and the round' });
+    }
+    var rounds = M().rounds.map(function (r) { return r.id; }).filter(Boolean);
+    if (rounds.length) {
+      out.push({ ref: '@round', fact: 'round', label: 'The round', subject: 'the round', asked: 'the round',
+        kind: 'fact', values: rounds.map(function (id) { return { v: id, label: id }; }), group: 'The partner and the round' });
+    }
+    return out;
+  }
 
   function numberAnswer(ref, label, subject, min, max, o) {
     o = o || {};
@@ -1792,7 +1915,8 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* Answers a question at position idx may test: only earlier, switched-on
-     screens (the same rule as the server's check). */
+     screens. Since stage 4 this is only the FALLBACK, used while the route
+     code (PART 5b) is not available: ruleAnswers asks the form's own checker. */
   function availableAnswers(idx) {
     var out = [], ratingsSeen = false;
     var immediate = settingRaw('deep_dive.when') === 'immediate';
@@ -1810,9 +1934,13 @@ details.group > .group-body { padding: 0 16px 14px; }
     return out;
   }
 
-  /* Describe any answer, even one that is not allowed where it is used. */
+  /* Describe any answer (or fact), even one that is not allowed where it is used. */
   function describeAnswer(ref) {
-    var all = [];
+    ref = str(ref);
+    if (ref.charAt(0) === '@') return factAnswers().filter(function (f) { return f.ref === ref; })[0] || null;
+    var all = catalogAnswers(null) || [];
+    for (var k = 0; k < all.length; k++) if (all[k].ref === ref) return all[k];
+    all = [];
     M().screens.forEach(function (s) { all = all.concat(answersOfScreen(s, s.type !== 'function_deep_dives' ? false : true)); });
     all = all.concat(diveAnswers());
     for (var i = 0; i < all.length; i++) if (all[i].ref === ref) return all[i];
@@ -1828,14 +1956,22 @@ details.group > .group-body { padding: 0 16px 14px; }
     return quote(str(v));
   }
 
+  /* One condition as the builder edits it: { answer, test, value }. A fact
+     the builder knows (the language, the round) gets the answer "@lang" or
+     "@round". Anything else is "complex" and shown only as a sentence. */
   function simpleCondition(o) {
-    if (!o || typeof o !== 'object' || Array.isArray(o) || typeof o.answer !== 'string') return null;
-    var tests = Object.keys(o).filter(function (k) { return k !== 'answer'; });
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    var subject = typeof o.answer === 'string' ? 'answer' :
+      ((o.fact === 'lang' || o.fact === 'round') && !('answer' in o) && !('var' in o) ? 'fact' : null);
+    if (!subject) return null;
+    var tests = Object.keys(o).filter(function (k) { return k !== subject; });
     if (tests.length !== 1) return null;
     var t = tests[0];
-    if (t === 'answered') return { answer: o.answer, test: o.answered === false ? 'not_answered' : 'answered', value: null };
+    var ref = subject === 'fact' ? '@' + o.fact : o.answer;
+    if (t === 'answered') return subject === 'fact' ? null : { answer: ref, test: o.answered === false ? 'not_answered' : 'answered', value: null };
     if (['equals', 'not_equals', 'at_most', 'at_least', 'in'].indexOf(t) === -1) return null;
-    return { answer: o.answer, test: t, value: o[t] };
+    if (subject === 'fact' && TESTS_FOR.fact.indexOf(t) === -1) return null;
+    return { answer: ref, test: t, value: o[t] };
   }
 
   /* Turns a stored rule into what the builder edits. */
@@ -1853,7 +1989,7 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   function conditionObject(c) {
-    var o = { answer: c.answer };
+    var o = str(c.answer).charAt(0) === '@' ? { fact: c.answer.slice(1) } : { answer: c.answer };
     if (c.test === 'answered') o.answered = true;
     else if (c.test === 'not_answered') o.answered = false;
     else o[c.test] = c.value;
@@ -1899,20 +2035,683 @@ details.group > .group-body { padding: 0 16px 14px; }
     return c ? conditionSentence(c) : 'a rule the form doesn’t understand';
   }
 
-  /* Which answers in this screen's rule can't work where the screen is now. */
+  /* Which answers in this screen's rule can't work where the screen is now
+     (the form's own checker decides, through ruleAnswers). */
   function ruleProblems(s, idx) {
     if (!s.show_if) return [];
     var ok = {};
-    availableAnswers(idx).forEach(function (a) { ok[a.ref] = true; });
+    ruleAnswers(s, idx, 'show_if').forEach(function (a) { ok[a.ref] = true; });
     var bad = [];
     walkRule(s.show_if, function (c) { if (!ok[c.answer] && bad.indexOf(c.answer) === -1) bad.push(c.answer); });
     if (s.show_if.unreadable) bad.push('(unreadable rule)');
     return bad;
   }
-  function problemText(ref, idx) {
+  function problemText(ref, idx, forJump) {
     var ans = describeAnswer(ref);
     if (!ans) return 'It tests ' + quote(ref) + ', which no longer exists. Pick another answer.';
+    if (forJump) return 'It tests ' + ans.subject + ', which partners can’t have answered when they leave this question (it comes later, on another route, or is hidden). Pick another answer.';
     return 'It tests ' + ans.subject + ', which comes later or is hidden. Pick another answer, or move this question further down.';
+  }
+
+  /* ==========================================================================
+     PART 5b. THE ROUTE TOOLS: the form's own engine and checker, in this window
+     --------------------------------------------------------------------------
+     Since stage 4 of the flow-graph work (26 Oct 2026) the route can have
+     jumps ("if NPS is 9 or more, go to question 9"), questions asked once per
+     area, and several endings. The Sheet still keeps one row per screen, plus
+     three columns: next, jumps and repeat (docs/flow-engine.md, section 9).
+     The panel NEVER decides on its own which screen comes next. It runs the
+     form's own files, exactly the code partners' phones run:
+       PP.flow        the engine (web/js/flow.js)
+       PP.flowPanel   rows <-> route (web/js/flow-panel.js; Publish uses it too)
+       PP.flowCheck   the checker, the map, the simulator (web/js/flow-check.js)
+     The server sends their text once per window (panelFlowCode: Flow.gs's
+     PP_FLOW_SOURCE_) and runFlowCode runs it with a private "root", the way
+     Flow.gs does on the server, so nothing leaks into this page.
+     From the draft in this window the panel then makes the route
+     (flowInfo: the same converter Publish uses), checks it, and asks the
+     checker which answers a rule may test where (routeAnswers, through
+     PP.flowCheck.answersAt). The map, "Try a path", the jump builder and
+     the warning badges all use that; the checker's findings say which rule
+     or jump they are about (site, target, index), so no message is read.
+     Kinds of question added in web/js/types/ come with the Sheet's list of
+     kinds (each added row's "catalogue", Model.gs PP_SCREEN_TYPES): the
+     window teaches them to its route code too (teachKinds).
+     If the route code can't be loaded, the rest of the panel works as
+     before and Questions shows a short note (routeNote).
+     ========================================================================== */
+
+  var FLOW_FOOTER = "}(typeof window !== 'undefined' ? window : globalThis));";
+  /* Can a question of this kind be asked once per area (the repeat card and
+     badge)? Its kind says so in the list of kinds: "repeatable" (Model.gs
+     PP_SCREEN_TYPES, made from web/config/types.json), the same flag
+     flow-panel.js reads when it makes the route. So the six ordinary
+     questions can, and so can a kind added in web/js/types/ that says so. */
+  function canRepeat(type) { return typeInfo(type).repeatable === true; }
+  var REPEAT_LABELS = { '': 'Once', each_area: 'For each area', each_low_area: 'For each area rated low' };
+  /* The settings the route depends on (the rest only changes texts and looks). */
+  var FLOW_SETTINGS = ['survey_id', 'default_language', 'fallback_language', 'rating.allow_not_applicable', 'deep_dive.threshold',
+    'deep_dive.when', 'deep_dive.require_chip', 'deep_dive.require_detail_if_other', 'support.allow_not_applicable',
+    'support.allow_comment', 'support.comment_text'];
+  /* The Map's drawing library (see the comment at the top of this file). */
+  var MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js';
+  var MERMAID_SRI = 'sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I';
+  /* The Map shows the outline at once; after MAP_SLOW_MS a note says the
+     drawing is still loading; after MAP_WAIT_MS the panel stops waiting. */
+  var MAP_SLOW_MS = 6000;
+  var MAP_WAIT_MS = 20000;
+
+  var flowCache = null;   // the last flowInfo(), reused until the route changes
+
+  /* Asks the server for the route code (once per window) and runs it. */
+  function loadFlowCode() {
+    if (S.flow.loading || S.flow.lib) return;
+    S.flow.loading = true;
+    call('panelFlowCode').then(function (res) {
+      res = obj(res);
+      S.flow.lib = runFlowCode(res.source);
+      S.flow.fingerprint = str(res.fingerprint);
+      S.flow.error = '';
+    }).catch(function (e) {
+      S.flow.lib = null;
+      S.flow.error = (e && e.message) || String(e);
+    }).then(function () {
+      S.flow.loading = false;
+      flowCache = null;
+      try {
+        if (S.loaded && S.section === 'questions') renderMain(true);
+      } catch (e) { /* the next render shows it */ }
+    });
+  }
+
+  /* Runs the three files. Each one ends with FLOW_FOOTER, which hands it the
+     page's "window"; here each gets a private "root" instead (as Flow.gs's
+     PP_flowLib_ does), and root.PP is the result: { flow, flowPanel, flowCheck }. */
+  function runFlowCode(source) {
+    var text = str(source);
+    var parts = text.split(FLOW_FOOTER);
+    if (!text || parts.length < 2) throw new Error('The route code that arrived is not complete. Close the panel and open it again.');
+    var root = {};
+    var run = new Function('root', parts.join('}(root));'));
+    run(root);
+    var lib = root.PP;
+    if (!lib || !lib.flow || !lib.flowPanel || !lib.flowCheck || typeof lib.flowCheck.check !== 'function' ||
+      typeof lib.flowPanel.fromRows !== 'function') {
+      throw new Error('The route code is missing a part (the engine, the panel helpers or the checker). Paste the latest Flow.gs into the Apps Script project.');
+    }
+    return lib;
+  }
+
+  /* A setting in the type the published questionnaire uses: a value that is
+     empty or wrong becomes the standard one (as Model.gs PP_mdlTypedSetting_
+     does for these kinds of settings). */
+  function typedSetting(key) {
+    var sc = schemaFor(key);
+    var v = M().settings[key];
+    var def = sc && sc['default'] !== undefined ? clone(sc['default']) : undefined;
+    if (v === undefined || v === null || (typeof v === 'string' && !v.trim())) return def;
+    if (!sc) return v;
+    if (sc.type === 'bool') {
+      if (typeof v === 'boolean') return v;
+      var t = str(v).trim().toLowerCase();
+      return t === 'true' ? true : (t === 'false' ? false : def);
+    }
+    if (sc.type === 'int' || sc.type === 'number') {
+      var n = typeof v === 'number' ? v : (/^-?\d+(\.\d+)?$/.test(str(v).trim()) ? Number(str(v).trim()) : NaN);
+      var ok = typeof n === 'number' && isFinite(n) && (sc.type !== 'int' || Math.floor(n) === n) &&
+        (sc.min === undefined || sc.min === null || n >= sc.min) && (sc.max === undefined || sc.max === null || n <= sc.max);
+      return ok ? n : def;
+    }
+    if (sc.type === 'choice') return arr(sc.options).indexOf(v) !== -1 ? v : def;
+    return typeof v === 'string' ? v.trim() : v;
+  }
+
+  /* The parts of the questionnaire the route depends on, shaped exactly like
+     the published one (Model.gs PP_mdlCompileSurvey_): the languages, the
+     areas with their problem codes, the support items and the settings of the
+     ratings, problem screens and support questions. tests/panel/test.js
+     compares it with the server's own compile. */
+  function draftSurvey() {
+    var m = M();
+    return {
+      survey_id: typedSetting('survey_id'),
+      config_version: 'draft',
+      languages: m.languages.filter(function (l) { return l.active && l.code; }).map(function (l) {
+        return { code: l.code, bcp47: l.bcp47, native_name: l.native_name };
+      }),
+      default_language: typedSetting('default_language'),
+      fallback_language: typedSetting('fallback_language'),
+      rating: { allow_not_applicable: typedSetting('rating.allow_not_applicable') },
+      deep_dive: {
+        threshold: typedSetting('deep_dive.threshold'), when: typedSetting('deep_dive.when'),
+        require_chip: typedSetting('deep_dive.require_chip'), require_detail_if_other: typedSetting('deep_dive.require_detail_if_other')
+      },
+      functions: m.areas.filter(function (a) { return a.active && a.id; }).map(function (a) {
+        var f = { id: a.id, issues: m.chips.filter(function (c) { return c.active && c.code && c.area === a.id; }).map(function (c) { return c.code; }) };
+        if (typeof a.threshold === 'number' && isFinite(a.threshold)) f.threshold = a.threshold;
+        return f;
+      }),
+      support: {
+        items: m.support.filter(function (x) { return x.active && x.code; }).map(function (x) { return x.code; }),
+        allow_not_applicable: typedSetting('support.allow_not_applicable'), allow_comment: typedSetting('support.allow_comment'),
+        comment_text: typedSetting('support.comment_text')
+      }
+    };
+  }
+
+  function flowKey() {
+    var m = M();
+    return JSON.stringify([m.screens, m.areas, m.chips, m.support, m.languages, m.rounds.map(function (r) { return r.id; }),
+      FLOW_SETTINGS.map(function (k) { return m.settings[k]; })]);
+  }
+
+  /* 'question 5 ("Did you contact Valmo support…")', the way Model.gs names questions. */
+  function questionName(row, index) {
+    var place = 'question ' + (index + 1);
+    var text = row && row.text ? shorten(en(row.text), 60) : '';
+    if (text) return place + ' ("' + text + '")';
+    var t = row ? typeInfo(row.type) : null;
+    return t && t.label ? place + ' (' + t.label + ')' : place;
+  }
+
+  /* The draft's route, made and checked by the form's own code. Cached until
+     the screens, areas, problems, support items, languages, rounds or the
+     route's settings change (typing a text never rebuilds it). Returns null
+     without the route code; info.ok = false (with info.error) if it failed.
+       survey      the draft as the form would get it (survey.flow = the graph)
+       graph       the same graph, indexed by the engine (graph.byId)
+       notes       what flow-panel.js said while making it ({ code, row, message })
+       nodeOfRow   row index -> the node the row became (null: hidden or not used)
+       rowOfNode   '#' + node id -> row index
+       findings    the checker's findings ({ level, code, node, message })
+       catalog     every answer code a screen can store ({ key, node, part, vars, owner })
+       avail       routeAnswers: which of them a rule or a jump on each node may test */
+  function flowInfo() {
+    var lib = S.flow.lib;
+    if (!lib || !S.model) return null;
+    teachKinds(lib);
+    var key = flowKey();
+    if (flowCache && flowCache.key === key) return flowCache;
+    var info = { key: key, ok: false, error: '' };
+    flowCache = info;
+    try {
+      var survey = draftSurvey();
+      var made = lib.flowPanel.fromRows(M().screens, survey, { nameOf: questionName });
+      survey.flow = made.graph;
+      info.survey = survey;
+      info.notes = arr(made.warnings);
+      info.graph = lib.flow.load(survey);
+      info.nodeOfRow = rowNodes(info.graph);
+      info.rowOfNode = {};
+      info.nodeOfRow.forEach(function (id, i) { if (id && info.rowOfNode['#' + id] === undefined) info.rowOfNode['#' + id] = i; });
+      var nameOf = function (node) {
+        var i = node && typeof node.id === 'string' ? info.rowOfNode['#' + node.id] : undefined;
+        return i === undefined ? '' : questionName(M().screens[i], i);
+      };
+      info.findings = arr(lib.flowCheck.check(survey, null, { surface: 'panel', nameOf: nameOf }).findings);
+      info.catalog = keyCatalog(lib, info);
+      info.avail = routeAnswers(lib, info);
+      info.ok = true;
+    } catch (e) {
+      info.error = (e && e.message) || String(e);
+    }
+    return info;
+  }
+
+  /* Which node each row became: its own (same code), or, for the area
+     ratings while problem screens follow each low rating, the group that
+     holds them. Hidden rows (and that mode's problem screens row) have none. */
+  function rowNodes(graph) {
+    var byId = {};
+    arr(graph.nodes).forEach(function (n) {
+      if (!n || typeof n !== 'object' || typeof n.id !== 'string') return;
+      if (n.type === 'group' && n.body) {
+        arr(n.body.nodes).forEach(function (b) {
+          if (b && b.type === 'function_rating' && byId['#' + b.id] === undefined) byId['#' + b.id] = n.id;
+        });
+      }
+      if (byId['#' + n.id] === undefined) byId['#' + n.id] = n.id;
+    });
+    return M().screens.map(function (s) { return s.active && byId['#' + s.id] ? byId['#' + s.id] : null; });
+  }
+
+  /* Every answer code a node can store, from the engine itself
+     (PP.flow.keysOf for each node and loop item), in the route's order.
+     owner = the top-level node (= the row) it belongs to. */
+  function keyCatalog(lib, info) {
+    var F = lib.flow, g = info.graph, survey = info.survey;
+    var out = [], seen = {};
+    function add(node, vars, owner) {
+      F.keysOf(g, survey, node, vars).forEach(function (k, part) {
+        if (typeof k !== 'string' || seen['#' + k]) return;
+        seen['#' + k] = true;
+        out.push({ key: k, node: node, part: part, vars: vars, owner: owner });
+      });
+    }
+    function each(node, owner, outer) {
+      if (!node || typeof node !== 'object') return;
+      var rf = node.repeat_for;
+      if (rf && typeof rf.each === 'string') {
+        F.items(g, survey, rf['in']).forEach(function (item) {
+          var vars = Object.assign({}, outer);
+          vars[rf.each] = item;
+          visit(node, owner, vars);
+        });
+      } else {
+        visit(node, owner, outer);
+      }
+    }
+    function visit(node, owner, vars) {
+      if (node.type === 'group') { arr(node.body && node.body.nodes).forEach(function (b) { each(b, owner, vars); }); return; }
+      add(node, vars, owner);
+    }
+    arr(g.nodes).forEach(function (n) { if (n && typeof n.id === 'string') each(n, n.id, {}); });
+    return out;
+  }
+
+  /* Which answers can a rule on each node test? The form's own checker
+     says: PP.flowCheck.answersAt gives exactly what its rule checks accept
+     there ("show only if": the answers that can exist before the node; a
+     jump: those and the node's own). Returns { ok, at: { '#' + node id: {
+     show_if: { '#code': true }, jump: { '#code': true } } }, kinds: { '#code': the
+     checker's description of that answer (kind, min, max, na, values) } }.
+     ok is false with an older route code (a Flow.gs from before 26 Oct 2026
+     has no answersAt), or if it fails: the callers then offer the older list
+     of earlier rows (availableAnswers), which is safe: Publish still checks
+     every rule, and the rest of the route tools keep working. */
+  function routeAnswers(lib, info) {
+    var C = lib.flowCheck;
+    var out = { ok: false, at: {}, kinds: {} };
+    if (typeof C.answersAt !== 'function') return out;
+    try {
+      var all = C.answersAt(info.survey, null, {});
+      if (!all || !all.ok) return out;
+      arr(all.answers).forEach(function (a) { if (a && typeof a.key === 'string') out.kinds['#' + a.key] = a; });
+      info.nodeOfRow.forEach(function (id) {
+        if (!id || out.at['#' + id]) return;
+        var entry = { show_if: {}, jump: {} };
+        [['show_if', {}], ['jump', { forJump: true }]].forEach(function (x) {
+          arr(C.answersAt(info.survey, id, x[1]).answers).forEach(function (a) { if (a && typeof a.key === 'string') entry[x[0]]['#' + a.key] = true; });
+        });
+        out.at['#' + id] = entry;
+      });
+    } catch (e) {
+      return { ok: false, at: {}, kinds: {} };   // the earlier rows instead; the rest of the route tools keep working
+    }
+    out.ok = true;
+    return out;
+  }
+
+  /* Kinds of question added in web/js/types/ (docs/config-guide.md, "How to
+     add a question type") are not in the route code itself: each one comes
+     with its row in the Sheet's list of kinds (S.catalog.screen_types, from
+     Model.gs PP_SCREEN_TYPES) as "catalogue", its whole description. They are
+     taught to this window's route code, as Model.gs PP_mdlFlowLib_ does on
+     the server, so the badges, Map and "Try a path" know them. A kind the
+     code already knows keeps its own rules. */
+  function teachKinds(lib) {
+    if (!lib || !lib.flowCheck || typeof lib.flowCheck.loadCatalogue !== 'function') return;
+    var entries = [];
+    arr(S.catalog.screen_types).forEach(function (row) {
+      if (row && row.catalogue && typeof row.catalogue === 'object' && !Array.isArray(row.catalogue)) entries.push(row.catalogue);
+    });
+    if (!entries.length) return;
+    var added = [];
+    try { added = arr(lib.flowCheck.loadCatalogue(entries)); } catch (e) { return; }
+    if (added.length) flowCache = null;   // the route is worked out again with them
+  }
+
+  /* One catalogue entry described for the drop-downs (labels in English, as
+     the rule builder always showed them), or null for codes rules can't test. */
+  function describeEntry(info, e) {
+    var n = e.node, t = n.type;
+    var rowIdx = info.rowOfNode['#' + e.owner];
+    var row = rowIdx === undefined ? findScreen(n.id) : M().screens[rowIdx];
+    var item = e.vars ? e.vars.area : undefined;
+    var areaId = item && typeof item === 'object' ? item.id : item;
+    var forArea = areaId !== undefined ? ' for ' + areaName(areaId) : '';
+    var q = shorten((row && screenEnglish(row)) || n.id, 48);
+    var naArea = n.allow_not_applicable === true ? (en('rating.na') || 'I don’t handle this') : null;
+    var d = null;
+    switch (t) {
+      case 'nps_0_10':
+        d = numberAnswer(e.key, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea, 0, 10, { group: 'Questions' }); break;
+      case 'rating_1_5':
+        d = numberAnswer(e.key, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea, 1, 5, { faces: true, group: 'Questions' }); break;
+      case 'yes_no':
+        d = choiceAnswer(e.key, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea, [{ v: 'yes', label: en('ui.yes') || 'Yes' }, { v: 'no', label: en('ui.no') || 'No' }], 'Questions'); break;
+      case 'single_choice':
+        d = choiceAnswer(e.key, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea, arr(n.options).map(function (o) {
+          var code = o && typeof o === 'object' ? str(o.code) : str(o);
+          return { v: code, label: optionLabel(n.id, code) };
+        }), 'Questions'); break;
+      case 'free_text':
+        d = textAnswer(e.key, q + (forArea ? ' –' + forArea : '') + ' (typed or recorded)', 'the question ' + quote(q) + forArea, 'Questions'); break;
+      case 'function_rating':
+        d = numberAnswer(e.key, 'Rating of ' + areaName(areaId), 'the rating of ' + areaName(areaId), 1, 5, { faces: true, na: naArea, group: 'Area ratings' }); break;
+      case 'function_deep_dive': {
+        var values = arr(item && typeof item === 'object' ? item.issues : []).map(function (code) { return { v: code, label: chipLabel(areaId, code) }; });
+        values.push({ v: 'other', label: chipLabel(areaId, 'other') });
+        d = choiceAnswer(e.key, 'Main problem in ' + areaName(areaId), 'the main problem picked in ' + areaName(areaId), values, 'Main problems');
+        break;
+      }
+      case 'support_block': {
+        if (e.part === 0) return null;
+        var items = n.rows && typeof n.rows === 'object' ? S.flow.lib.flow.items(info.graph, info.survey, n.rows['in']) : [];
+        if (e.part <= items.length) {
+          var code = str(items[e.part - 1] && items[e.part - 1].id);
+          var naSupport = n.allow_not_applicable === true ? (en('support.not_applicable') || 'Doesn’t apply') : null;
+          d = numberAnswer(e.key, 'Support: ' + supportLabel(code), 'the support rating ' + quote(supportLabel(code)), 1, 5, { faces: true, na: naSupport, group: 'Support' });
+        } else {
+          d = textAnswer(e.key, 'Support comment (typed or recorded)', 'the support comment', 'Support');
+        }
+        break;
+      }
+      default:
+        d = kindAnswer(info, e, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea);
+        if (!d) return null;
+    }
+    d.owner = e.owner;
+    return d;
+  }
+
+  /* Any other kind (one added in web/js/types/): described from what the
+     form's checker says its answer is (routeAnswers' kinds: a number from
+     min to max, a choice of codes, or typed or recorded text), or null. */
+  function kindAnswer(info, e, label, subject) {
+    var k = info.avail && info.avail.kinds ? info.avail.kinds['#' + e.key] : null;
+    if (!k || typeof k !== 'object') return null;
+    if (k.kind === 'number') {
+      var min = Number(k.min), max = Number(k.max);
+      if (!isFinite(min) || !isFinite(max) || Math.floor(min) !== min || Math.floor(max) !== max || max < min || max - min > 100) return null;
+      return numberAnswer(e.key, label, subject, min, max, { na: k.na === true ? (en('rating.na') || 'I don’t handle this') : null, group: 'Questions' });
+    }
+    if (k.kind === 'choice') {
+      var texts = k.value_texts && typeof k.value_texts === 'object' ? k.value_texts : {};
+      return choiceAnswer(e.key, label, subject, arr(k.values).map(function (v) {
+        var key = Object.prototype.hasOwnProperty.call(texts, v) ? texts[v] : '';
+        return { v: v, label: (key && en(key)) || String(v) };
+      }), 'Questions');
+    }
+    if (k.kind === 'text') return textAnswer(e.key, label + ' (typed or recorded)', 'the question ' + quote(label), 'Questions');
+    return null;
+  }
+
+  /* The answers rules can test, described for the drop-downs, in the
+     route's order. keep(entry) picks some (null = all). null without the
+     route code. */
+  function catalogAnswers(keep) {
+    var info = flowInfo();
+    if (!info || !info.ok) return null;
+    var out = [];
+    info.catalog.forEach(function (e) {
+      if (keep && !keep(e)) return;
+      var d = describeEntry(info, e);
+      if (d) out.push(d);
+    });
+    return out;
+  }
+
+  /* The answers (and, for a jump, the facts) a rule of row idx may test.
+     where = 'show_if': answers that can exist before the screen;
+     where = 'jump': those, the screen's own answers, the language and the
+     round. A hidden row gets what exists after the nearest shown question
+     above it. Without the route code: the older list of earlier rows. */
+  function ruleAnswers(s, idx, where) {
+    var info = flowInfo();
+    var facts = where === 'jump' || SHOW_IF_FACTS ? factAnswers() : [];
+    if (!info || !info.ok || !info.avail.ok) {
+      return (where === 'jump' ? availableAnswers(idx + 1) : availableAnswers(idx)).concat(facts);
+    }
+    var nodeId = info.nodeOfRow[idx];
+    var keepOwn = where === 'jump';
+    if (!nodeId) {
+      for (var j = idx - 1; j >= 0 && !nodeId; j--) if (info.nodeOfRow[j]) nodeId = info.nodeOfRow[j];
+      if (!nodeId) return facts;
+      keepOwn = true;
+    }
+    var at = info.avail.at['#' + nodeId] || {};
+    var avail = (keepOwn ? at.jump : at.show_if) || {};
+    var list = catalogAnswers(function (e) { return avail['#' + e.key] === true; }) || [];
+    return list.concat(facts);
+  }
+
+  /* The answers a row itself stores (for a new jump's first condition). */
+  function ownAnswers(idx) {
+    var info = flowInfo();
+    var nodeId = info && info.ok ? info.nodeOfRow[idx] : null;
+    if (!nodeId) return [];
+    return catalogAnswers(function (e) { return e.owner === nodeId; }) || [];
+  }
+
+  /* JSON with sorted keys: two rules that mean the same give the same text. */
+  function canonJson(v) {
+    if (Array.isArray(v)) return '[' + v.map(canonJson).join(',') + ']';
+    if (v && typeof v === 'object') {
+      return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + canonJson(v[k]); }).join(',') + '}';
+    }
+    return JSON.stringify(v === undefined ? null : v);
+  }
+
+  /* What flow-panel.js says while it makes the route that stops Publish
+     (Model.gs PP_MDL_FLOW_ERRORS_: an arrow to nowhere or back, settings it
+     had to leave out); its other notes, and any it marks level "warning",
+     are warnings. Only the colour of a badge depends on it here. */
+  var FLOW_NOTE_ERRORS = { G2: true, G3: true, F1: true };
+
+  /* What is wrong with a row's arrows, from the form's own code:
+       row      what flow-panel.js said about this row (an arrow it left out,
+                a target that is hidden, a repeat it can't use, ...)
+       rowError true when one of those stops Publish (FLOW_NOTE_ERRORS)
+       jumps    { jump index: [the checker's messages about that jump's rule] }
+       dropped  { jump index: true } for jumps that are not in the route at all
+       unreached  the checker's message when no arrow leads to this screen */
+  function routeProblems(s, idx) {
+    var out = { row: [], rowError: false, jumps: {}, dropped: {}, unreached: '', any: false };
+    var info = flowInfo();
+    if (!info || !info.ok) return out;
+    info.notes.forEach(function (n) {
+      if (!n || n.row !== idx) return;
+      out.row.push(str(n.message));
+      if (n.level !== 'warning' && FLOW_NOTE_ERRORS[n.code]) out.rowError = true;
+    });
+    var nodeId = info.nodeOfRow[idx];
+    if (!nodeId) { out.any = out.row.length > 0; return out; }
+    var node = info.graph.byId ? info.graph.byId[nodeId] : null;
+    var compiled = [];   // the node's jumps: { at: its place in the node's "next", jump }
+    if (node && Array.isArray(node.next)) {
+      node.next.forEach(function (x, at) { if (x && typeof x === 'object' && Object.prototype.hasOwnProperty.call(x, 'goto')) compiled.push({ at: at, jump: x }); });
+    }
+    var used = {};
+    jumpsOf(s).forEach(function (j, k) {
+      if (!j || typeof j !== 'object' || !j.when) { out.dropped[k] = true; return; }
+      var c = canonJson(j.when), hit = null;
+      for (var m = 0; m < compiled.length; m++) if (!used[m] && canonJson(compiled[m].jump.when) === c) { hit = compiled[m]; used[m] = true; break; }
+      if (!hit) { out.dropped[k] = true; return; }
+      var target = str(hit.jump['goto']);
+      info.findings.forEach(function (f) {
+        if (f.level !== 'error' || f.node !== nodeId || ['R1', 'R2', 'R3'].indexOf(f.code) === -1) return;
+        if (f.site !== undefined) {
+          // the checker says which rule it is about: this jump (its place in "next")
+          if (f.site !== 'jump' || f.index !== hit.at) return;
+        } else if (str(f.message).indexOf('jump to "' + target + '"') === -1) {
+          return;   // an older route code (before 26 Oct 2026) says it only in words: its message names the jump's target
+        }
+        (out.jumps[k] = out.jumps[k] || []).push(str(f.message));
+      });
+    });
+    info.findings.forEach(function (f) {
+      if (f.level === 'error' && f.code === 'G1' && f.node === nodeId && !out.unreached) out.unreached = str(f.message);
+    });
+    out.any = out.row.length > 0 || Object.keys(out.jumps).length > 0 || Object.keys(out.dropped).length > 0 || !!out.unreached;
+    return out;
+  }
+
+  /* A short note in Questions while the route tools are missing. */
+  function routeNote() {
+    if (S.flow.lib) {
+      var info = flowInfo();
+      if (info && !info.ok) {
+        return h('div', { class: 'callout is-warn small', style: 'margin-bottom:14px', test: 'flow-error-note' },
+          h('p', { text: 'The route could not be worked out from these rows (' + info.error + '). Check for problems in Publish.' }));
+      }
+      return null;
+    }
+    if (S.flow.loading || (!S.flow.error && !S.flow.lib)) {
+      return h('div', { class: 'callout small', style: 'margin-bottom:14px', test: 'flow-loading-note' }, h('p', null, h('span', { class: 'spinner is-small' }), ' Loading the route tools (map, Try a path, jumps)…'));
+    }
+    return h('div', { class: 'callout is-warn small', style: 'margin-bottom:14px', test: 'flow-unavailable-note' },
+      h('p', { text: 'The route tools (the map, Try a path, jumps, “asked for each area” and extra endings) could not start: ' + S.flow.error +
+        ' Everything else works. Close the panel and open it again; if this keeps happening, ask whoever set up the Sheet to paste the latest Flow.gs (apps-script/README.md).' }));
+  }
+
+  /* A target code in words: 'question 9 (“…”)', 'question 4 (Area ratings)' or 'the ending “…”'. */
+  function targetName(id) {
+    var i = screenPos(id);
+    if (i === -1) return quote(id) + ' (no question has this code)';
+    var s = M().screens[i];
+    var t = typeInfo(s.type);
+    if (s.type === 'thank_you') return (i === mainEndIndex() ? 'the thank-you screen' : 'the ending ' + quote(shorten(screenEnglish(s), 40))) + ' (question ' + (i + 1) + ')';
+    return 'question ' + (i + 1) + ' (' + (t.builtin ? t.label : quote(shorten(screenEnglish(s) || t.label, 40))) + ')';
+  }
+  function targetShort(id) {
+    var i = screenPos(id);
+    if (i === -1) return quote(id);
+    return M().screens[i].type === 'thank_you' ? (i === mainEndIndex() ? 'the thank-you screen' : 'the ending ' + quote(shorten(screenEnglish(M().screens[i]), 28))) : 'question ' + (i + 1);
+  }
+
+  /* A rule in a few words, for badges: '“How likely…” ≥ 9 and the round = 2026-R1'. */
+  function shortRule(rule) {
+    var p = parseRule(rule);
+    if (p.mode !== 'rules') return ruleSentence(rule) || '(no condition)';
+    return joinWith(p.conds.map(function (c) {
+      var ans = describeAnswer(c.answer);
+      var who = ans ? (ans.fact ? ans.subject : quote(shorten(ans.label, 26))) : quote(c.answer);
+      var v = function (x) { return valueLabel(ans, x); };
+      switch (c.test) {
+        case 'equals': return who + ' = ' + v(c.value);
+        case 'not_equals': return who + ' ≠ ' + v(c.value);
+        case 'at_most': return who + ' ≤ ' + v(c.value);
+        case 'at_least': return who + ' ≥ ' + v(c.value);
+        case 'in': return who + ' is ' + joinWith(arr(c.value).map(v), 'or');
+        case 'answered': return who + ' answered';
+        case 'not_answered': return who + ' not answered';
+      }
+      return who;
+    }), p.combine === 'any' ? 'or' : 'and');
+  }
+
+  /* The route as a numbered list (the Map's fallback), from the graph: each
+     screen, when it is shown, and where it goes. The rules are written by
+     the checker's own PP.flowCheck.sentence. */
+  function routeOutline(survey, strings) {
+    var lib = S.flow.lib, F = lib.flow, C = lib.flowCheck;
+    var g = F.load(survey);
+    var DEFAULT_TEXT = { language_picker: 'lang.title', whats_changed: 'wc.title', function_rating: 'q.fn_rating', function_deep_dive: 'q.deep_dive', thank_you: 'thanks.title' };
+    var KIND = { function_rating: 'function_ratings', function_deep_dive: 'function_deep_dives' };
+    function english(key) {
+      var v = strings && typeof strings === 'object' ? strings[key] : null;
+      return v && typeof v === 'object' && v.en ? String(v.en) : '';
+    }
+    function title(n) {
+      if (n.type === 'group') return 'For each area' + (n.repeat_for && n.repeat_for.where ? ' where ' + C.sentence(n.repeat_for.where) : '') + ':';
+      var kind = n.type === 'thank_you' ? 'Ending' : typeInfo(KIND[n.type] || n.type).label;
+      var key = typeof n.text === 'string' ? n.text : DEFAULT_TEXT[n.type];
+      var words = key && key.indexOf('{') === -1 ? english(key) : '';
+      return kind + (words ? ': ' + quote(shorten(words, 80)) : '') + ' (code ' + (n.store_as || n.id) + ')';
+    }
+    function name(id, list) {
+      if (id === '@next_item') return 'the next area';
+      var n = list && list.byId && list.byId[id] ? list.byId[id] : (g.byId ? g.byId[id] : null);
+      if (!n) return quote(id) + ' (missing)';
+      var at = arr(g.nodes).indexOf(n);
+      return (n.type === 'thank_you' ? 'the ending "' + id + '"' : '"' + id + '"') + (at === -1 ? '' : ' (number ' + (at + 1) + ' here)');
+    }
+    function lines(n, list) {
+      var out = [];
+      if (n.show_if !== undefined) out.push('Only if ' + C.sentence(n.show_if) + '.');
+      if (n.repeat_for && n.type !== 'group') out.push('Asked for each ' + n.repeat_for.each + (n.repeat_for.where ? ' where ' + C.sentence(n.repeat_for.where) : '') + '.');
+      if (n.type === 'thank_you' && n.show_if === undefined) out.push('Ends the survey: the answers are sent.');
+      else if (typeof n.next === 'string') out.push('Then: ' + name(n.next, list) + '.');
+      else if (Array.isArray(n.next)) {
+        n.next.forEach(function (x) {
+          if (!x || typeof x !== 'object') return;
+          if (Object.prototype.hasOwnProperty.call(x, 'default')) out.push('Otherwise: ' + name(x['default'], list) + '.');
+          else out.push('If ' + C.sentence(x.when) + ': ' + name(x['goto'], list) + '.');
+        });
+      }
+      return out;
+    }
+    function item(n, list) {
+      var kids = [h('strong', { text: title(n) })];
+      lines(n, list).forEach(function (t) { kids.push(h('span', { class: 'why', text: t })); });
+      if (n.type === 'group' && n.body) kids.push(h('ol', null, arr(n.body.nodes).map(function (b) { return item(b, n.body); })));
+      return h('li', null, kids);
+    }
+    return h('ol', { class: 'outline', test: 'map-outline' }, arr(g.nodes).map(function (n) { return item(n, g); }));
+  }
+
+  /* The Map's frame: a whole little page, given to a sandboxed iframe as its
+     "srcdoc". Its only script loads the pinned Mermaid (with Subresource
+     Integrity), draws the code and tells this page "drawn" or "failed"
+     through postMessage, carrying a random token. */
+  function scriptString(text) {
+    return JSON.stringify(String(text)).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  }
+  function mapDocument(code, token) {
+    var js = '(function () {' +
+      'var code = ' + scriptString(code) + ', token = ' + scriptString(token) + ';' +
+      'var box = document.getElementById("m");' +
+      'function tell(kind, why) { parent.postMessage({ pp: "map", kind: kind, token: token, why: why || "", height: box.getBoundingClientRect().height }, "*"); }' +
+      'var s = document.createElement("script");' +
+      's.src = ' + scriptString(MERMAID_URL) + '; s.integrity = ' + scriptString(MERMAID_SRI) + '; s.crossOrigin = "anonymous";' +
+      's.onerror = function () { tell("failed", "the drawing library could not be loaded"); };' +
+      's.onload = function () {' +
+      '  try {' +
+      '    window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });' +
+      '    window.mermaid.render("ppmap", code).then(function (r) { box.innerHTML = r.svg; tell("drawn"); },' +
+      '      function (e) { tell("failed", String((e && e.message) || e)); });' +
+      '  } catch (e) { tell("failed", String((e && e.message) || e)); }' +
+      '};' +
+      'document.head.appendChild(s);' +
+      '})();';
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Map</title>' +
+      '<style>html,body{margin:0;background:#fff;font:13px system-ui,sans-serif}#m{padding:8px}#m svg{max-width:100%;height:auto}</style></head>' +
+      '<body><div id="m"></div><script>' + js + '<\/script></body></html>';
+  }
+
+  /* The same code opened on mermaid.live (its "#base64:" address keeps the
+     whole diagram in the link; only the questionnaire's wording and codes). */
+  function mermaidLiveUrl(code) {
+    var state = JSON.stringify({ code: code, mermaid: JSON.stringify({ theme: 'default' }), autoSync: true, updateDiagram: true });
+    var bytes = new TextEncoder().encode(state), bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return 'https://mermaid.live/edit#base64:' + btoa(bin);
+  }
+
+  var mapFrame = { el: null, token: '', timer: null, slowTimer: null, onMessage: null };
+  function stopMapFrame() {
+    clearTimeout(mapFrame.timer);
+    clearTimeout(mapFrame.slowTimer);
+    mapFrame = { el: null, token: '', timer: null, slowTimer: null, onMessage: null };
+  }
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!mapFrame.el || !d || typeof d !== 'object' || d.pp !== 'map' || d.token !== mapFrame.token) return;
+    if (e.source !== mapFrame.el.contentWindow || !mapFrame.onMessage) return;
+    mapFrame.onMessage(d);
+  });
+
+  /* The Home banner: does the form on GitHub run this panel's route code?
+     Asked once per window (the server remembers the answer for 10 minutes).
+     A form that can't be reached says nothing. */
+  function loadFlowStatus() {
+    var url = str(settingRaw('form_url')).trim();
+    if (!/^https:\/\/\S+\/$/.test(url)) return;
+    call('panelFlowStatus', url).then(function (res) {
+      S.flowStatus = obj(res);
+      if (S.section === 'home') renderMain(true);
+    }, function () { /* no banner when it can't be checked */ });
   }
 
   /* ==========================================================================
@@ -2021,7 +2820,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       nav.appendChild(h('button', {
         type: 'button', class: 'nav-btn', test: 'nav-' + sec.id, 'aria-current': S.section === sec.id ? 'page' : null,
         onClick: function () {
-          if (sec.id === 'questions') S.ui.editing = null;   // the menu item always opens the list
+          if (sec.id === 'questions') { S.ui.editing = null; S.ui.qview = 'list'; }   // the menu item always opens the list
           go(sec.id);
         }
       }, h('span', { class: 'nav-icon', 'aria-hidden': 'true', text: sec.icon }), h('span', { text: sec.label }),
@@ -2103,6 +2902,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     setTimeout(autoLoadCounts, 0);
     return [
       sectionHead('Home', 'What partners see today, what you are working on, and what to do next.'),
+      flowMismatchBanner(),
       h('div', { class: 'grid-2' },
         card({ title: 'What partners see now', test: 'home-live' }, liveSummary()),
         card({ title: 'Your draft', test: 'home-draft' }, draftSummary())),
@@ -2111,6 +2911,21 @@ details.group > .group-body { padding: 0 16px 14px; }
       card({ title: 'Quick links', test: 'home-links' }, quickLinks())
     ];
   };
+
+  /* Red banner: the form on GitHub runs different route code from this panel
+     (Flow.gs). Phones could then follow other rules than the ones the panel
+     shows and checks. Nothing is said when the form can't be reached. */
+  function flowMismatchBanner() {
+    var st = S.flowStatus;
+    if (!st || st.same !== false) return null;
+    var when = st.checked_at ? whenText(st.checked_at) : '';
+    return h('div', { class: 'callout is-error', style: 'margin-bottom:14px', test: 'flow-mismatch-banner', role: 'alert' },
+      h('p', null, h('strong', { text: 'The form on GitHub does not run the same route code as this control panel.' }),
+        ' Partners’ phones may then follow other rules than the ones this panel shows and checks (jumps, repeats, endings).'),
+      h('p', { text: 'Make them the same, from one copy of the project: upload the newest form files to GitHub (web/js/flow.js, flow-panel.js and flow-check.js) and wait for the green tick, and paste the newest apps-script/Flow.gs into the Apps Script project.' }),
+      h('p', { class: 'small', text: 'Control panel: ' + str(st.panel).slice(0, 12) + '…; form: ' + (st.form ? str(st.form).slice(0, 12) + '…' : 'unknown') +
+        (st.problem ? ' (' + st.problem + ')' : '') + (when ? '. Checked ' + when + '; checked again every 10 minutes.' : '.') }));
+  }
 
   function liveSummary() {
     if (!S.live) {
@@ -2347,48 +3162,114 @@ details.group > .group-body { padding: 0 16px 14px; }
       if (s) return screenEditor(s);
       S.ui.editing = null;
     }
+    if (S.ui.qview === 'map' && S.flow.lib) return mapView();
+    if (S.ui.qview === 'try' && S.flow.lib) return tryView();
+    S.ui.qview = 'list';
     var screens = M().screens;
+    var end = mainEndIndex();
+    var mainRows = end === -1 ? screens : screens.slice(0, end + 1);
+    var noTools = S.flow.loading ? 'The route tools are still loading. Try again in a moment.' : 'The route tools could not start: see the note below the title.';
     return [
-      sectionHead('Questions', 'Every screen partners go through, in order. Changes reach partners after you save and publish.',
-        btn('Add a question', 'add-question', addQuestionFlow, { kind: 'primary', icon: '+' })),
+      sectionHead('Questions', 'Every screen partners go through, in order. Changes reach partners after you save and publish.', [
+        S.flow.lib ? btn('Map', 'open-map', function () { S.ui.qview = 'map'; renderMain(false); }, { small: true, title: 'See the whole route as a diagram' })
+          : lockedBtn('Map', 'open-map', noTools),
+        S.flow.lib ? btn('Try a path', 'open-try', function () { S.ui.qview = 'try'; renderMain(false); }, { small: true, title: 'Pick answers and see the screens a partner gets' })
+          : lockedBtn('Try a path', 'open-try', noTools),
+        btn('Add a question', 'add-question', addQuestionFlow, { kind: 'primary', icon: '+' })]),
       codesNote(),
+      routeNote(),
       screens.length
-        ? h('div', { class: 'qlist' }, screens.map(screenCard))
+        ? h('div', { class: 'qlist', test: 'main-route' }, mainRows.map(function (s2, i) { return screenCard(s2, i); }))
         : emptyState('No questions yet', 'Start from the questionnaire stored in GitHub (Settings > Import from GitHub), or add questions one by one.',
-          btn('Add a question', 'add-question-empty', addQuestionFlow, { kind: 'primary' }))
+          btn('Add a question', 'add-question-empty', addQuestionFlow, { kind: 'primary' })),
+      end === -1 ? null : otherRoutes(screens, end)
     ];
   };
+
+  /* Rows after the main thank-you screen: other routes and endings, which
+     partners reach only through a jump (docs/flow-engine.md 9.1). */
+  function otherRoutes(screens, end) {
+    var rows = screens.slice(end + 1);
+    if (!rows.length && !S.flow.lib) return null;
+    return h('section', { test: 'other-routes' },
+      h('div', { class: 'qsection-head' }, h('h2', { text: 'Other routes and endings' }),
+        S.flow.lib ? btn('Add an ending', 'add-ending', addEndingFlow, { small: true, icon: '+', title: 'Another thank-you screen, reached by a jump' }) : null),
+      h('p', { class: 'qsection-help', text: rows.length
+        ? 'These screens come after the main thank-you screen, so partners reach them only through a jump (Edit a question > After this question > Add a jump). Every ending sends the answers.'
+        : 'Nothing here yet. Add an ending (another thank-you screen) or a question below the thank-you screen, then send partners there with a jump from an earlier question.' }),
+      rows.length ? h('div', { class: 'qlist' }, rows.map(function (s, k) { return screenCard(s, end + 1 + k); })) : null);
+  }
+
+  /* The route badges of a card: where the screen goes, repeats, endings,
+     and what the form's own checker found wrong with its arrows. */
+  function routeBadges(s, i) {
+    var out = [];
+    if (!S.flow.lib) return out;
+    if (s.type === 'thank_you') {
+      out.push(badge('Ends the survey', 'end', 'screen-end-' + s.id, 'Partners stop here and their answers are sent.'));
+    } else {
+      jumpsOf(s).forEach(function (j, k) {
+        if (!j || typeof j !== 'object' || !j['goto']) return;
+        out.push(badge('↪ goes to ' + targetShort(j['goto']) + ' when ' + shortRule(j.when), 'route', 'screen-jump-' + s.id + '-' + k,
+          'If ' + ruleSentence(j.when) + ', partners go to ' + targetName(j['goto']) + '.'));
+      });
+      if (s.next) out.push(badge('↪ then goes to ' + targetShort(s.next), 'route', 'screen-next-' + s.id, 'After this question partners usually go to ' + targetName(s.next) + '.'));
+      if (s.repeat && REPEAT_LABELS[s.repeat] && canRepeat(s.type)) {
+        out.push(badge(s.repeat === 'each_low_area' ? 'Repeats for each area rated low' : 'Repeats for each area', 'req', 'screen-repeat-' + s.id,
+          'Asked once for each area' + (s.repeat === 'each_low_area' ? ' rated at or below its limit' : '') + ', with the area’s name above it.'));
+      }
+    }
+    var rp = routeProblems(s, i);
+    var jumpMsgs = [];
+    Object.keys(rp.jumps).forEach(function (k) { jumpMsgs = jumpMsgs.concat(rp.jumps[k]); });
+    if (Object.keys(rp.dropped).length || jumpMsgs.length) {
+      out.push(badge('⚠ this jump can never happen', 'error', 'screen-jump-problem-' + s.id, jumpMsgs.concat(rp.row).join(' ') || 'Open the question to see why.'));
+    } else if (rp.row.length) {
+      out.push(badge('⚠ ' + (jumpsUnreadable(s) ? 'the jumps can’t be read' : rp.rowError ? 'route problem: see the editor' : 'route note: see the editor'),
+        rp.rowError ? 'error' : 'warn', 'screen-route-problem-' + s.id, rp.row.join(' ')));
+    }
+    if (rp.unreached) out.push(badge('⚠ nothing leads here: add a jump to it', 'error', 'screen-unreached-' + s.id, rp.unreached));
+    return out;
+  }
 
   function screenCard(s, i) {
     var t = typeInfo(s.type);
     var screens = M().screens;
-    var isThanks = s.type === 'thank_you';
-    var next = screens[i + 1];
-    var canUp = !isThanks && i > 0;
-    var canDown = !isThanks && i < screens.length - 1 && !(next && next.type === 'thank_you');
+    var end = mainEndIndex();
+    var isMainEnd = i === end;
+    var extraEnd = s.type === 'thank_you' && !isMainEnd;
+    var other = end !== -1 && i > end;
+    var lastMain = end === -1 ? screens.length - 1 : end - 1;
+    var canUp = !isMainEnd && (other ? i > end + 1 : i > 0);
+    var canDown = !isMainEnd && (other ? i < screens.length - 1 : i < lastMain);
     var second = secondLang();
     var english = cardEnglish(s, t);
     var secondText = s.text && second && !isTodo(textValue(s.text, second.code)) ? textValue(s.text, second.code) : '';
-    var problems = ruleProblems(s, i);
+    var problems = s.type === 'thank_you' ? [] : ruleProblems(s, i);
 
     var badges = [];
-    if (t.builtin) badges.push(badge('Built-in', null, null, 'Part of every questionnaire: it can be hidden but not deleted.'));
+    if (t.builtin && !extraEnd) badges.push(badge('Built-in', null, null, 'Part of every questionnaire: it can be hidden but not deleted.'));
     if (hasRequired(s)) badges.push(effectiveRequired(s) ? badge('Required', 'req') : badge('Optional (Skip button)', null));
     if (s.show_if) badges.push(badge('Only if ' + ruleSentence(s.show_if), 'rule', 'screen-rule-' + s.id));
     if (problems.length) badges.push(badge('⚠ The rule tests a later or hidden answer: edit it', 'error', 'screen-rule-problem-' + s.id, problemText(problems[0], i)));
     if (s.skip_if === 'lang_in_url') badges.push(badge('Skipped when the link already says the language', null));
     if (s.skip_if === 'empty') badges.push(badge('Skipped when there is nothing to show', null));
+    badges = badges.concat(routeBadges(s, i));
     if (!s.active) badges.push(badge('Hidden: partners don’t see it', 'hidden'));
 
+    var upWhy = isMainEnd ? 'The thank-you screen always stays at the end of the main route.'
+      : other ? 'Screens below the thank-you screen stay there: partners reach them only through a jump.' : 'This is already the first screen.';
+    var downWhy = isMainEnd ? 'The thank-you screen always stays at the end of the main route.'
+      : other ? 'This is already the last screen.' : 'Nothing can come after the thank-you screen.';
     var actions = [
       canUp ? btn('', 'screen-up-' + s.id, function () { moveScreen(i, -1); }, { small: true, icon: '↑', aria: 'Move up', title: 'Move up' })
-        : lockedBtn('↑', 'screen-up-' + s.id, isThanks ? 'The thank-you screen always stays last.' : 'This is already the first screen.'),
+        : lockedBtn('↑', 'screen-up-' + s.id, upWhy),
       canDown ? btn('', 'screen-down-' + s.id, function () { moveScreen(i, 1); }, { small: true, icon: '↓', aria: 'Move down', title: 'Move down' })
-        : lockedBtn('↓', 'screen-down-' + s.id, isThanks ? 'The thank-you screen always stays last.' : 'Nothing can come after the thank-you screen.'),
+        : lockedBtn('↓', 'screen-down-' + s.id, downWhy),
       btn('Edit', 'screen-edit-' + s.id, function () { openEditor(s.id); }, { small: true }),
-      isThanks ? lockedBtn('Hide', 'screen-toggle-' + s.id, 'The thank-you screen sends the answers, so it can’t be hidden.')
+      isMainEnd ? lockedBtn('Hide', 'screen-toggle-' + s.id, 'The thank-you screen sends the answers, so it can’t be hidden.')
         : btn(s.active ? 'Hide' : 'Show', 'screen-toggle-' + s.id, function () { toggleScreen(s); }, { small: true }),
-      t.builtin ? lockedBtn('Delete', 'screen-delete-' + s.id, 'Built-in screens can’t be deleted. Hide it instead.', { kind: 'danger' })
+      t.builtin && !extraEnd ? lockedBtn('Delete', 'screen-delete-' + s.id, 'Built-in screens can’t be deleted. Hide it instead.', { kind: 'danger' })
         : isDataColumnScreen(s.id) ? lockedBtn('Delete', 'screen-delete-' + s.id, 'This question fills the ' + DATA_COLUMN_SCREENS[s.id] + ' column of the answers sheet, so it can’t be deleted and its code never changes. Hide it instead.', { kind: 'danger' })
         : isLive.screen(s.id) ? lockedBtn('Delete', 'screen-delete-' + s.id, 'Live questions can’t be deleted (past answers use the code). Hide it instead.', { kind: 'danger' })
         : btn('Delete', 'screen-delete-' + s.id, function () { deleteScreenFlow(s); }, { small: true, kind: 'danger' })
@@ -2398,7 +3279,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       h('div', { class: 'qnum', text: String(i + 1) }),
       h('div', { class: 'qicon', 'aria-hidden': 'true', text: t.icon }),
       h('div', { class: 'qbody' },
-        h('div', { class: 'qtitle-row' }, h('span', { class: 'qtype', text: t.label }), codeChip(s.id, isLive.screen(s.id), 'this screen')),
+        h('div', { class: 'qtitle-row' }, h('span', { class: 'qtype', text: extraEnd ? 'Another ending' : t.label }), codeChip(s.id, isLive.screen(s.id), 'this screen')),
         english ? h('div', { class: 'qtext', text: english }) : null,
         secondText ? h('div', { class: 'qtext-2', lang: second.code, text: secondText }) : null,
         h('div', { class: 'badges' }, badges)),
@@ -2413,10 +3294,34 @@ details.group > .group-body { padding: 0 16px 14px; }
     if (s.type === 'function_deep_dives') return '“' + (en('q.deep_dive') || 'What is the main problem?') + '” for each area rated ' + standardThreshold() + ' or lower.';
     if (s.type === 'language_picker') return en('lang.title') || t.description;
     if (s.type === 'whats_changed') return (en('wc.title') || 'What changed') + ' (bullets per round are in Rounds)';
-    if (s.type === 'thank_you') return en('thanks.title') || 'Thank you!';
+    if (s.type === 'thank_you') return (s.text && en(s.text)) || en('thanks.title') || 'Thank you!';
     if (s.text && en(s.text)) return en(s.text);
     if (t.needs_text) return '(no English text yet)';
     return t.description;
+  }
+
+  /* Arrows only go down the list (docs/flow-engine.md 9.1), except to an
+     ending, which is fine anywhere. After a move, say which arrows now point
+     up: the form leaves those out. */
+  function backwardArrows() {
+    var out = [];
+    M().screens.forEach(function (s, i) {
+      var targets = [];
+      if (s.next) targets.push(s.next);
+      jumpsOf(s).forEach(function (j) { if (j && j['goto']) targets.push(j['goto']); });
+      targets.forEach(function (to) {
+        var p = screenPos(to);
+        if (p !== -1 && p <= i && !(p < i && isFixedEnding(M().screens[p]))) out.push({ from: i, to: p });
+      });
+    });
+    return out;
+  }
+  function warnBackward(movedId) {
+    var at = screenPos(movedId);
+    var bad = backwardArrows().filter(function (a) { return a.from === at || a.to === at; });
+    if (!bad.length) return;
+    toast('Question ' + (bad[0].from + 1) + ' now has an arrow back up to question ' + (bad[0].to + 1) +
+      '. Arrows only go down the list, so the form leaves it out: move the question back, or change the jump.', { kind: 'info', timeout: 9000 });
   }
 
   function moveScreen(i, delta) {
@@ -2425,51 +3330,145 @@ details.group > .group-body { padding: 0 16px 14px; }
     changed();
     S.ui.pendingFocus = { test: 'screen-card-' + s.id, focusTest: 'screen-' + (delta < 0 ? 'up-' : 'down-') + s.id, flash: false };
     renderMain(true);
+    warnBackward(s.id);
   }
 
-  function toggleScreen(s) {
+  /* Hides or shows a screen. Hiding an ending that partners reach first says
+     what will happen and asks (confirmed = true skips that: the person
+     already read it, for example in the delete dialog's "Hide it instead"). */
+  function toggleScreen(s, confirmed) {
+    if (s.active && s.type === 'thank_you' && !confirmed) {
+      /* A hidden ending still ends its route, at the main thank-you screen
+         (flow-panel.js): partners never run on into the screens below it. */
+      var e = endingNotes(s);
+      if (e.reach.length) {
+        openModal({ title: 'Hide this ending?', test: 'confirm-hide-ending',
+          body: [h('p', { test: 'hide-ending-note', text: 'While it is hidden, partners who would reach it (' + e.reach.join('; ') + ') end at ' + e.mainName +
+            ' instead. Their answers are still sent, and they never go on to the screens below it.' })],
+          buttons: [{ label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } },
+            { label: 'Hide it', kind: 'primary', test: 'modal-confirm', onClick: function (c) { c(); toggleScreen(s, true); } }] });
+        return;
+      }
+    }
     s.active = !s.active;
     changed({ rerender: true });
-    var users = rulesUsing(function (ref) { return ref === s.id; }, true);
-    if (!s.active && users.length) toast('A rule on ' + users.join(', ') + ' tests this hidden question: change that rule too.', { kind: 'info', timeout: 8000 });
+    if (s.active) return;
+    if (s.type === 'thank_you') {
+      toast('Ending hidden. Partners who would reach it now end at ' + endingNotes(s).mainName + '.', { kind: 'info', timeout: 7000 });
+      return;
+    }
+    var users = rulesUsing(function (ref) { return ref === s.id || isRepeatedRef(ref, s.id); }, true);
+    var into = arrowNames(arrowsInto(s.id));
+    var parts = [];
+    if (users.length) parts.push('A rule or jump on ' + users.join(', ') + ' tests this hidden question: change it too.');
+    if (into.length) parts.push(capitalFirst(joinWith(into, 'and')) + (into.length === 1 ? ' goes' : ' go') + ' to this question: while it is hidden, partners go where it would have gone instead.');
+    if (parts.length) toast(parts.join(' '), { kind: 'info', timeout: 9000 });
+  }
+  function capitalFirst(text) { return text.charAt(0).toUpperCase() + text.slice(1); }
+
+  /* What hiding or deleting an ending (thank-you screen) s changes:
+       reach     how partners get there: 'question 3 jumps here', 'question 10,
+                 just above it, goes on to it'
+       above     the shown question just above it whose route runs into it
+                 (no "usually go to" of its own), as { index }, or null
+       below     the first shown screen below it, as { index, route: true when
+                 a jump of another question leads there }, or null
+       mainName  the main thank-you screen, as the messages name it */
+  function endingNotes(s) {
+    var list = M().screens;
+    var pos = screenPos(s.id);
+    var out = { reach: [], above: null, below: null, mainName: 'the main thank-you screen' };
+    var main = list.filter(function (x) { return x !== s && isFixedEnding(x); })[0];
+    if (main) out.mainName = 'the main thank-you screen (question ' + (screenPos(main.id) + 1) + ')';
+    arrowsInto(s.id).forEach(function (a) {
+      var what = 'question ' + (a.index + 1) + (a.how === 'jump' ? ' jumps here' : ' goes here');
+      if (out.reach.indexOf(what) === -1) out.reach.push(what);
+    });
+    for (var k = pos - 1; k >= 0; k--) {
+      if (!list[k].active) continue;
+      if (list[k].type !== 'thank_you' && !list[k].next && k > mainEndIndex()) {
+        out.above = { index: k };
+        out.reach.push('question ' + (k + 1) + ', just above it, goes on to it');
+      }
+      break;
+    }
+    var aboveAt = out.above ? out.above.index : -1;
+    for (var b = pos + 1; b < list.length; b++) {
+      if (!list[b].active) continue;
+      var id = list[b].id;
+      out.below = { index: b, route: list.some(function (x, i) {
+        return i !== aboveAt && x.active && jumpsOf(x).some(function (j) { return j && j['goto'] === id; });
+      }) };
+      break;
+    }
+    return out;
   }
 
   function openEditor(id) {
     S.ui.editing = id;
+    S.ui.qview = 'list';   // "← All questions" goes back to the list
+    stopMapFrame();
     go('questions');
     $('#main').scrollTop = 0;
   }
 
   function deleteScreenFlow(s) {
     var live = isLive.screen(s.id);
-    var users = rulesUsing(function (ref) { return ref === s.id; });
+    var ending = s.type === 'thank_you';
+    var e = ending ? endingNotes(s) : null;
+    var users = rulesUsing(function (ref) { return ref === s.id || isRepeatedRef(ref, s.id); });
     var body = [h('p', { text: 'This removes ' + quote(shorten(screenEnglish(s) || s.id, 70)) + ' and its texts in every language.' })];
     if (live) {
       // Live questions are never deleted: earlier rounds' answers use the code,
       // and the dashboard compares rounds with it. Hiding keeps the history intact.
-      body = [h('div', { class: 'callout is-warn' }, h('p', { text: 'This question is live: answers from earlier rounds use its code, so the dashboard compares rounds with it. It can’t be deleted, but you can hide it: partners stop seeing it and its past answers stay readable.' }))];
+      body = [h('div', { class: 'callout is-warn' }, h('p', { text: ending
+        ? 'This ending is live: answers from earlier rounds name it, so the dashboard compares rounds with it. It can’t be deleted, but you can hide it.'
+        : 'This question is live: answers from earlier rounds use its code, so the dashboard compares rounds with it. It can’t be deleted, but you can hide it: partners stop seeing it and its past answers stay readable.' }))];
+      if (ending && s.active) body.push(h('p', { test: 'hide-ending-note', text: 'While it is hidden, partners who would reach it' + (e.reach.length ? ' (' + e.reach.join('; ') + ')' : '') + ' end at ' + e.mainName + ' instead. Their answers are still sent, and they never go on to the screens below it.' }));
       var liveButtons = [{ label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } }];
-      if (s.active) liveButtons.push({ label: 'Hide it instead', kind: 'primary', test: 'modal-hide-instead', onClick: function (c) { c(); toggleScreen(s); } });
-      openModal({ title: 'This question can’t be deleted', test: 'confirm-delete-screen', body: body, buttons: liveButtons });
+      if (s.active) liveButtons.push({ label: 'Hide it instead', kind: 'primary', test: 'modal-hide-instead', onClick: function (c) { c(); toggleScreen(s, true); } });
+      openModal({ title: ending ? 'This ending can’t be deleted' : 'This question can’t be deleted', test: 'confirm-delete-screen', body: body, buttons: liveButtons });
       return;
     }
     if (users.length) body.push(h('p', { class: 'field-warn', text: 'The rule on ' + users.join(', ') + ' tests this question and will need a new rule.' }));
+    var into = arrowNames(arrowsInto(s.id));
+    if (into.length) body.push(h('p', { class: 'field-warn', test: 'delete-arrows-note', text: capitalFirst(joinWith(into, 'and')) + (into.length === 1 ? ' goes' : ' go') + ' to this ' + (ending ? 'ending' : 'question') + '. ' + (into.length === 1 ? 'That arrow is' : 'Those arrows are') + ' removed too: partners then go ' + (ending ? 'where that question usually goes.' : 'on to the next question in the list.') }));
+    if (ending && e.above) {
+      /* The route above it would no longer stop here (flow-panel.js only stops at endings that are still in the list). */
+      var aboveName = 'question ' + (e.above.index + 1);
+      var then = !e.below ? 'it then goes to the thank-you screen the form adds at the end'
+        : 'it then goes on to question ' + (e.below.index + 1) + ' (' + quote(shorten(screenEnglish(M().screens[e.below.index]) || M().screens[e.below.index].id, 50)) + ')' +
+          (e.below.route ? ', which starts another route, so Publish refuses until you choose where ' + aboveName + ' goes' : '');
+      body.push(h('div', { class: 'callout is-warn', test: 'delete-ending-note' },
+        h('p', { text: capitalFirst(aboveName) + ', just above this ending, has no “Usually go to”: ' + then + '. To keep its route ending here, hide this ending instead (partners then end at ' + e.mainName + '), or set ' + aboveName + '’s “Usually go to” first (Edit it > After this question).' })));
+    }
     var buttons = [{ label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } }];
+    if (ending && e.above && s.active) buttons.push({ label: 'Hide it instead', test: 'modal-hide-instead', onClick: function (c) { c(); toggleScreen(s, true); } });
     buttons.push({ label: 'Delete', kind: 'danger-solid', test: 'modal-confirm', onClick: function (c) { c(); deleteScreen(s); } });
-    openModal({ title: 'Delete this question?', test: 'confirm-delete-screen', body: body, buttons: buttons });
+    openModal({ title: ending ? 'Delete this ending?' : 'Delete this question?', test: 'confirm-delete-screen', body: body, buttons: buttons });
   }
 
   function deleteScreen(s) {
     var snap = snapshot();
     var pos = screenPos(s.id);
     M().screens.splice(pos, 1);
+    /* Arrows to it go too (Undo brings them back). */
+    var removed = 0;
+    M().screens.forEach(function (x) {
+      if (x.next === s.id) { x.next = ''; removed++; }
+      if (Array.isArray(x.jumps)) {
+        var keep = x.jumps.filter(function (j) { return !(j && j['goto'] === s.id); });
+        removed += x.jumps.length - keep.length;
+        x.jumps = keep;
+      }
+    });
     var own = ['text', 'low_label', 'high_label', 'scale_hint', 'body'].map(function (f) { return s[f]; })
       .concat(s.options.map(function (o) { return 'choice.' + s.id + '.' + o; }));
     removeUnusedTexts(own);
     if (S.ui.editing === s.id) S.ui.editing = null;
     changed();
     go('questions');
-    offerUndo(snap, 'Question deleted.');
+    offerUndo(snap, (s.type === 'thank_you' ? 'Ending deleted.' : 'Question deleted.') + (removed ? ' ' + plural(removed, 'arrow') + ' to it removed too.' : ''));
   }
 
   /* Removes texts that nothing else uses any more. */
@@ -2489,33 +3488,124 @@ details.group > .group-body { padding: 0 16px 14px; }
     var idx = screenPos(s.id);
     var screens = M().screens;
     var prev = screens[idx - 1], next = screens[idx + 1];
+    var extraEnd = isExtraEnding(s, idx);
     var out = [
       h('div', { class: 'editor-head' },
         btn('← All questions', 'editor-back', function () { S.ui.editing = null; S.ui.pendingFocus = { test: 'screen-card-' + s.id }; go('questions'); }, { small: true }),
         h('div', { class: 'editor-title' },
           h('span', { class: 'qicon', 'aria-hidden': 'true', text: t.icon }),
-          h('h1', { text: 'Question ' + (idx + 1) + ': ' + t.label }),
+          h('h1', { text: 'Question ' + (idx + 1) + ': ' + (extraEnd ? 'Another ending' : t.label) }),
           codeChip(s.id, isLive.screen(s.id), 'this screen'),
-          !isLive.screen(s.id) && !t.builtin && !isDataColumnScreen(s.id) ? btn('Change code', 'screen-rename', function () { renameScreenFlow(s); }, { small: true, kind: 'ghost' }) : null,
+          !isLive.screen(s.id) && (!t.builtin || extraEnd) && !isDataColumnScreen(s.id) ? btn('Change code', 'screen-rename', function () { renameScreenFlow(s); }, { small: true, kind: 'ghost' }) : null,
           s.active ? null : badge('Hidden', 'hidden')))
     ];
-    if (t.description) out.push(h('p', { class: 'muted', style: 'margin:-6px 0 14px', text: t.description }));
+    if (extraEnd) out.push(h('p', { class: 'muted', style: 'margin:-6px 0 14px', text: 'Another thank-you screen. Partners get here only through a jump; it sends their answers, like the main one.' }));
+    else if (t.description) out.push(h('p', { class: 'muted', style: 'margin:-6px 0 14px', text: t.description }));
     if (t.needs_text) out.push(card({ title: s.type === 'info_card' ? 'Title of the card' : 'Question', sub: 'What partners read. English is needed; other languages show English until they are translated.', test: 'editor-text-card' },
       langFields(screenKeyRef(s, 'text', 'q.' + s.id), { test: 'editor-text', label: 'Question', multiline: true })));
+    if (extraEnd) out.push(endingTextsCard(s));
     var answerCard = answerSettings(s, t);
     if (answerCard) out.push(answerCard);
+    var settingsCard = builtinSettingsCard(s);
+    if (settingsCard) out.push(settingsCard);
     var builtinTexts = builtinTextsCard(s);
     if (builtinTexts) out.push(builtinTexts);
     var pointer = builtinPointer(s);
     if (pointer) out.push(pointer);
+    var repeat = repeatCard(s, idx);
+    if (repeat) out.push(repeat);
     if (s.type !== 'thank_you') out.push(ruleCard(s, idx));
+    var after = afterCard(s, idx);
+    if (after) out.push(after);
     out.push(h('div', { class: 'editor-foot' },
       prev ? btn('← Previous question', 'editor-prev', function () { openEditor(prev.id); }, { small: true }) : null,
       next ? btn('Next question →', 'editor-next', function () { openEditor(next.id); }, { small: true }) : null,
       h('span', { class: 'spacer' }),
-      s.type === 'thank_you' ? null : btn(s.active ? 'Hide this question' : 'Show this question', 'editor-toggle', function () { toggleScreen(s); }, { small: true }),
-      t.builtin ? null : btn('Delete this question', 'editor-delete', function () { deleteScreenFlow(s); }, { small: true, kind: 'danger' })));
+      s.type === 'thank_you' && !extraEnd ? null : btn((s.active ? 'Hide this ' : 'Show this ') + (extraEnd ? 'ending' : 'question'), 'editor-toggle', function () { toggleScreen(s); }, { small: true }),
+      t.builtin && !extraEnd ? null : btn(extraEnd ? 'Delete this ending' : 'Delete this question', 'editor-delete', function () { deleteScreenFlow(s); }, { small: true, kind: 'danger' })));
     return out;
+  }
+
+  /* An extra ending's own title and message (end.<code>.title / .body). */
+  function endingTextsCard(s) {
+    return card({ title: 'What this ending says', sub: 'English is needed; other languages show English until they are translated. The closing line under it is the main thank-you screen’s (Texts & translations: thanks.close).', test: 'ending-texts-card' },
+      h('div', { class: 'group-label', text: 'Title' }),
+      langFields(screenKeyRef(s, 'text', 'end.' + s.id + '.title'), { test: 'ending-title', label: 'Title', compact: true }),
+      h('div', { class: 'group-label', style: 'margin-top:12px', text: 'Message' }),
+      langFields(screenKeyRef(s, 'body', 'end.' + s.id + '.body'), { test: 'ending-body', label: 'Message', multiline: true }));
+  }
+
+  /* The Settings that belong to one built-in screen, shown in its editor
+     (decision 7 of the flow-graph proposal): the SAME Settings entries, so a
+     change here is a change in Settings (and in Support questions). */
+  function builtinSettingsCard(s) {
+    var parts = [];
+    function sw(key, label, after) {
+      return h('div', { class: 'row', style: 'margin-top:8px' }, switchCtl({
+        test: 'editor-setting-' + key, checked: settingBool(key), label: label,
+        onChange: function (v) { setSetting(key, v); if (after) renderMain(true); }
+      }));
+    }
+    if (s.type === 'function_ratings') {
+      parts.push(sw('rating.allow_not_applicable', 'Offer “I don’t handle this” under each area rating'));
+      parts.push(h('p', { class: 'help', text: 'Answers “I don’t handle this” are left out of the averages, and never count as a low rating.' }));
+    } else if (s.type === 'function_deep_dives') {
+      var when = settingRaw('deep_dive.when') === 'immediate' ? 'immediate' : 'after_all_ratings';
+      var labels = CHOICE_LABELS['deep_dive.when'];
+      parts.push(h('div', { class: 'field-label', text: 'Where the problem screens go' }));
+      parts.push(h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'Where the problem screens go', style: 'margin-top:6px' },
+        ['after_all_ratings', 'immediate'].map(function (v) {
+          return choiceCard('editor-dd-when', v, when === v, labels[v], 'editor-dd-when-' + v, function () { setSetting('deep_dive.when', v); renderMain(true); });
+        })));
+      if (when === 'immediate') {
+        parts.push(h('div', { class: 'callout is-info small', style: 'margin-top:10px', test: 'editor-dd-immediate-note' },
+          h('p', { text: 'Each area’s problem screen now comes straight after its rating, inside the area ratings. This row’s place in the list, its rule and its arrows are then not used.' })));
+      }
+      parts.push(sw('deep_dive.require_chip', 'Partners must pick a problem'));
+      parts.push(sw('deep_dive.require_detail_if_other', '“Other” needs a voice note or typed detail'));
+    } else if (s.type === 'support_block') {
+      var commentKey = str(settingRaw('support.comment_text')) || 'q.support_comment';
+      parts.push(sw('support.allow_not_applicable', 'Offer “Doesn’t apply” on each row', true));
+      if (settingBool('support.allow_not_applicable')) parts.push(h('div', { style: 'margin:8px 0 6px' }, langFields('support.not_applicable', { test: 'editor-support-na-label', label: 'Doesn’t apply', compact: true })));
+      parts.push(sw('support.allow_comment', 'Ask for a comment after the ratings (voice note or typing)', true));
+      if (settingBool('support.allow_comment')) {
+        parts.push(h('div', { style: 'margin-top:8px' }, h('div', { class: 'group-label', text: 'The comment question' }),
+          langFields(commentKey, { test: 'editor-support-comment-text', label: 'Comment question', multiline: true })));
+      }
+    } else {
+      return null;
+    }
+    return card({ title: 'Settings of this screen', sub: 'The same settings as in Settings' + (s.type === 'support_block' ? ' and Support questions' : '') + ': a change here is a change there.', test: 'editor-settings-card' }, parts);
+  }
+
+  /* One choice of a set of radio cards (the cards look like buttons). */
+  function choiceCard(name, value, on, label, test, onPick) {
+    var input = h('input', { type: 'radio', name: name, value: value, checked: on, test: test });
+    input.addEventListener('change', function () { if (input.checked) onPick(value); });
+    return h('label', { class: 'radio-card' + (on ? ' is-on' : '') }, input, label);
+  }
+
+  /* "Ask this question: once / for each area / for each area rated low"
+     (the Screens tab's repeat column; only kinds that may repeat: canRepeat). */
+  function repeatCard(s, idx) {
+    if (!canRepeat(s.type) || !S.flow.lib) return null;
+    if (isDataColumnScreen(s.id)) {
+      return card({ title: 'Ask this question', test: 'repeat-card' }, h('p', { class: 'help', test: 'repeat-locked', text: 'Once. This question fills the ' + DATA_COLUMN_SCREENS[s.id] + ' column of the answers sheet, so it is always asked once.' }));
+    }
+    var cur = REPEAT_LABELS[s.repeat] ? s.repeat : '';
+    var cards = h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'How often to ask this question' },
+      ['', 'each_area', 'each_low_area'].map(function (v) {
+        return choiceCard('repeat-' + s.id, v || 'once', cur === v, v === 'each_low_area' ? 'For each area rated low (at or below its limit)' : REPEAT_LABELS[v],
+          'repeat-' + (v || 'once'), function () { s.repeat = v; changed({ rerender: true }); });
+      }));
+    var parts = [cards];
+    if (cur) {
+      parts.push(h('p', { class: 'help', style: 'margin-top:10px', test: 'repeat-help', text: 'Partners see it once for each area' + (cur === 'each_low_area' ? ' they rated at or below its limit' : '') +
+        ', with the area’s name above it. The answers are stored as ' + s.id + ':<area>, for example ' + s.id + ':' + ((M().areas.filter(function (a) { return a.active; })[0] || { id: 'payments' }).id) + '.' +
+        (cur === 'each_low_area' ? ' Put it below the area ratings: the ratings must come first.' : '') }));
+      if (isLive.screen(s.id)) parts.push(h('div', { class: 'callout is-warn small', style: 'margin-top:8px' }, h('p', { text: 'Partners already answered this question once per survey. Asked per area, its answers get new names, so earlier rounds can’t be compared with them directly.' })));
+    }
+    return card({ title: 'Ask this question', sub: 'Once, or once for every area (Areas & problems).', test: 'repeat-card' }, parts);
   }
 
   /* A text that may not exist yet: it is created (with the standard name) the
@@ -2599,7 +3689,8 @@ details.group > .group-body { padding: 0 16px 14px; }
             i > 0 ? btn('', 'option-up-' + code, function () { moveItem(s.options, i, i - 1); changed({ rerender: true }); }, { small: true, icon: '↑', aria: 'Move up' }) : null,
             i < s.options.length - 1 ? btn('', 'option-down-' + code, function () { moveItem(s.options, i, i + 1); changed({ rerender: true }); }, { small: true, icon: '↓', aria: 'Move down' }) : null,
             live ? null : btn('Change code', 'option-rename-' + code, function () { renameOptionFlow(s, code); }, { small: true, kind: 'ghost' }),
-            btn('Remove', 'option-remove-' + code, function () { removeOptionFlow(s, code); }, { small: true, kind: 'danger' }))),
+            live ? lockedBtn('Remove', 'option-remove-' + code, LIVE_OPTION_REASON, { kind: 'danger' })
+              : btn('Remove', 'option-remove-' + code, function () { removeOptionFlow(s, code); }, { small: true, kind: 'danger' }))),
         langFields('choice.' + s.id + '.' + code, { test: 'option-' + code, label: 'Answer', compact: true })));
     });
     wrap.appendChild(h('div', { style: 'margin-top:10px' }, btn('Add an answer', 'option-add', function () { addOptionFlow(s); }, { small: true, icon: '+' })));
@@ -2608,7 +3699,7 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   function builtinTextsCard(s) {
     var list = BUILTIN_SCREEN_TEXTS[s.type];
-    if (!list) return null;
+    if (!list || isExtraEnding(s, screenPos(s.id))) return null;
     var formKeys = arr(S.catalog.form_text_keys);
     var shownList = list.filter(function (p) { return M().texts[p[0]] || formKeys.indexOf(p[0]) !== -1; });
     if (!shownList.length) return null;
@@ -2622,7 +3713,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     var map = {
       function_ratings: ['The areas, their order and their problems are edited in Areas & problems.', 'areas', 'Go to Areas & problems'],
       function_deep_dives: ['Each area’s list of problems is edited in Areas & problems. The limit that triggers these screens is in Settings > Problem screens.', 'areas', 'Go to Areas & problems'],
-      support_block: ['The support items, “Doesn’t apply” and the comment box are edited in Support questions.', 'support', 'Go to Support questions'],
+      support_block: ['The support items themselves are edited in Support questions.', 'support', 'Go to Support questions'],
       whats_changed: ['The bullets for each round are edited in Rounds > What changed.', 'rounds', 'Go to Rounds'],
       language_picker: ['The languages and their order are edited in Settings > Languages.', 'settings', 'Go to Settings']
     }[s.type];
@@ -2640,7 +3731,11 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   function ruleBody(s, idx, draw) {
-    var answers = availableAnswers(idx);
+    var answers = ruleAnswers(s, idx, 'show_if');
+    /* A new condition starts from the latest earlier answer; only when there
+       is none, from the language or the round (SHOW_IF_FACTS). */
+    var realAnswers = answers.filter(function (a) { return a.kind !== 'fact'; });
+    var starter = realAnswers[realAnswers.length - 1] || answers[0];
     var parsed = parseRule(s.show_if);
     var name = 'rule-mode-' + s.id;
     /* Switching to "Always" remembers the rule, so switching back restores it. */
@@ -2651,7 +3746,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       } else if (!s.show_if) {
         if (S.ui.lastRule[s.id]) s.show_if = S.ui.lastRule[s.id];
         else if (!answers.length) { toast('No earlier answers to test here. Move the question further down first.', { kind: 'info' }); draw(); return; }
-        else s.show_if = conditionObject(defaultCondition(answers[answers.length - 1]));
+        else s.show_if = conditionObject(defaultCondition(starter));
       }
       changed();
       draw();
@@ -2665,12 +3760,12 @@ details.group > .group-body { padding: 0 16px 14px; }
         h('p', null, 'This rule was written by hand in the Sheet and is too detailed for this editor: ', h('strong', { text: ruleSentence(s.show_if) }), '.'),
         h('p', null, btn('Replace it with a simple rule', 'rule-replace', function () {
           if (!answers.length) { toast('There are no earlier answers to test here.', { kind: 'info' }); return; }
-          s.show_if = conditionObject(defaultCondition(answers[answers.length - 1])); changed(); draw();
+          s.show_if = conditionObject(defaultCondition(starter)); changed(); draw();
         }, { small: true }), ' ', btn('Remove the rule', 'rule-clear', function () { s.show_if = null; changed(); draw(); }, { small: true, kind: 'danger' }))));
       return out;
     }
     if (parsed.mode === 'always') {
-      if (!answers.length) out.push(h('p', { class: 'help', style: 'margin-top:10px', text: 'No earlier answers can be tested here, because this is near the start. Questions further down can depend on it.' }));
+      if (!realAnswers.length) out.push(h('p', { class: 'help', style: 'margin-top:10px', text: answers.length ? 'No earlier answers can be tested here, because this is near the start (only the partner’s language or the round). Questions further down can depend on it.' : 'No earlier answers can be tested here, because this is near the start. Questions further down can depend on it.' }));
       return out;
     }
     function commit() { s.show_if = buildRule(parsed); changed(); draw(); }
@@ -2679,10 +3774,10 @@ details.group > .group-body { padding: 0 16px 14px; }
         selectCtl([{ value: 'all', label: 'all of these are true' }, { value: 'any', label: 'any of these is true' }], parsed.combine, 'rule-combine',
           function (v) { parsed.combine = v; commit(); }, { aria: 'All or any of the conditions', inline: true })));
     }
-    parsed.conds.forEach(function (c, i) { out.push(conditionRow(c, i, answers, idx, parsed, commit)); });
+    parsed.conds.forEach(function (c, i) { out.push(conditionRow(c, i, answers, idx, parsed, commit, null)); });
     out.push(h('div', { style: 'margin-top:10px' }, btn('Add another condition', 'rule-add', function () {
       if (!answers.length) return;
-      parsed.conds.push(defaultCondition(answers[answers.length - 1]));
+      parsed.conds.push(defaultCondition(starter));
       commit();
     }, { small: true, icon: '+' })));
     out.push(h('div', { class: 'sentence', test: 'rule-sentence' }, 'Partners see this question only if ', h('strong', { text: ruleSentence(s.show_if) }), '.'));
@@ -2703,7 +3798,12 @@ details.group > .group-body { padding: 0 16px 14px; }
     return { answer: ans.ref, test: 'equals', value: ans.values.length ? ans.values[0].v : '' };
   }
 
-  function conditionRow(c, i, answers, idx, parsed, commit) {
+  /* One condition of a rule or of a jump. o (optional) = { prefix: the start
+     of the data-test names ('rule-' by default), forJump: true for a jump's
+     condition, keepOne: the last condition can't be removed }. */
+  function conditionRow(c, i, answers, idx, parsed, commit, o) {
+    o = o || {};
+    var P = o.prefix || 'rule-';
     var ans = null;
     answers.forEach(function (a) { if (a.ref === c.answer) ans = a; });
     var answerOptions = answers.map(function (a) { return { value: a.ref, label: a.label, group: a.group }; });
@@ -2711,22 +3811,23 @@ details.group > .group-body { padding: 0 16px 14px; }
       var d = describeAnswer(c.answer);
       answerOptions.unshift({ value: c.answer, label: '⚠ ' + (d ? d.label : c.answer) + ' (can’t be used here)' });
     }
-    var answerSel = selectCtl(answerOptions, c.answer, 'rule-answer-' + i, function (v) {
+    var answerSel = selectCtl(answerOptions, c.answer, P + 'answer-' + i, function (v) {
       var a = null;
       answers.forEach(function (x) { if (x.ref === v) a = x; });
       if (a) parsed.conds[i] = defaultCondition(a);
       commit();
-    }, { aria: 'Which earlier answer' });
+    }, { aria: o.forJump ? 'Which answer' : 'Which earlier answer' });
     var known = ans || describeAnswer(c.answer);   // for labels, even when it can't be used here
-    var kind = known ? known.kind : 'choice';
+    var kind = known && TESTS_FOR[known.kind] ? known.kind : 'choice';
     var tests = TESTS_FOR[kind].slice();
     if (tests.indexOf(c.test) === -1) tests.unshift(c.test);
-    var testSel = selectCtl(tests.map(function (t) { return { value: t, label: TEST_LABELS[t] || t }; }), c.test, 'rule-test-' + i, function (v) {
+    var testSel = selectCtl(tests.map(function (t) { return { value: t, label: TEST_LABELS[t] || t }; }), c.test, P + 'test-' + i, function (v) {
       parsed.conds[i] = convertTest(c, v, known);
       commit();
     }, { aria: 'Test' });
-    var valueCtl = conditionValue(c, i, known, commit) || h('span');
-    var remove = btn('', 'rule-remove-' + i, function () {
+    var valueCtl = conditionValue(c, i, known, commit, P) || h('span');
+    var remove = btn('', P + 'remove-' + i, function () {
+      if (o.keepOne && parsed.conds.length === 1) { toast('A jump needs at least one condition. To drop it, remove the whole jump.', { kind: 'info' }); return; }
       parsed.conds.splice(i, 1);
       if (!parsed.conds.length) parsed.mode = 'always';
       commit();
@@ -2736,9 +3837,9 @@ details.group > .group-body { padding: 0 16px 14px; }
     testSel.classList.add('cond-test');
     valueCtl.classList.add('cond-value');
     remove.classList.add('cond-remove');
-    return h('div', { class: 'cond', test: 'rule-cond-' + i },
+    return h('div', { class: 'cond', test: P + 'cond-' + i },
       answerSel, testSel, valueCtl, remove,
-      ans ? null : h('div', { class: 'cond-problem field-error', text: problemText(c.answer, idx) }));
+      ans ? null : h('div', { class: 'cond-problem field-error', text: problemText(c.answer, idx, o.forJump) }));
   }
 
   /* Keeps the chosen value sensible when the test changes ("is" <-> "is one of"). */
@@ -2756,7 +3857,8 @@ details.group > .group-body { padding: 0 16px 14px; }
     return out;
   }
 
-  function conditionValue(c, i, ans, commit) {
+  function conditionValue(c, i, ans, commit, prefix) {
+    var P = prefix || 'rule-';
     if (c.test === 'answered' || c.test === 'not_answered') return null;
     var values = ans ? ans.values : [];
     if (c.test === 'at_most' || c.test === 'at_least') values = values.filter(function (v) { return typeof v.v === 'number'; });
@@ -2766,9 +3868,9 @@ details.group > .group-body { padding: 0 16px 14px; }
     }
     if (c.test === 'in') {
       var chosen = arr(c.value).map(String);
-      return h('div', { class: 'pills', test: 'rule-value-' + i, role: 'group', 'aria-label': 'Possible answers' }, values.map(function (v) {
+      return h('div', { class: 'pills', test: P + 'value-' + i, role: 'group', 'aria-label': 'Possible answers' }, values.map(function (v) {
         var on = chosen.indexOf(String(v.v)) !== -1;
-        var input = h('input', { type: 'checkbox', checked: on, test: 'rule-value-' + i + '-' + v.v, 'aria-label': v.label });
+        var input = h('input', { type: 'checkbox', checked: on, test: P + 'value-' + i + '-' + v.v, 'aria-label': v.label });
         input.addEventListener('change', function () {
           var set = values.filter(function (x) {
             return x === v ? input.checked : chosen.indexOf(String(x.v)) !== -1;
@@ -2782,7 +3884,472 @@ details.group > .group-body { padding: 0 16px 14px; }
     }
     var options = values.map(function (v) { return { value: String(v.v), label: v.label }; });
     if (!values.some(function (v) { return String(v.v) === String(c.value); })) options.unshift({ value: String(c.value), label: '⚠ ' + str(c.value) + ' (not a possible answer)' });
-    return selectCtl(options, String(c.value), 'rule-value-' + i, function (v) { c.value = toValue(v); commit(); }, { aria: 'Answer value' });
+    return selectCtl(options, String(c.value), P + 'value-' + i, function (v) { c.value = toValue(v); commit(); }, { aria: 'Answer value' });
+  }
+
+  /* ---- "After this question": where partners go next (jumps) ----------------
+     The Screens tab's "next" (usually go to) and "jumps" (exceptions, checked
+     in order before "next"). Only LATER rows are offered, so arrows can never
+     go round in circles. The answers a jump may test come from the form's
+     own checker (ruleAnswers: answers before this screen, its own answers,
+     the language and the round). */
+
+  /* A shown thank-you screen without a rule always ends the route, so an
+     arrow may point at it from anywhere, also from a question below it (an
+     ending never goes on, so no circle is possible: flow-panel.js does the
+     same). */
+  function isFixedEnding(x) { return !!x && x.type === 'thank_you' && x.active && !x.show_if && !x.skip_if; }
+
+  /* The rows below row idx a jump or "usually go to" may point at, and the
+     endings above it: [{ value, label, group }]. Hidden rows are left out. */
+  function laterTargets(idx) {
+    var end = mainEndIndex();
+    var out = [];
+    M().screens.forEach(function (x, i) {
+      if (i === idx || !x.active || (i < idx && !isFixedEnding(x))) return;
+      var ending = x.type === 'thank_you';
+      out.push({ value: x.id, label: ending ? (i + 1) + '. ' + (i === end ? 'The thank-you screen' : 'Ending: ' + shorten(screenEnglish(x), 50)) : afterLabel(x, i),
+        group: ending ? 'Endings (send the answers)' : (end !== -1 && i > end ? 'Other routes (below the thank-you screen)' : 'Later questions') });
+    });
+    out.sort(function (a, b) {
+      var rank = { 'Later questions': 0, 'Other routes (below the thank-you screen)': 1, 'Endings (send the answers)': 2 };
+      return rank[a.group] - rank[b.group];
+    });
+    return out;
+  }
+
+  /* Where "the next one in the list" leads from row idx. A hidden ending on
+     the way still ends the route: at the main thank-you screen (flow-panel.js). */
+  function followingName(idx) {
+    var list = M().screens;
+    for (var i = idx + 1; i < list.length; i++) {
+      if (list[i].active) return targetName(list[i].id);
+      if (list[i].type === 'thank_you') {
+        var main = firstFixedEnding();
+        return (main ? targetName(main.id) : 'the end (the form adds a thank-you screen)') + ', because the ending below this question (question ' + (i + 1) + ') is hidden';
+      }
+    }
+    return 'the end (the form adds a thank-you screen)';
+  }
+  /* The main ending as the form's route has it: the first shown thank-you screen without a rule. */
+  function firstFixedEnding() { return M().screens.filter(isFixedEnding)[0] || null; }
+
+  function afterCard(s, idx) {
+    if (!S.flow.lib) return null;
+    var info = flowInfo();
+    if (!info || !info.ok) return null;
+    if (s.type === 'thank_you') {
+      return card({ title: 'After this screen', test: 'after-card' },
+        h('p', { class: 'help', test: 'ending-note', text: 'This is an ending: partners stop here and their answers are sent. Partners reach it ' +
+          (idx === mainEndIndex() ? 'at the end of the main route, or through a jump.' : 'only through a jump from an earlier question (Edit that question > After this question > Add a jump).') }));
+    }
+    var box = h('div', { test: 'after-body' });
+    function draw() { redraw(box, function () { return afterBody(s, idx, draw); }); }
+    draw();
+    return card({ title: 'After this question', sub: 'Where partners go next. Usually the next question in the list; a jump sends some partners elsewhere, for example to an ending.', test: 'after-card' }, box);
+  }
+
+  function afterBody(s, idx, draw) {
+    var out = [];
+    var info = flowInfo();
+    var dd = s.type === 'function_deep_dives' && settingRaw('deep_dive.when') === 'immediate';
+    if (dd) {
+      /* In this mode the form does not use this row at all, so its own arrows
+         are not offered; settings left over from the other mode can be cleared. */
+      out.push(h('div', { class: 'callout is-info small', test: 'after-not-used' }, h('p', { text: 'Not used while the problem screens come straight after each low rating: set where partners go on the area ratings screen instead.' })));
+      if (s.next || jumpsUnreadable(s) || jumpsOf(s).length || s.repeat) {
+        out.push(h('div', { class: 'callout is-warn small', style: 'margin-top:10px', test: 'after-leftovers' },
+          h('p', { text: 'This row still has ' + joinWith([s.next ? 'a “Usually go to”' : '', jumpsUnreadable(s) || jumpsOf(s).length ? 'jumps' : '', s.repeat ? 'an “ask for each area”' : ''].filter(Boolean), 'and') +
+            ' from before. They change nothing for partners in this mode, but the check warns about them until they are cleared.' }),
+          h('p', null, btn('Clear them', 'after-clear', function () { s.next = ''; s.jumps = []; s.repeat = ''; changed(); draw(); }, { small: true }))));
+      }
+      return out;
+    }
+    var rp = routeProblems(s, idx);
+    if (rp.row.length) {
+      out.push(h('div', { class: 'callout is-warn small', style: 'margin-bottom:10px', test: 'route-problems' },
+        h('p', { text: 'The form’s route code says:' }), h('ul', { class: 'route-list' }, rp.row.map(function (m) { return h('li', { text: m }); }))));
+    }
+    var targets = laterTargets(idx);
+    var nextOpts = [{ value: '', label: 'The next one in the list: ' + followingName(idx) }].concat(targets);
+    if (s.next && !targets.some(function (t) { return t.value === s.next; })) {
+      nextOpts.splice(1, 0, { value: s.next, label: '⚠ ' + targetName(s.next) + ' (can’t be used: it is not below this question, or it is hidden)' });
+    }
+    out.push(field('Usually go to', selectCtl(nextOpts, s.next || '', 'next-select', function (v) { s.next = v; changed(); draw(); }, { aria: 'Usually go to' }),
+      'Arrows only go down the list, so a route can never go round in circles.'));
+    if (jumpsUnreadable(s)) {
+      out.push(h('div', { class: 'callout is-warn', style: 'margin-top:12px', test: 'jumps-unreadable' },
+        h('p', { text: 'The jumps of this question were changed by hand in the Sheet and can’t be read: ' + shorten(s.jumps.unreadable, 80) }),
+        h('p', null, btn('Remove them, and build them again here', 'jumps-clear', function () { s.jumps = []; changed(); draw(); }, { small: true, kind: 'danger' }))));
+    } else {
+      jumpsOf(s).forEach(function (j, k) { out.push(jumpRow(s, idx, j, k, draw, targets, rp)); });
+      out.push(h('div', { style: 'margin-top:10px' }, btn('Add a jump', 'jump-add', function () { addJump(s, idx, targets); draw(); }, { small: true, icon: '+' })));
+    }
+    out.push(h('div', { class: 'sentence', test: 'jump-sentence' }, afterSentence(s, idx)));
+    return out;
+  }
+
+  /* A new jump: "if <this question's answer (or the last one before it)> …
+     go to the first ending below it". */
+  function addJump(s, idx, targets) {
+    if (!targets.length) { toast('There is nothing below this question to jump to. Add a question or an ending below it first.', { kind: 'info', timeout: 7000 }); return; }
+    var own = ownAnswers(idx);
+    var answers = ruleAnswers(s, idx, 'jump').filter(function (a) { return a.kind !== 'fact'; });
+    var facts = factAnswers();
+    var first = own[own.length - 1] || answers[answers.length - 1] || facts[0];
+    if (!first) { toast('Nothing can be tested here yet.', { kind: 'info' }); return; }
+    var ending = targets.filter(function (t) { return t.group === 'Endings (send the answers)'; })[0] || targets[0];
+    if (!Array.isArray(s.jumps)) s.jumps = [];
+    s.jumps.push({ when: conditionObject(defaultCondition(first)), 'goto': ending.value });
+    changed();
+  }
+
+  function jumpRow(s, idx, j, k, draw, targets, rp) {
+    var P = 'jump-' + k + '-';
+    var jumps = s.jumps;
+    var head = h('div', { class: 'row-head' }, h('span', { class: 'name', text: 'Jump ' + (k + 1) }),
+      h('span', { class: 'small muted', text: k === 0 ? 'checked first' : 'checked if the jumps above don’t apply' }),
+      h('div', { class: 'btn-group' },
+        k > 0 ? btn('', P + 'up', function () { moveItem(jumps, k, k - 1); changed(); draw(); }, { small: true, icon: '↑', aria: 'Check this jump earlier' }) : null,
+        k < jumps.length - 1 ? btn('', P + 'down', function () { moveItem(jumps, k, k + 1); changed(); draw(); }, { small: true, icon: '↓', aria: 'Check this jump later' }) : null,
+        btn('Remove', P + 'remove', function () { jumps.splice(k, 1); changed(); draw(); }, { small: true, kind: 'danger' })));
+    var body = [head];
+    if (!j || typeof j !== 'object') {
+      body.push(h('p', { class: 'field-error', text: 'This jump can’t be read. Remove it and add it again.' }));
+      return h('div', { class: 'jump-row', test: 'jump-' + k }, body);
+    }
+    var answers = ruleAnswers(s, idx, 'jump');
+    var parsed = parseRule(j.when);
+    function commit() { j.when = buildRule(parsed); changed(); draw(); }
+    if (parsed.mode === 'complex' || parsed.mode === 'always') {
+      body.push(h('div', { class: 'callout is-warn small', test: P + 'complex' },
+        h('p', null, parsed.mode === 'always' ? 'This jump has no condition.' : 'This jump’s condition was written by hand and is too detailed for this editor: ', parsed.mode === 'always' ? null : h('strong', { text: ruleSentence(j.when) })),
+        h('p', null, btn('Replace it with a simple condition', P + 'replace', function () {
+          var first = answers[answers.length - 1];
+          if (!first) { toast('Nothing can be tested here yet.', { kind: 'info' }); return; }
+          j.when = conditionObject(defaultCondition(first)); changed(); draw();
+        }, { small: true }))));
+    } else {
+      body.push(h('div', { class: 'small muted', style: 'margin-top:2px', text: 'If' }));
+      if (parsed.conds.length > 1) {
+        body.push(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { text: 'Jump when' }),
+          selectCtl([{ value: 'all', label: 'all of these are true' }, { value: 'any', label: 'any of these is true' }], parsed.combine, P + 'combine',
+            function (v) { parsed.combine = v; commit(); }, { aria: 'All or any of the conditions', inline: true })));
+      }
+      parsed.conds.forEach(function (c, i) { body.push(conditionRow(c, i, answers, idx, parsed, commit, { prefix: P, forJump: true, keepOne: true })); });
+      body.push(h('div', { style: 'margin-top:8px' }, btn('Add another condition', P + 'add', function () {
+        var last = answers[answers.length - 1];
+        if (!last) return;
+        parsed.conds.push(defaultCondition(last));
+        commit();
+      }, { small: true, icon: '+' })));
+    }
+    var gotoOpts = targets.slice();
+    if (j['goto'] && !targets.some(function (t) { return t.value === j['goto']; })) {
+      gotoOpts.unshift({ value: j['goto'], label: '⚠ ' + targetName(j['goto']) + ' (can’t be used: it is not below this question, or it is hidden)' });
+    }
+    if (!j['goto']) gotoOpts.unshift({ value: '', label: 'Pick where to go' });
+    var gotoSel = selectCtl(gotoOpts, j['goto'] || '', P + 'goto', function (v) { j['goto'] = v; changed(); draw(); }, { aria: 'Go to' });
+    body.push(h('div', { class: 'jump-goto' }, h('label', { class: 'field-label', for: gotoSel.id = 'jg' + (++uid), text: '→ go to' }), gotoSel));
+    var problems = (rp.jumps[k] || []).slice();
+    if (rp.dropped[k]) problems.unshift('This jump is not used by the form: its question is missing, above this one or hidden, or its condition is incomplete. Pick another question or ending.');
+    if (problems.length) body.push(h('div', { class: 'field-error', style: 'margin-top:6px', test: P + 'problem' }, '⚠ This jump can never happen. ', problems.join(' ')));
+    return h('div', { class: 'jump-row', test: 'jump-' + k }, body);
+  }
+
+  /* "After this question, partners go to …; except: if …, they go to …". */
+  function afterSentence(s, idx) {
+    var usual = s.next ? targetName(s.next) : followingName(idx);
+    var parts = ['After this question, partners go to ', h('strong', { text: usual }), '.'];
+    jumpsOf(s).forEach(function (j) {
+      if (!j || typeof j !== 'object' || !j['goto']) return;
+      parts.push(' Except: if ', h('strong', { text: ruleSentence(j.when) || '(no condition)' }), ', they go to ', h('strong', { text: targetName(j['goto']) }), '.');
+    });
+    if (jumpsOf(s).length > 1) parts.push(' The first jump that applies wins.');
+    return parts;
+  }
+
+  /* ---- "Add an ending": another thank-you screen, reached by a jump -------- */
+
+  function addEndingFlow() {
+    var titleBox = textInput('', 'ending-new-title', null, { placeholder: 'For example: Thank you! Our team will call you this week.' });
+    var bodyBox = h('textarea', { rows: 2, test: 'ending-new-body', placeholder: 'For example: Your answers were sent. You can close this page.', 'aria-label': 'Message in English' });
+    var preview = h('div', { class: 'help', test: 'ending-new-code' });
+    function taken() {
+      var t = takenScreenIds();
+      Object.keys(M().texts).forEach(function (k) { var m = /^end\.([a-z0-9_]+)\./.exec(k); if (m) t[m[1]] = true; });
+      return t;
+    }
+    function upd() { preview.textContent = 'Code in the data: ' + slug(titleBox.value, taken(), 'ending') + ' (' + codeChangeHint() + '). Its texts: end.<code>.title and end.<code>.body.'; }
+    titleBox.addEventListener('input', upd);
+    upd();
+    openModal({
+      title: 'Add an ending', test: 'add-ending-modal',
+      body: [h('p', { class: 'help', text: 'Another thank-you screen. It goes below the main one, and partners get there only through a jump you add to an earlier question. It sends the answers, like the main one.' }),
+        field('Title in English', titleBox, null, preview),
+        field('Message in English', bodyBox, 'The other languages show the English until they are translated (Texts & translations).')],
+      buttons: [
+        { label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } },
+        { label: 'Add ending', kind: 'primary', test: 'ending-new-create', onClick: function (c) {
+          if (!titleBox.value.trim()) { titleBox.classList.add('is-invalid'); titleBox.focus(); toast('Write the title in English first.', { kind: 'info' }); return; }
+          if (!bodyBox.value.trim()) { bodyBox.classList.add('is-invalid'); bodyBox.focus(); toast('Write the message in English too.', { kind: 'info' }); return; }
+          c();
+          var id = slug(titleBox.value, taken(), 'ending');
+          var s = normaliseScreen({ id: id, type: 'thank_you', active: true, required: null, text: 'end.' + id + '.title', body: 'end.' + id + '.body' });
+          addTextKey(s.text, { en: titleBox.value.trim() }, 'end.');
+          addTextKey(s.body, { en: bodyBox.value.trim() }, 'end.');
+          M().screens.push(s);
+          changed();
+          S.ui.qview = 'list';
+          go('questions', { test: 'screen-card-' + id });
+          toast('Ending added below the thank-you screen. Now send partners there with a jump: Edit an earlier question > After this question > Add a jump.', { kind: 'ok', timeout: 9000 });
+        } }
+      ]
+    });
+  }
+
+  /* ---- Questions > Map ----------------------------------------------------- */
+
+  function backToList() {
+    return btn('← All questions', 'qview-back', function () { stopMapFrame(); S.ui.qview = 'list'; renderMain(false); }, { small: true });
+  }
+
+  function mapView() {
+    var st = S.ui.map;
+    var box = h('div', { test: 'map-box', 'data-state': 'starting', style: 'margin-top:12px' });
+    setTimeout(function () { if (document.body.contains(box)) fillMap(box); }, 0);
+    return [
+      sectionHead('Map of the route', 'Every screen partners can get and every arrow between them, worked out by the form’s own route code.', backToList()),
+      card({ test: 'map-card' },
+        h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'Which version' },
+          choiceCard('map-which', 'draft', st.which === 'draft', 'Your draft (unsaved changes included)', 'map-which-draft', function () { st.which = 'draft'; renderMain(true); }),
+          choiceCard('map-which', 'live', st.which === 'live', 'The live version (what partners get now)', 'map-which-live', function () { st.which = 'live'; renderMain(true); })),
+        box)
+    ];
+  }
+
+  function fillMap(box) {
+    stopMapFrame();
+    var st = S.ui.map, lib = S.flow.lib;
+    function say(cls, text, test, extra) {
+      box.setAttribute('data-state', 'message');
+      redraw(box, function () { return h('div', { class: 'callout' + (cls ? ' ' + cls : ''), test: test }, h('p', { text: text }), extra || null); });
+    }
+    var survey, strings;
+    if (st.which === 'live') {
+      if (!st.live && !st.liveError) {
+        say('', 'Loading the live version…', 'map-live-loading');
+        if (!st.liveLoading) {
+          st.liveLoading = true;
+          call('panelLiveSurvey').then(function (res) { st.live = obj(res); }, function (e) { st.liveError = e.message; }).then(function () {
+            st.liveLoading = false;
+            if (document.body.contains(box)) fillMap(box);
+          });
+        }
+        return;
+      }
+      if (st.liveError) {
+        say('is-error', 'The live version could not be loaded: ' + st.liveError, 'map-live-error',
+          h('p', null, btn('Try again', 'map-live-retry', function () { st.liveError = ''; st.live = null; fillMap(box); }, { small: true })));
+        return;
+      }
+      if (!st.live.live) { say('', 'Nothing is published yet, so partners get the questionnaire stored in GitHub. Switch to your draft to see its map.', 'map-live-none'); return; }
+      survey = st.live.survey;
+      strings = st.live.strings;
+    } else {
+      var info = flowInfo();
+      if (!info || !info.ok) { say('is-warn', 'The route could not be worked out: ' + (info ? info.error : 'the route tools are not loaded') + '.', 'map-error'); return; }
+      survey = info.survey;
+      strings = M().texts;
+    }
+    var code;
+    try { code = lib.flowCheck.toMermaid(survey, strings); } catch (e) {
+      say('is-error', 'The map could not be made: ' + ((e && e.message) || e), 'map-error');
+      return;
+    }
+    drawMapFrame(box, code, survey, strings, st.which === 'live' ? 'Version ' + str(st.live.live.version) : 'Your draft');
+  }
+
+  /* The Map: the route as a text outline straight away (with the
+     mermaid.live link), and the drawing in a sandboxed frame below it, out of
+     sight until the frame says "drawn"; then the drawing replaces the
+     outline. After MAP_SLOW_MS a note says it is still loading; after
+     MAP_WAIT_MS (or when the frame says "failed") the panel stops waiting
+     and keeps the outline. */
+  function drawMapFrame(box, code, survey, strings, label) {
+    var token = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    var frame = h('iframe', { class: 'map-frame is-loading', sandbox: 'allow-scripts', title: 'Map of the route: ' + label, test: 'map-frame', tabindex: '-1' });
+    frame.setAttribute('srcdoc', mapDocument(code, token));
+    var status = h('p', { class: 'help', test: 'map-status' }, h('span', { class: 'spinner is-small' }),
+      ' Drawing the map of ' + label.toLowerCase() + '… Meanwhile, here is the same route as a list.');
+    var link = h('p', { class: 'help', test: 'map-link' },
+      h('a', { href: mermaidLiveUrl(code), target: '_blank', rel: 'noopener noreferrer', test: 'map-mermaid-live' }, 'Open in mermaid.live ↗'),
+      ' draws it in a new browser tab. The link holds only the questionnaire’s wording and codes, no partner data.');
+    var outline = h('div', { test: 'map-text' }, routeOutline(survey, strings));
+    box.textContent = '';
+    box.setAttribute('data-state', 'drawing');
+    appendKids(box, [status, link, outline, frame]);
+    mapFrame = { el: frame, token: token, timer: null, slowTimer: null, onMessage: null };
+    function fallback(why) {
+      if (mapFrame.el !== frame) return;
+      stopMapFrame();
+      if (!document.body.contains(box)) return;
+      box.setAttribute('data-state', 'fallback');
+      frame.remove();
+      status.remove();
+      box.insertBefore(h('div', { class: 'callout is-warn', test: 'map-fallback' },
+        h('p', { text: 'The diagram could not be drawn here (' + why + '). Below is the same route as a list; the link opens the drawing in a new tab.' })), box.firstChild);
+    }
+    mapFrame.onMessage = function (d) {
+      if (d.kind === 'drawn') {
+        clearTimeout(mapFrame.timer);
+        clearTimeout(mapFrame.slowTimer);
+        mapFrame.timer = null;
+        mapFrame.slowTimer = null;
+        box.setAttribute('data-state', 'drawn');
+        status.remove();
+        outline.remove();
+        frame.classList.remove('is-loading');
+        frame.removeAttribute('tabindex');
+        frame.style.height = Math.max(200, Math.min(9000, Math.round(Number(d.height) || 460) + 24)) + 'px';
+      } else if (d.kind === 'failed') {
+        fallback(str(d.why) || 'the drawing failed');
+      }
+    };
+    mapFrame.slowTimer = setTimeout(function () {
+      if (mapFrame.el !== frame || !document.body.contains(box)) return;
+      box.setAttribute('data-state', 'slow');
+      redraw(status, function () {
+        return [h('span', { class: 'spinner is-small' }), ' The drawing is still loading (its library is large, so this can take a while on a slow connection). The list below shows the same route.'];
+      });
+    }, MAP_SLOW_MS);
+    mapFrame.timer = setTimeout(function () { fallback('it did not finish within ' + (MAP_WAIT_MS / 1000) + ' seconds'); }, MAP_WAIT_MS);
+  }
+
+  /* ---- Questions > Try a path -------------------------------------------------
+     Drop-downs for every answer a rule, jump or "for each area rated low"
+     tests, plus the language, "the link says the language" and the number of
+     "what changed" items. PP.flowCheck.simulate (the form's own engine)
+     shows the screens, why the others are skipped, where Next would be
+     blocked and what would be sent. Nothing is sent or saved. */
+
+  function testedInputs(info) {
+    var F = S.flow.lib.flow;
+    var keys = [], facts = {};
+    var areas = F.items(info.graph, info.survey, 'areas');
+    function add(k) { if (keys.indexOf(k) === -1) keys.push(k); }
+    function cond(c) {
+      if (!c || typeof c !== 'object') return;
+      if (Array.isArray(c.all)) c.all.forEach(cond);
+      if (Array.isArray(c.any)) c.any.forEach(cond);
+      if (c.not) cond(c.not);
+      if (typeof c.fact === 'string') facts[c.fact] = true;
+      if (typeof c.answer === 'string') {
+        if (/\{area(\.[a-z_]+)?\}/.test(c.answer)) areas.forEach(function (a) { add(F.fill(c.answer, { area: a })); });
+        else add(c.answer);
+      }
+    }
+    function node(n) {
+      if (!n || typeof n !== 'object') return;
+      cond(n.show_if);
+      if (n.repeat_for && n.repeat_for.where) cond(n.repeat_for.where);
+      if (Array.isArray(n.next)) n.next.forEach(function (x) { if (x && typeof x === 'object') cond(x.when); });
+      if (n.type === 'group' && n.body) arr(n.body.nodes).forEach(node);
+    }
+    arr(info.graph.nodes).forEach(node);
+    var all = catalogAnswers(null) || [];
+    var known = {};
+    all.forEach(function (d) { known[d.ref] = true; });
+    return { answers: all.filter(function (d) { return keys.indexOf(d.ref) !== -1; }), unknown: keys.filter(function (k) { return !known[k]; }), round: !!facts.round };
+  }
+
+  function tryView() {
+    var info = flowInfo();
+    var head = sectionHead('Try a path', 'Pick answers and see which screens a partner gets, why the others are skipped, and exactly what would be sent. Nothing is sent or saved.', backToList());
+    if (!info || !info.ok) return [head, routeNote() || h('div', { class: 'callout is-warn', test: 'try-error' }, h('p', { text: 'The route could not be worked out: ' + (info ? info.error : '') }))];
+    var st = S.ui.tryPath;
+    if (!st.lang || !langByCode(st.lang)) st.lang = defaultLang();
+    var tested = testedInputs(info);
+    var result = h('div', { test: 'try-result' });
+    function run() { redraw(result, function () { return tryResult(info, st); }); }
+    var controls = [];
+    controls.push(field('Language', selectCtl(activeLangs().map(function (L) { return { value: L.code, label: langLabel(L) }; }), st.lang, 'try-lang',
+      function (v) { st.lang = v; run(); }, { aria: 'Language' })));
+    var inUrl = h('input', { type: 'checkbox', test: 'try-lang-in-url', checked: !!st.langInUrl });
+    inUrl.addEventListener('change', function () { st.langInUrl = inUrl.checked; run(); });
+    controls.push(h('label', { style: 'display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer' }, inUrl, h('span', { text: 'The partner’s link already says the language (&lang=…)' })));
+    controls.push(h('div', { style: 'margin-top:10px' }, field('“What changed” items for the round', selectCtl(['0', '1', '2', '3'].map(function (n) { return { value: n, label: n }; }), st.wc, 'try-wc',
+      function (v) { st.wc = v; run(); }, { aria: 'What changed items' }))));
+    if (tested.round) {
+      var rounds = [{ value: '', label: '(a round no rule names)' }].concat(M().rounds.map(function (r) { return { value: r.id, label: r.id }; }));
+      if (st.round && !M().rounds.some(function (r) { return r.id === st.round; })) st.round = '';
+      controls.push(h('div', { style: 'margin-top:10px' }, field('Round', selectCtl(rounds, st.round, 'try-round', function (v) { st.round = v; run(); }, { aria: 'Round' }))));
+    }
+    controls.push(h('div', { class: 'group-label', style: 'margin-top:16px', text: tested.answers.length ? 'Answers that rules and jumps test' : 'No rule or jump tests an answer yet.' }));
+    tested.answers.forEach(function (d) {
+      var opts = [{ value: '', label: '(not answered)' }];
+      if (d.kind === 'text') opts.push({ value: 'text:typed answer', label: 'Typed an answer' }, { value: 'voice', label: 'Recorded a voice note' });
+      else d.values.forEach(function (v) { opts.push({ value: String(v.v), label: v.label }); });
+      var cur = st.answers[d.ref] === undefined ? '' : String(st.answers[d.ref]);
+      if (!opts.some(function (o) { return o.value === cur; })) cur = '';
+      controls.push(h('div', { style: 'margin-top:8px' }, field(d.label, selectCtl(opts, cur, 'try-answer-' + d.ref, function (v) {
+        if (v === '') { delete st.answers[d.ref]; } else {
+          var hit = null;
+          d.values.forEach(function (x) { if (String(x.v) === v) hit = x.v; });
+          st.answers[d.ref] = hit === null ? v : hit;
+        }
+        run();
+      }, { aria: d.label }))));
+    });
+    if (tested.unknown.length) controls.push(h('p', { class: 'field-warn', test: 'try-unknown', text: 'Rules also test ' + tested.unknown.map(quote).join(', ') + ', which no screen stores: Check for problems in Publish.' }));
+    run();
+    return [head, h('div', { class: 'try-grid' },
+      card({ title: 'Answers and the link', test: 'try-inputs' }, controls),
+      card({ title: 'What this partner gets', test: 'try-output' }, result))];
+  }
+
+  function stepName(info, node, item) {
+    var i = info.rowOfNode['#' + node];
+    if (i === undefined) { var p = screenPos(node); if (p !== -1) i = p; }
+    var place = i === undefined ? (node === 'thanks' ? 'The form’s own thank-you screen' : quote(node)) : 'Question ' + (i + 1);
+    return place + (item ? ' – ' + areaName(item) : '');
+  }
+
+  function tryResult(info, st) {
+    var lib = S.flow.lib;
+    var answers = {};
+    Object.keys(st.answers).forEach(function (k) { if (st.answers[k] !== '' && st.answers[k] !== undefined) answers[k] = st.answers[k]; });
+    var facts = { lang: st.lang || defaultLang(), lang_in_url: !!st.langInUrl, whats_changed_count: Number(st.wc) || 0 };
+    if (st.round) facts.round = st.round;
+    var sim;
+    try { sim = lib.flowCheck.simulate(info.survey, answers, facts, { strings: M().texts }); } catch (e) {
+      return h('div', { class: 'callout is-error', test: 'try-error' }, h('p', { text: 'Try a path could not run: ' + ((e && e.message) || e) }));
+    }
+    var sub = obj(sim.submission);
+    var sent = { answers: obj(sub.answers), ratings: arr(sub.ratings), free_text: arr(sub.free_text) };
+    var out = [];
+    out.push(h('p', { test: 'try-summary', style: 'margin:0 0 6px' }, h('strong', { text: plural(sim.steps.length, 'screen') }),
+      sim.blocked.length ? ' · Next needs an answer on ' + plural(sim.blocked.length, 'screen') + ' (⏸): only the answers that rules test are asked here.' : ''));
+    out.push(h('ol', { class: 'try-steps', test: 'try-steps' }, sim.steps.map(function (row) {
+      return h('li', { test: 'try-step-' + row.n },
+        h('strong', { text: stepName(info, row.node, row.label_en ? null : row.item) }), row.label_en ? ': ' + shorten(row.label_en, 80) : '',
+        row.end ? badge('Ends: sends the answers', 'end') : null,
+        row.blocked ? badge('⏸ Next needs an answer', 'warn') : null);
+    })));
+    out.push(h('div', { class: 'group-label', style: 'margin-top:14px', text: sim.skipped.length ? 'Skipped (' + sim.skipped.length + ')' : 'Nothing is skipped' }));
+    if (sim.skipped.length) {
+      out.push(h('ul', { class: 'route-list', test: 'try-skipped' }, sim.skipped.map(function (x) {
+        var item = /:/.test(str(x.id)) && x.id !== x.node ? str(x.id).split(':').pop() : null;
+        return h('li', null, h('strong', { text: stepName(info, x.node, item) }), ': ' + str(x.reason));
+      })));
+    }
+    out.push(h('div', { class: 'try-sent', test: 'try-sent', style: 'margin-top:14px' },
+      h('div', { class: 'group-label', text: 'What would be sent' }),
+      h('p', { class: 'help', style: 'margin:0', text: plural(Object.keys(sent.answers).length, 'answer') + ', ' + plural(sent.ratings.length, 'rating') + ', ' +
+        plural(sent.free_text.length, 'typed or recorded item') + '.' }),
+      h('details', { style: 'margin-top:6px' }, h('summary', { test: 'try-sent-toggle', class: 'field-label', style: 'cursor:pointer' }, 'Show the data'),
+        h('pre', { test: 'try-sent-json' }, JSON.stringify(sent, null, 2)))));
+    return out;
   }
 
   /* ---- Add a question ------------------------------------------------------ */
@@ -2799,15 +4366,17 @@ details.group > .group-body { padding: 0 16px 14px; }
     var screens = M().screens;
     var thanksIdx = screens.map(function (s) { return s.type; }).indexOf('thank_you');
     var defaultAfter = thanksIdx > 0 ? thanksIdx - 1 : screens.length - 1;
+    /* With the route tools, a question may also go below the thank-you screen
+       (another route, reached by a jump). */
     var afterOptions = screens.map(function (s, i) { return { value: String(i), label: afterLabel(s, i) }; })
-      .filter(function (o, i) { return screens[i].type !== 'thank_you'; });
+      .filter(function (o, i) { return S.flow.lib ? true : screens[i].type !== 'thank_you'; });
     afterOptions.unshift({ value: '-1', label: 'At the very start' });
     var afterSel = selectCtl(afterOptions, String(defaultAfter), 'new-question-after', null, { aria: 'Put it after' });
     var grid = h('div', { class: 'type-grid', role: 'radiogroup', 'aria-label': 'Kind of question' });
 
     function updateCode() {
       var t = typeInfo(state.type);
-      var std = BUILTIN_TEXT_KEYS[state.type];
+      var std = t.default_text;   // the standard text of a built-in kind (support_block: q.support_block)
       textField.hidden = !t.needs_text || !!(std && en(std));   // its standard text already exists
       if (t.builtin) { codePreview.textContent = ''; return; }
       codePreview.textContent = 'Code in the data: ' + slug(state.text, takenScreenIds(), 'question') + ' (' + codeChangeHint() + ')';
@@ -2843,26 +4412,25 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* One line of the "Put it after" list. Built-in blocks use the name on
-     their card in Questions (for example "4. Area ratings (one screen per
-     area)"); other questions use their English text. */
-  var AFTER_NOTES = {
-    function_ratings: ' (one screen per area)',
-    function_deep_dives: ' (one screen per area rated low)',
-    support_block: ' (all support questions on one screen)'
-  };
+     their card in Questions plus their kind's after_note (for example "4. Area
+     ratings (one screen per area)"); other questions use their English text. */
   function afterLabel(s, i) {
     var t = typeInfo(s.type);
-    var name = t.builtin ? t.label + (AFTER_NOTES[s.type] || '') : shorten(screenEnglish(s) || t.label, 60);
+    var name = t.builtin ? t.label + (typeof t.after_note === 'string' ? t.after_note : '') : shorten(screenEnglish(s) || t.label, 60);
+    if (s.type === 'thank_you') {
+      name = i === mainEndIndex() ? t.label + ' (the end of the main route: below it, partners arrive only through a jump)'
+        : 'Ending: ' + shorten(screenEnglish(s), 50);
+    }
     return (i + 1) + '. ' + name + (s.active ? '' : ' (hidden)');
   }
 
   function createScreen(type, english, afterIdx) {
     var t = typeInfo(type);
-    var id = t.builtin ? slug(BUILTIN_IDS[type] || type, takenSet(M().screens.map(function (s) { return s.id; })), type) : slug(english, takenScreenIds(), 'question');
+    var id = t.builtin ? slug(t.default_id || type, takenSet(M().screens.map(function (s) { return s.id; })), type) : slug(english, takenScreenIds(), 'question');
     var s = normaliseScreen({ id: id, type: type, active: true, required: null });
     if (t.fields.indexOf('required') !== -1) s.required = effectiveRequired(s);   // start from the type's standard
     if (t.needs_text) {
-      var key = BUILTIN_TEXT_KEYS[type] || 'q.' + id;
+      var key = t.default_text || 'q.' + id;
       s.text = key;
       if (!M().texts[key]) addTextKey(key, { en: english }, 'q.');
       else if (english && !en(key)) setText(key, 'en', english);   // never overwrite existing wording
@@ -2875,17 +4443,20 @@ details.group > .group-body { padding: 0 16px 14px; }
     if (type === 'language_picker') s.skip_if = 'lang_in_url';
     if (type === 'whats_changed') s.skip_if = 'empty';
     var screens = M().screens;
+    var below = false;
     if (type === 'thank_you') screens.push(s);
     else {
       var at = Math.max(0, Math.min(afterIdx + 1, screens.length));
       var thanks = screens.map(function (x) { return x.type; }).indexOf('thank_you');
-      if (thanks !== -1 && at > thanks) at = thanks;
+      if (thanks !== -1 && at > thanks && !S.flow.lib) at = thanks;   // without the route tools nothing goes below it
+      below = thanks !== -1 && at > thanks;
       screens.splice(at, 0, s);
     }
     changed();
     S.ui.editing = id;
     go('questions');
-    toast('Question added. ' + (type === 'single_choice' ? 'Now add the answers partners can pick.' : 'Check the other languages, then save.'), { kind: 'ok' });
+    toast('Question added. ' + (type === 'single_choice' ? 'Now add the answers partners can pick.' : 'Check the other languages, then save.') +
+      (below ? ' It is below the thank-you screen, so partners reach it only through a jump from an earlier question.' : ''), { kind: 'ok', timeout: below ? 9000 : undefined });
   }
 
   /* Starts a new text as a copy of a standard one (all languages), so new
@@ -2912,11 +4483,19 @@ details.group > .group-body { padding: 0 16px 14px; }
     });
   }
 
+  /* Why a live answer of a pick-one question can't be removed (Publish would
+     refuse it: Model.gs PP_mdlCheckLiveCodes_), and what to do instead. */
+  var LIVE_OPTION_REASON = 'Partners already picked this answer in a real round, so it must stay: an answer can’t be removed or hidden, because the dashboard compares rounds by its code. You can still reword it (change its label in the boxes below).';
+
   function removeOptionFlow(s, code) {
-    var live = isLive.option(s.id, code);
-    var users = rulesUsing(function (ref) { return ref === s.id; });
+    if (isLive.option(s.id, code)) {
+      openModal({ title: 'This answer must stay', test: 'confirm-remove-option',
+        body: [h('div', { class: 'callout is-warn', test: 'option-live-note' }, h('p', { text: LIVE_OPTION_REASON }))],
+        buttons: [{ label: 'OK', kind: 'primary', test: 'modal-cancel', onClick: function (c) { c(); } }] });
+      return;
+    }
+    var users = rulesUsing(function (ref) { return ref === s.id || isRepeatedRef(ref, s.id); });
     var body = [h('p', { text: 'Remove the answer ' + quote(optionLabel(s.id, code)) + ' and its texts?' })];
-    if (live) body.push(h('div', { class: 'callout is-warn' }, h('p', { text: 'This answer is live: earlier rounds stored its code. If you only want different words, change the label instead, so the dashboard can still compare rounds.' })));
     if (users.length) body.push(h('p', { class: 'field-warn', text: 'Check the rule on ' + users.join(', ') + ': it tests this question.' }));
     confirmBox({ title: 'Remove this answer?', body: body, ok: 'Remove', danger: true, test: 'confirm-remove-option' }).then(function (ok) {
       if (!ok) return;
@@ -2946,13 +4525,23 @@ details.group > .group-body { padding: 0 16px 14px; }
       var old = s.id;
       ['text', 'low_label', 'high_label', 'scale_hint', 'body'].forEach(function (f) {
         var k = s[f];
-        if (k && (k === 'q.' + old || k.indexOf('q.' + old + '.') === 0)) {
-          var nk = 'q.' + nc + k.slice(('q.' + old).length);
-          if (renameTextKey(k, nk)) s[f] = nk;
-        }
+        ['q.', 'end.'].forEach(function (pre) {
+          if (k && (k === pre + old || k.indexOf(pre + old + '.') === 0)) {
+            var nk = pre + nc + k.slice((pre + old).length);
+            if (renameTextKey(k, nk)) s[f] = nk;
+          }
+        });
       });
       s.options.forEach(function (o) { renameTextKey('choice.' + old + '.' + o, 'choice.' + nc + '.' + o); });
-      forEachCondition(function (c) { if (c.answer === old) c.answer = nc; });
+      forEachCondition(function (c) {
+        if (c.answer === old) c.answer = nc;
+        else if (isRepeatedRef(c.answer, old)) c.answer = nc + c.answer.slice(old.length);
+      });
+      /* Arrows that point at it follow the new code. */
+      M().screens.forEach(function (x) {
+        if (x.next === old) x.next = nc;
+        jumpsOf(x).forEach(function (j) { if (j && j['goto'] === old) j['goto'] = nc; });
+      });
       s.id = nc;
       S.ui.editing = nc;
       changed({ rerender: true });
@@ -3119,9 +4708,11 @@ details.group > .group-body { padding: 0 16px 14px; }
         if (k.indexOf('issue.' + old + '.') === 0) renameTextKey(k, 'issue.' + nc + '.' + k.slice(('issue.' + old + '.').length));
       });
       M().chips.forEach(function (c) { if (c.area === old) c.area = nc; });
+      var repeated = M().screens.filter(function (x) { return x.repeat; }).map(function (x) { return x.id; });
       forEachCondition(function (c) {
         if (c.answer === 'fn_rating:' + old) c.answer = 'fn_rating:' + nc;
         if (c.answer === 'fn_deep_dive:' + old) c.answer = 'fn_deep_dive:' + nc;
+        repeated.forEach(function (rid) { if (c.answer === rid + ':' + old) c.answer = rid + ':' + nc; });   // asked once per area
       });
       a.id = nc;
       if (S.ui.openArea === old) S.ui.openArea = nc;
@@ -3130,7 +4721,7 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   function deleteAreaFlow(a) {
-    var users = rulesUsing(function (ref) { return ref === 'fn_rating:' + a.id || ref === 'fn_deep_dive:' + a.id; });
+    var users = rulesUsing(function (ref) { return ref === 'fn_rating:' + a.id || ref === 'fn_deep_dive:' + a.id || /:/.test(ref) && ref.split(':').pop() === a.id; });
     var body = [h('p', { text: 'Delete the area ' + quote(areaName(a.id)) + ', its ' + plural(chipsOf(a.id).length, 'problem') + ' and their texts in every language?' })];
     if (users.length) body.push(h('p', { class: 'field-warn', text: 'The rule on ' + users.join(', ') + ' tests this area and will need a new rule.' }));
     confirmBox({ title: 'Delete this area?', body: body, ok: 'Delete', danger: true, test: 'confirm-delete-area' }).then(function (ok) {
@@ -3373,6 +4964,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     if ((m = /^issue\.([a-z0-9_]+)\.([a-z0-9_]+)$/.exec(key))) return 'Problem in ' + areaName(m[1]);
     if ((m = /^choice\.([a-z0-9_]+)\.([a-z0-9_]+)$/.exec(key))) return 'Answer of question ' + quote(m[1]);
     if (key === 'support.not_applicable') return '“Doesn’t apply” on support rows';
+    if ((m = /^end\.([a-z0-9_]+)\.(title|body)$/.exec(key))) return (m[2] === 'title' ? 'Title' : 'Message') + ' of the ending ' + quote(m[1]);
     if (/^support\./.test(key)) return 'Support item';
     var users = [];
     M().screens.forEach(function (s, i) {
@@ -4157,6 +5749,17 @@ details.group > .group-body { padding: 0 16px 14px; }
     return /show_if|\brules?\b/i.test(String((it && it.ref) || '') + ' ' + msg);
   }
 
+  /* Is a Questions problem about where the question goes next (its jumps or
+     its "usually go to", the "After this question" card)? The checker says
+     'its jump to "…"', Flow.gs 'jump 2 goes to …' or 'its "usually go to"
+     arrow', the run-on check 'has no "usually go to"'. Not when the fix is an
+     arrow of an EARLIER screen ("nothing leads here"). The question's own
+     words are left out, as in isRuleIssue. Self-contained: the bench tests it. */
+  function isJumpIssue(it) {
+    var msg = String((it && it.message) || '').replace(/\("[\s\S]*?"\)/, '');
+    return /\bits jumps?\b|\bjump \d+\b|"usually go to"|\bgoes on to\b/i.test(msg) && !/\bof an earlier screen\b/i.test(msg);
+  }
+
   /* Opens the section and the item a problem is about. */
   function goToIssue(it) {
     var ref = str(it.ref);
@@ -4193,7 +5796,7 @@ details.group > .group-body { padding: 0 16px 14px; }
         var s = null;
         if ((m = /screen\s+(\d+)/i.exec(ref))) s = M().screens[Number(m[1]) - 1] || null;
         if (!s) M().screens.forEach(function (x) { if (!s && (ref === x.id || ref.indexOf(x.id + ' ') === 0 || ref.indexOf(x.id + '>') === 0 || ref.indexOf(x.id + '/') === 0)) s = x; });
-        if (s) { S.ui.editing = s.id; go('questions', { test: isRuleIssue(it) ? 'rule-card' : 'editor-text-card' }); return; }
+        if (s) { S.ui.editing = s.id; S.ui.qview = 'list'; go('questions', { test: isJumpIssue(it) ? 'after-card' : isRuleIssue(it) ? 'rule-card' : 'editor-text-card' }); return; }
         S.ui.editing = null;
         go('questions');
         return;
@@ -4284,8 +5887,10 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   function exportCard() {
     var files = S.ui.exportFiles;
-    var where = { 'survey.json': 'web/config/survey.json', 'strings.json': 'web/i18n/strings.json', 'whats_changed.json': 'web/config/whats_changed.json', 'audio_clips.json': 'web/config/audio_clips.json' };
-    var body = [h('p', { class: 'help', text: 'If Google is slow, phones use the copy of the questionnaire stored in GitHub. After publishing, download these 4 files and replace the ones in the repo (or send them to whoever looks after GitHub).' })];
+    /* Where each file goes in the GitHub project. flow.md is the map of the route (docs/flow.md), made
+       from the same survey.json and strings.json, so GitHub's settings check finds it up to date. */
+    var where = { 'survey.json': 'web/config/survey.json', 'strings.json': 'web/i18n/strings.json', 'whats_changed.json': 'web/config/whats_changed.json', 'audio_clips.json': 'web/config/audio_clips.json', 'flow.md': 'docs/flow.md' };
+    var body = [h('p', { class: 'help', text: 'If Google is slow, phones use the copy of the questionnaire stored in GitHub. After publishing, download these files and replace the ones in the repo (or send them to whoever looks after GitHub). flow.md is the map of the route: it goes in the docs folder.' })];
     if (S.draftDiffers || S.dirty) body.push(h('div', { class: 'callout is-warn', style: 'margin-bottom:10px' }, h('p', { text: 'Your draft has changes that are not published. The files contain the draft, so publish first if the backup should match what partners see.' })));
     if (!S.webAppRecorded) body.push(h('div', { class: 'callout is-warn', style: 'margin-bottom:10px', test: 'export-webapp-missing' },
       h('p', null, 'The web app address isn’t recorded yet, so survey.json would keep the form in test mode: it would not send answers to Google. Record it first under ',
@@ -4294,12 +5899,12 @@ details.group > .group-body { padding: 0 16px 14px; }
     if (files) {
       /* The server's own warning about these files (for example: no web app address yet). */
       if (S.ui.exportWarning) body.push(h('div', { class: 'callout is-warn', style: 'margin-top:12px', test: 'export-warning' }, h('p', { text: S.ui.exportWarning })));
-      body.push(h('p', { class: 'help', style: 'margin-top:12px', text: 'Ready. Download each file (one click each), then put it in the folder shown.' }));
+      body.push(h('p', { class: 'help', style: 'margin-top:12px', text: 'Ready. Download each file (one click each), then put it in the folder shown. Commit them together.' }));
       body.push(h('table', { class: 'table', test: 'export-files' },
         h('tbody', null, Object.keys(files).map(function (name) {
           return h('tr', null, h('td', null, h('strong', { text: name }), h('div', { class: 'small muted', text: 'goes to ' + (where[name] || name) })),
             h('td', null, h('div', { class: 'btn-group' },
-              btn('Download', 'export-file-' + name, function () { askIfTestMode(name, function () { download(name, str(files[name]), 'application/json'); }); }, { small: true, kind: 'primary' }),
+              btn('Download', 'export-file-' + name, function () { askIfTestMode(name, function () { download(name, str(files[name]), /\.md$/.test(name) ? 'text/markdown' : 'application/json'); }); }, { small: true, kind: 'primary' }),
               btn('Copy', 'export-copy-' + name, function () { askIfTestMode(name, function () { copyText(str(files[name]), name); }); }, { small: true, kind: 'ghost' }))));
         }))));
     }
@@ -4331,7 +5936,7 @@ details.group > .group-body { padding: 0 16px 14px; }
         renderMain(true);
         S.ui.pendingFocus = { test: 'export-files', focusTest: 'export-file-survey.json' };
         applyPendingFocus();
-        toast('The 4 files are ready to download.', { kind: 'ok' });
+        toast('The ' + Object.keys(S.ui.exportFiles).length + ' files are ready to download.', { kind: 'ok' });
       });
     }).catch(function (e) { showError('The files could not be prepared', e); });
   }
@@ -4809,6 +6414,8 @@ details.group > .group-body { padding: 0 16px 14px; }
       S.ui.publishNote = '';
       S.ui.history = null;
       S.ui.historyFailed = false;
+      S.ui.map.live = null;          // the Map's live version is a new one now
+      S.ui.map.liveError = '';
       return reloadQuiet().then(function () {
         loadHistory();
         /* After "Publish first" (Rounds): offer to open that round now. */
@@ -4817,9 +6424,16 @@ details.group > .group-body { padding: 0 16px 14px; }
         var buttons = [{ label: waiting ? 'Not now' : 'OK', kind: waiting ? null : 'primary', test: 'published-ok', onClick: function (c) { c(); } }];
         if (waiting) buttons.push({ label: (waiting.status === 'closed' ? 'Re-open round ' : 'Open round ') + waiting.id + ' now', kind: 'primary', test: 'published-open-round',
           onClick: function (c) { c(); roundStatusFlow(waiting, 'open'); } });
+        /* What Publish wants looked at (for example: the form on GitHub could not be
+           checked, or the list of protected codes is nearly full) is shown here,
+           never only in the server's log (26 Oct 2026, review finding 3). */
+        var warnings = arr(res.warnings).map(str).filter(Boolean);
         openModal({
           title: 'Version ' + res.version + ' is live', test: 'published-modal',
           body: [h('p', { text: 'Partners get it the next time they open their link. Version code: ' + str(res.config_version) + '.' }),
+            warnings.length ? h('div', { class: 'callout is-warn', style: 'margin-bottom:10px', test: 'published-warnings' },
+              h('p', null, h('strong', { text: warnings.length === 1 ? 'Please check one thing:' : 'Please check ' + warnings.length + ' things:' })),
+              warnings.map(function (w) { return h('p', { text: w }); })) : null,
             waiting ? h('p', { test: 'published-next-round', text: 'Next: open round ' + waiting.id + ', so partners with its links can answer this version.' }) : null,
             h('p', { class: 'help', text: 'Tip: download the files for the GitHub copy (step 4 below), so the backup matches what partners see.' })],
           buttons: buttons
@@ -5043,12 +6657,14 @@ details.group > .group-body { padding: 0 16px 14px; }
      ========================================================================== */
 
   function start() {
+    loadFlowCode();   // the route tools, in parallel (PART 5b)
     loadLatest().then(function (res) {
       adoptLoad(res, false);
       S.loaded = true;
       renderAll();
       offerRecovery();
       if (S.section === 'publish' && !S.dirty) runCheck();
+      if (!S.flowStatus) loadFlowStatus();
     }, function (e) {
       var boot = $('#boot');
       boot.textContent = '';
@@ -5117,6 +6733,14 @@ details.group > .group-body { padding: 0 16px 14px; }
       if (typeof host.setHeight === 'function' && scr.availHeight) host.setHeight(Math.max(420, Math.min(760, scr.availHeight - 200)));
       if (typeof host.setWidth === 'function' && scr.availWidth) host.setWidth(Math.max(720, Math.min(1100, scr.availWidth - 80)));
     } catch (e) { /* the window keeps the size the Sheet gave it */ }
+  }
+
+  /* For the local test bench only (tests/panel): its stand-in for Google sets
+     window.__ppTest before this page runs, and gets two read-only views of
+     this window's route here. Google's real page never sets it. */
+  if (window.__ppTest && typeof window.__ppTest === 'object') {
+    window.__ppTest.flowReady = function () { return !!S.flow.lib; };
+    window.__ppTest.flowSurvey = function () { var i = flowInfo(); return i && i.ok ? clone(i.survey) : null; };
   }
 
   fitToScreen();

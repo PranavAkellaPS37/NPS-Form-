@@ -1,0 +1,26 @@
+{
+ "_about": "Graph format: the problem screen has no \"require_choice\" (which means true), but survey.json's deep_dive > require_chip is false.",
+ "base": "graph",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "after_all_ratings",
+   "require_chip": false,
+   "require_detail_if_other": true
+  }
+ },
+ "patch": [
+  {
+   "op": "remove_field",
+   "node": "fn_deep_dives",
+   "field": "require_choice"
+  }
+ ],
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+{
+  "_source": "flow audit 22 Oct 2026 (workflow wf_43b4b1dd-f39), data verifier, verify-data/variants/x9_minimal_nps_thanks/web/config/survey.json",
+  "_note": "only nps and thanks",
+  "_expect": "same",
+  "_why": "No chained or forward rule: the new engine must give exactly the old screens, Next rules and message bytes.",
+  "flow": [
+    {"id":"nps","type":"nps_0_10","text":"q.nps","low_label":"nps.low","high_label":"nps.high","scale_hint":"nps.scale_hint","required":true},
+    {"id":"thanks","type":"thank_you"}
+  ]
+}

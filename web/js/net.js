@@ -25,7 +25,9 @@
                               Never fails: it gives null when the backend is slow
                               (more than ms milliseconds), down, says nothing is
                               published yet, refuses the preview key, or sends
-                              something unusable (and at once when no backend
+                              something unusable, such as a flow format this
+                              form doesn't know, or a flow with no screens or
+                              no usable start (and at once when no backend
                               address is set). app.js then uses the form's own
                               copy (web/config, web/i18n).
    - net.postJSON(body)     : send a message and read the JSON reply (with a time
@@ -179,13 +181,17 @@
 
   /* Only use an answer that really contains a questionnaire. Anything else
      (an error such as "not_published", a Google error page, a half-broken
-     answer) means: use the form's own copy. */
+     answer) means: use the form's own copy. The "flow" must be a list of
+     screens or a pp-flow/1 graph that a phone can run (PP.flow.isUsable: a
+     graph needs a "start" that names one of its screens; a graph without
+     screens would show an empty page that sends nothing); a newer format
+     this form doesn't know falls back too, which is safe. */
   function usableBootstrap(answer) {
     if (!answer || answer.ok !== true) return false;
     var survey = answer.survey;
     var strings = answer.strings;
     return Boolean(survey && typeof survey === 'object' &&
-      Array.isArray(survey.flow) && survey.flow.length &&
+      PP.flow.isUsable(survey.flow) &&
       Array.isArray(survey.languages) && survey.languages.length &&
       strings && typeof strings === 'object' && !Array.isArray(strings));
   }

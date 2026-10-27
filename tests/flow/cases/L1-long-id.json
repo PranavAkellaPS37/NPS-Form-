@@ -1,0 +1,19 @@
+{
+ "_about": "An id longer than 60 characters (and a key over 80).",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "store_as",
+   "value": "did_you_also_contact_the_valmo_partner_helpline_by_phone_or_whatsapp_in_the_last_month"
+  }
+ ],
+ "expect": [
+  {
+   "code": "L1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

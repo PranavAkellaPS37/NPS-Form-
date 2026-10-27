@@ -1,0 +1,30 @@
+{
+ "_about": "Proposal example \"a rule on the language\": an information card only for Tamil and Telugu.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "next",
+   "value": "tamil_note"
+  },
+  {
+   "op": "add",
+   "after": "nps",
+   "value": {
+    "id": "tamil_note",
+    "type": "info_card",
+    "text": "q.tamil_note",
+    "show_if": {
+     "fact": "lang",
+     "in": [
+      "ta",
+      "te"
+     ]
+    },
+    "next": "fn_ratings"
+   }
+  }
+ ],
+ "expect_clean": true
+}

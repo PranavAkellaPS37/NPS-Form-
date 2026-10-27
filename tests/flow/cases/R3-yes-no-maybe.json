@@ -1,0 +1,22 @@
+{
+ "_about": "A yes/no answer can never be \"maybe\".",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "support",
+   "field": "show_if",
+   "value": {
+    "answer": "support_gate",
+    "equals": "maybe"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R3",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

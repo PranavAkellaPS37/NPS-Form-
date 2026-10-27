@@ -1,0 +1,23 @@
+{
+ "_about": "A rule on an answer whose screen is not always shown (a chain): a note, because the stale-answer fix changes it.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "support:kept_updated",
+    "at_most": 2
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R5",
+   "level": "info",
+   "node": "one_fix"
+  }
+ ],
+ "expect_no_errors": true
+}

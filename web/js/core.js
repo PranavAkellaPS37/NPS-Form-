@@ -20,7 +20,9 @@
      speech.js  -> the read-aloud (speaker) button
      voice.js   -> the voice-note recorder and the "type instead" box
      net.js     -> talking to the backend (mock server or Google Apps Script)
-     screens.js -> draws each kind of screen
+     ui.js      -> the shared drawing pieces (question title, faces, voice box)
+     types.js   -> draws each built-in kind of screen (until 26 Oct 2026 this
+                   was screens.js); a new kind adds one file js/types/<name>.js
      app.js     -> starts everything and moves between screens
 
    You never need to edit this file to change the questionnaire: questions,

@@ -1,0 +1,13 @@
+{
+ "_about": "The list format with deep_dive.when = \"immediate\" (problem screen straight after each low rating): nothing to report.",
+ "base": "list",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "immediate",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "expect_clean": true
+}

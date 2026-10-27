@@ -227,15 +227,18 @@ function makeSubmission(o) {
   return body;
 }
 
+/* A fake ping. o.config_version replaces the version stamp; o.drop lists fields to leave out. */
 function makePing(o) {
   const body = {
-    kind: 'ping', schema_version: 1, stage: o.stage || 'opened', survey_id: 'valmo-partner-pulse', config_version: 'p1-2026-10-20',
+    kind: 'ping', schema_version: 1, stage: o.stage || 'opened', survey_id: 'valmo-partner-pulse',
+    config_version: o.config_version !== undefined ? o.config_version : 'p1-2026-10-20',
     app_version: '0.1.0', dc: o.dc, t: o.t, round: o.round, session_id: o.session_id || 'ses_harnessping001', lang: o.lang || 'hi',
     mode: 'live', screen: o.screen || 'nps', step_index: 2, step_total: 13, at: new Date(Date.UTC(2026, 9, 20, 5, 0, 0)).toISOString()
   };
   if (body.stage === 'opened') body.client = { ua: 'Mozilla/5.0 (Linux; Android 11)', viewport: '360x740', tz_offset_min: -330, net: '4g' };
   if (body.stage === 'progress') body.events = o.events || [{ seq: 1, screen: 'nps', at: body.at }];
   if (o.t === undefined) delete body.t;
+  if (o.drop) for (const k of o.drop) delete body[k];
   return body;
 }
 

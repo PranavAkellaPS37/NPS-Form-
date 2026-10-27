@@ -1,0 +1,19 @@
+{
+ "_about": "Graph format: survey.json's deep_dive > when is \"immediate\", but the flow asks the problem screens after all the area ratings.",
+ "base": "graph",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "immediate",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

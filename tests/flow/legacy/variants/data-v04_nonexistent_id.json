@@ -1,0 +1,17 @@
+{
+  "_source": "flow audit 22 Oct 2026 (workflow wf_43b4b1dd-f39), data auditor, data/web-copy/v04_nonexistent_id/web/config/survey.json",
+  "_note": "one_fix tests \"ghost\", which no screen stores: an answer saved under that key (say, by an older version) is off the path, so it is ignored now",
+  "_expect": "chained",
+  "_why": "A rule reads an answer whose screen is not always shown: must equal the old engine run without answers to screens off the path (the stale-answer fix).",
+  "flow": [
+    {"id":"language","type":"language_picker","skip_if":"lang_in_url"},
+    {"id":"whats_changed","type":"whats_changed","skip_if":"empty"},
+    {"id":"nps","type":"nps_0_10","text":"q.nps","low_label":"nps.low","high_label":"nps.high","scale_hint":"nps.scale_hint","required":true},
+    {"id":"fn_ratings","type":"function_ratings"},
+    {"id":"fn_deep_dives","type":"function_deep_dives"},
+    {"id":"support_gate","type":"yes_no","text":"q.support_gate","required":true},
+    {"id":"support","type":"support_block","text":"q.support_block","show_if":{"answer":"support_gate","equals":"yes"}},
+    {"id":"one_fix","type":"free_text","text":"q.one_fix","required":false,"show_if":{"answer":"ghost","equals":"yes"}},
+    {"id":"thanks","type":"thank_you"}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+ "_about": "Graph format: survey.json's deep_dive > require_chip is false, but the problem screen says \"require_choice\": true (phones follow the screen).",
+ "base": "graph",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "after_all_ratings",
+   "require_chip": false,
+   "require_detail_if_other": true
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

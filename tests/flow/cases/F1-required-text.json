@@ -1,0 +1,19 @@
+{
+ "_about": "\"required\" written in quotes (\"false\") instead of true/false.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "required",
+   "value": "false"
+  }
+ ],
+ "expect": [
+  {
+   "code": "F1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

@@ -1,0 +1,42 @@
+{
+ "_about": "In the panel: a jump to a hidden question (it goes to that question's default instead): a warning.",
+ "base": "graph",
+ "opts": {
+  "surface": "panel",
+  "hiddenCodes": [
+   "support"
+  ]
+ },
+ "patch": [
+  {
+   "op": "set",
+   "node": "support_gate",
+   "field": "next",
+   "value": [
+    {
+     "when": {
+      "answer": "support_gate",
+      "equals": "yes"
+     },
+     "goto": "support"
+    },
+    {
+     "default": "one_fix"
+    }
+   ]
+  },
+  {
+   "op": "remove_field",
+   "node": "support",
+   "field": "show_if"
+  }
+ ],
+ "expect": [
+  {
+   "code": "C2",
+   "level": "warning",
+   "node": "support_gate"
+  }
+ ],
+ "expect_no_errors": true
+}

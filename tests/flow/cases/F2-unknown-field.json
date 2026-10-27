@@ -1,0 +1,23 @@
+{
+ "_about": "A misspelt field (\"shwo_if\") has no effect: a warning.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "shwo_if",
+   "value": {
+    "answer": "nps",
+    "at_most": 6
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "F2",
+   "level": "warning",
+   "node": "one_fix"
+  }
+ ],
+ "expect_no_errors": true
+}

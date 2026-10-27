@@ -1,0 +1,22 @@
+{
+ "_about": "List format: the thank-you screen is not the last line.",
+ "base": "list",
+ "patch": [
+  {
+   "op": "add",
+   "after": "thanks",
+   "value": {
+    "id": "late_q",
+    "type": "yes_no",
+    "text": "q.callback"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "G4",
+   "level": "error",
+   "node": "thanks"
+  }
+ ]
+}

@@ -1,0 +1,18 @@
+{
+ "_about": "Graph format: survey.json's support > allow_comment is true, but the support screen has no comment box (no \"comment\").",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "remove_field",
+   "node": "support",
+   "field": "comment"
+  }
+ ],
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

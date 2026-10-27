@@ -1,0 +1,17 @@
+{
+ "_about": "List format: problem screens but no area ratings line: the problem screens test ratings nobody gives.",
+ "base": "list",
+ "patch": [
+  {
+   "op": "remove",
+   "node": "fn_ratings"
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

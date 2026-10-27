@@ -19,7 +19,15 @@
                   POST /control/open_section {section}       menu hint
                   POST /control/latency {ms}
                   POST /control/webapp {url}                  recorded web app address ('' = none)
+                  POST /control/flow_status {form}            what panelFlowStatus finds at the form address:
+                                                              'repo' (default), 'unreachable' or a fingerprint
                   POST /control/nohost {}                     next page loads get no google.script.host
+                  POST /control/live_unknown {on}             the live codes can't be read (Drive hiccup)
+                  POST /control/publish_warnings {warnings}   the next Publish answers these warnings
+                  POST /control/model {model}                 a whole draft saved in the Sheet at once
+                  POST /control/flow_code {older, failing}    panelFlowCode sends the route code as before 26 Oct 2026,
+                                                              or one whose answersAt fails
+                  POST /control/screen_types {types}          panelLoad's list of kinds of screen (null: the real one)
                   POST /control/reset
                   GET  /control/state                         server-side state
    Only fake data (DC-DEMO-...) and a bench secret are used.
@@ -38,6 +46,8 @@ const SHIM = () => `/* Fake google.script.run for the local bench (not Google's 
 (function () {
   var FUNCS = ${JSON.stringify(backend.FUNCTIONS)};
   var NOHOST = ${NOHOST ? 'true' : 'false'};
+  /* Asks Panel.html for its read-only test views (see the end of its script). */
+  window.__ppTest = {};
   function runner(ok, fail, user) {
     var r = {
       withSuccessHandler: function (f) { return runner(f, fail, user); },
@@ -126,12 +136,17 @@ function handler(req, res) {
       else if (what === 'open_section') backend.setOpenSection(b.section);
       else if (what === 'latency') LATENCY = Number(b.ms) || 0;
       else if (what === 'webapp') backend.setWebAppUrl(b.url);
+      else if (what === 'flow_status') backend.setFormFlow(b.form);
       else if (what === 'nohost') NOHOST = !!(b.on === undefined ? true : b.on);
       else if (what === 'live_unknown') backend.setLiveUnknown(b.on === undefined ? true : b.on);
+      else if (what === 'publish_warnings') backend.setPublishWarnings(b.warnings);
+      else if (what === 'model') out = backend.setModel(b.model);
+      else if (what === 'flow_code') backend.setFlowCode(b.older ? 'older' : b.failing ? 'failing' : 'current');
+      else if (what === 'screen_types') backend.setScreenTypes(b.types);
       else if (what === 'reset') backend.reset();
       else if (what === 'state') {
         const s = backend.state;
-        out = { revision: s.revision, model: s.model, liveVersion: s.liveVersion, webAppUrl: s.webAppUrl, previewKeys: s.previewKeys, published: s.published.map((p) => ({ version: p.version, note: p.doc.note })), links: s.links.length, calls: s.calls.slice() };
+        out = { revision: s.revision, model: s.model, liveVersion: s.liveVersion, webAppUrl: s.webAppUrl, previewKeys: s.previewKeys, published: s.published.map((p) => ({ version: p.version, note: p.doc.note })), links: s.links.length, calls: s.calls.slice(), formFlow: s.formFlow };
       } else return send(res, 404, 'text/plain', 'unknown control');
       send(res, 200, 'application/json', JSON.stringify(out));
     });

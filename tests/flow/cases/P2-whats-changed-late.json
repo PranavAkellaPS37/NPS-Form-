@@ -1,0 +1,37 @@
+{
+ "_about": "\"What changed\" after a question: a warning.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set_flow",
+   "field": "start",
+   "value": "language"
+  },
+  {
+   "op": "set",
+   "node": "language",
+   "field": "next",
+   "value": "nps"
+  },
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "next",
+   "value": "whats_changed"
+  },
+  {
+   "op": "set",
+   "node": "whats_changed",
+   "field": "next",
+   "value": "fn_ratings"
+  }
+ ],
+ "expect": [
+  {
+   "code": "P2",
+   "level": "warning",
+   "node": "whats_changed"
+  }
+ ],
+ "expect_no_errors": true
+}

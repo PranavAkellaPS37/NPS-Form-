@@ -37,6 +37,80 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 
 Nothing yet. Next up is **Phase 3: pipeline**. A Python program that downloads the answers from each round's data spreadsheet, transcribes the voice notes, and sorts comments and voice notes into the same area and problem codes.
 
+## [0.3.0] - 2026-10-26 - The route: jumps, loops and endings
+
+The questionnaire's **route** (which screen comes after which) can now branch: a question can send partners to a later question or to an ending of its own, a question can be asked once for each area (or each area rated low), and there can be several thank-you screens. All of it is edited in the control panel, without JSON. Behind it there is one engine, one checker and one converter, shared by the phones, the control panel, the command line and GitHub's check, so they can never disagree. Pranav approved the design on 23 Oct ([docs/flow-graph-proposal.md](docs/flow-graph-proposal.md)); it was built, reviewed and fixed by 26 Oct. **For partners nothing changes yet:** today's questionnaire shows exactly the same screens and sends exactly the same data (proven on 73 questionnaires).
+
+### Added
+
+**In the control panel (Questions)**
+
+- **After this question.** Each question has a **Usually go to** (the next question by default; any later question or an ending) and **Add a jump**: "If [answer] [is] [value] → go to [later question or ending]". The answers on offer are exactly the ones that can exist at that point, plus the partner's language and the round.
+- **Ask this question once, for each area, or for each area rated low** (0 to 10, faces, yes/no, pick one, voice or typing, and information cards).
+- **Several endings.** Questions and thank-you screens below the main thank-you screen form **Other routes and endings**, reached only by a jump. **Add an ending** makes one, with its own title and message (English first, the other languages marked `[TRANSLATE]`).
+- **Badges** on each question: "↪ goes to …" (where it jumps), "Repeats for each area" (or "… rated low"), "Ends the survey", "⚠ this jump can never happen", "⚠ nothing leads here: add a jump to it".
+- **Map:** the whole route as a picture. A text outline shows at once, with an "Open in mermaid.live" link; the drawing replaces it when it has loaded (within 20 seconds). It works on the draft or on the live version.
+- **Try a path:** pick answers and see which screens a partner gets, why the others are skipped, and exactly what would be sent.
+- **"Show this question only if"** can now also test the partner's language and the round.
+- The settings of the problem screens, the support screen and the area ratings (for example "Where the problem screens go") also show inside those screens' editors.
+- **Home** shows a red banner when the form on GitHub runs different route code from the control panel (upload the new form code).
+- **Check for problems** now runs the same checker as GitHub and the command line, in the panel's words ("question N", "Usually go to"), and **Go there** opens the right card (the rule, or "After this question").
+
+**Publishing**
+
+- **The publish guard.** Publish refuses while the form on GitHub is older than the control panel: "upload the new form code first, wait for the green tick, then publish". If GitHub can't be reached, Publish goes on and says so.
+- **"Please check…"** in the "Version N is live" message lists Publish's warnings (for example that the form on GitHub could not be checked). Set-up's closing message carries them too.
+- **The GitHub copy** (**Download files for the GitHub copy**) now has **5 files**: the fifth, `flow.md`, goes to `docs/flow.md` (the map of the route).
+- A new, fifth Apps Script file, **Flow** (`apps-script/Flow.gs`): the form's own route code, generated, never edited by hand. The health check shows which route code a deployment runs (`flow_engine`, `flow_fingerprint`).
+
+**For developers**
+
+- **The route format `pp-flow/1`** (a graph of screens, arrows, rules, loops and endings), the engine `web/js/flow.js` (on every phone), the checker `web/js/flow-check.js` (never on phones), and the panel's converter `web/js/flow-panel.js`. Old questionnaires (lists) are converted on the fly and behave exactly as before. Contract: [docs/flow-engine.md](docs/flow-engine.md).
+- **The command line** `python3 scripts/flow.py` (or `node scripts/flow.js`): `check`, `map`, `simulate`, `paths`, `compare`, `screens` (the screen list for the Phase 4 dashboard), `migrate`, `build-gs`, `types` and `es5`. Shortcuts in a new root `package.json`: `npm run validate-flow`, `npm run flow-map`, `npm run simulate` (nothing to install).
+- **`docs/flow.md`**: the questionnaire drawn as a map, with every screen and three example routes, generated from `survey.json`. `scripts/check_config.py` warns when it is out of date.
+- **Question kinds as plug-ins.** Every kind of screen is described once (`PP.types` in `web/js/flow.js`); a new kind is one file, `web/js/types/<code>.js`, plus one line in `web/index.html`. `web/config/types.json` (format `pp-types/1`) is the catalogue without code, and Model.gs's list of kinds (`PP_SCREEN_TYPES`, `PP_ADDED_TYPES_`) is generated from it, so Publish and the panel know an added kind. Guide: [docs/config-guide.md](docs/config-guide.md), "How to add a question type", with a tested example.
+- **The ES5 gate.** `node scripts/flow.js es5` checks that every script phones load is plain ES5 (old Android phones, Chrome 61). `scripts/check_config.py` runs it, and GitHub installs the parser (acorn 8.14.0) itself, so a file with newer syntax stops the deployment. On this Mac it needs `cd tests && npm install` once.
+- **Tests:** the flow suites in `tests/flow/` (flow rules, old vs new engine, checker, command line, question kinds, panel rows), with frozen copies of the old code in `tests/flow/legacy/` and `tests/model/legacy/`; Google-imitation scenarios G11, G12 and D12; 83 planted mistakes; panel bench 71 steps; end to end 34 scenarios; questionnaire logic 227 tests. [tests/README.md](tests/README.md) has every command and result.
+
+**Data**
+
+- **The `pings` tab** of each round's answers sheet has a new last column, **`config_version`**: the questionnaire version the phone showed, so drop-off per screen can be read against the right screens. A round spreadsheet made before 26 Oct gets the column from its first ping after the update (inserted right after `events_json`; an admin's own column there moves one place right). Rows stored before stay empty, and a ping is never refused or lost for this. `schema_version` is still 1, and the messages are unchanged.
+
+### Changed
+
+- **`web/config/survey.json`'s `flow` is now the graph** (converted with `scripts/flow.js migrate --write`, after proving it shows the same screens and sends the same data). Every other byte stayed; the old `_flow_help` note is gone (the graph carries its own). The published versions are graphs too; old published versions stay lists and keep working.
+- **Answers are tested only along the partner's current route.** An answer left behind by going Back and changing an earlier one stays on the phone but is never tested by a rule and never sent (the "stale answer" fix).
+- **The codes lock covers every code ever published**, not only the live version's: once a real round has opened, every Publish remembers the codes of the version that was live and of the new one (Script Property `CODES_EVER_LIVE`). Hiding a question, publishing, then deleting it is no longer possible: deleting a code partners answered is an error and Publish waits. Deleting `nps` or `support_gate` is an error; hiding one is a warning.
+- **New data shapes, same format:** a question asked for each area stores `<code>:<area>` (for example `callback:payments`), and with several endings the `events` end at the id of the ending the partner reached. See [docs/submission-format.md](docs/submission-format.md).
+- **Code layout:** `web/js/screens.js` was split into `web/js/ui.js` (the shared drawing helpers) and `web/js/types.js` (how each built-in kind is drawn). Phones load 8 scripts; the page is 267.6 KB, 89% of the 300 KB budget (the engine `flow.js` grew from 13 KB to about 40 KB).
+- The app version (`APP_VERSION` in `web/js/app.js`, sent as `app_version`) still says `0.2.0` in the code; it should say `0.3.0` when this version is uploaded.
+
+### Fixed
+
+Found by the reviews of 26 Oct, before any of this went live:
+
+- **A hidden or deleted extra ending could send partners into another route** (for example promoters into the detractors' questions), with no error. A hidden ending now still ends the route, at the main thank-you screen, and the panel says so before hiding it. A deleted one that would let a route run into another is an error that names the question needing a "Usually go to".
+- **The codes lock compared bare codes**, so a problem or answer partners had chosen could be deleted when another area or question had the same code. It now checks each code where it belongs (a problem in its own area, an answer in its own question).
+- **Publish's warnings were never shown** (they only reached a log). They now appear in the "Version N is live" message and in set-up's notes.
+- **A live answer of a pick-one question** could be removed, and the error then said "hide it", which answers can't be. Remove is now locked for live answers, and the message says to keep it (its label can still be reworded).
+- **Publish during a Google Drive hiccup** could skip the codes lock for the version that was live. Once codes are locked, Publish now stops with "try again in a minute" while Drive can't read the live version.
+- **A setting left on the problem-screens row** while the problem screens follow each low rating blocked Publish with a confusing error. It is now a warning, and the editor offers **Clear them**.
+- **The GitHub copy left `docs/flow.md` out of date** (see Added: it is now the fifth file).
+- **survey.json's own settings could silently stop working:** with a graph, phones follow the settings on its screens. A `deep_dive`, `rating` or `support` setting in survey.json that disagrees with the screens is now an error in the settings check (check S1), naming both values.
+- **A broken published route could show an empty screen.** A route with no screens, a start that names no screen, or one that goes straight to a thank-you before anything is answered is now ignored: phones use the form's own copy.
+- **Switching language with the header button** could take the screen on show off the route (a rule on the language) and send the partner back to the first question. The form now carries on where it would on a resumed visit, and Back keeps working.
+- **Codes such as `constructor` or `toString`** were treated as already answered (every JavaScript object has them). Answers are now always looked up as the object's own.
+- **A plug-in file that registered an existing kind** silently changed it on phones while every check stayed green. Such a file is now refused, and a kind that sends a ratings row must have a 1 to 5 answer (the guide's example sends its 1 to 10 answer only).
+- **The command line ignored a stray file name** (`check p7.json` checked `survey.json` and said all good). It now refuses it and suggests `--published`. A `simulate --set` key no screen stores is pointed out.
+- **Messages in the control panel** no longer garble a sentence when they name the question's own code, and use the panel's words.
+- `apps-script/README.md` now lists five code files, and its `clasp` route copies `Flow.gs` too.
+
+### To upgrade
+
+1. Upload the new form code (`web/`) to GitHub and wait for the green tick: the publish guard refuses to publish until the form on GitHub understands the route.
+2. Paste all five Apps Script files into the project (Code, Model, PanelServer, Panel and the new **Flow**), then **Deploy > Manage deployments > Edit > Version: New version**. [apps-script/README.md](apps-script/README.md) has the steps.
+3. Run the live smoke test, then open SMOKE-R1's answers sheet: the `pings` tab's last column should be `config_version`.
+
 ## [0.2.0] - 2026-10-21 - Phase 2: control panel + live backend
 
 The survey can now go live. A Google Sheet becomes the **control panel**, where colleagues change the whole questionnaire without touching code, run rounds, make links and publish. A Google Apps Script **web app** inside that Sheet hands the published questionnaire to the form, checks every link and saves the answers in Google Drive. The form goes online on GitHub Pages.

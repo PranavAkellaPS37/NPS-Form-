@@ -1,0 +1,39 @@
+{
+ "_about": "In the panel: a rule on a hidden question (\"support_gate\" switched off) says it is hidden, not that no question stores it (which would read like a typo).",
+ "base": "graph",
+ "opts": {
+  "surface": "panel",
+  "hiddenCodes": [
+   "support_gate"
+  ]
+ },
+ "patch": [
+  {
+   "op": "remove",
+   "node": "support_gate"
+  },
+  {
+   "op": "set",
+   "node": "fn_deep_dives",
+   "field": "next",
+   "value": "support"
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "support"
+  },
+  {
+   "code": "D1",
+   "level": "warning"
+  }
+ ],
+ "forbid": [
+  {
+   "code": "D1",
+   "level": "error"
+  }
+ ]
+}

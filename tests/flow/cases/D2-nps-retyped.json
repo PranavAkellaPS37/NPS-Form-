@@ -1,0 +1,34 @@
+{
+ "_about": "\"nps\" re-typed to faces 1-5: it fills the nps column, so it must stay a 0-10 question.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "type",
+   "value": "rating_1_5"
+  },
+  {
+   "op": "remove_field",
+   "node": "nps",
+   "field": "low_label"
+  },
+  {
+   "op": "remove_field",
+   "node": "nps",
+   "field": "high_label"
+  },
+  {
+   "op": "remove_field",
+   "node": "nps",
+   "field": "scale_hint"
+  }
+ ],
+ "expect": [
+  {
+   "code": "D2",
+   "level": "error",
+   "node": "nps"
+  }
+ ]
+}

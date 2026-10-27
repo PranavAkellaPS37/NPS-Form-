@@ -1,0 +1,19 @@
+{
+ "_about": "Two screens that store the same answer key.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "store_as",
+   "value": "nps"
+  }
+ ],
+ "expect": [
+  {
+   "code": "L1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

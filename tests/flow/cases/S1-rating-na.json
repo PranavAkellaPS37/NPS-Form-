@@ -1,0 +1,23 @@
+{
+ "_about": "Graph format: survey.json's rating > allow_not_applicable is false, but the area ratings screen says \"allow_not_applicable\": true.",
+ "base": "graph",
+ "survey": {
+  "rating": {
+   "faces": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "allow_not_applicable": false
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "fn_ratings"
+  }
+ ]
+}

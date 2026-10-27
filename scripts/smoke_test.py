@@ -65,9 +65,12 @@ WHAT IT CHECKS, IN ORDER
   2. The questionnaire ("bootstrap", what the form asks for when a link is
      opened): it has screens, languages and texts, including the recommend
      question (q.nps). Without screens or languages the form would ignore it
-     and use its own copy. It also reports the status of round SMOKE-R1. On a
-     live backend where nothing is published yet, it FAILS with "publish
-     from the control panel first".
+     and use its own copy. The screens ("flow") may be a list of screens or a
+     flow graph ("format": "pp-flow/1", docs/flow-engine.md; its screens are
+     counted, also inside groups); a flow in another format FAILS, because
+     the form would not use it. It also reports the status of round
+     SMOKE-R1. On a live backend where nothing is published yet, it FAILS
+     with "publish from the control panel first".
   3. "What changed" for the test round SMOKE-R1 and the demo round DEMO-R1,
      as the backend serves it today. No news is fine (the form then skips
      that screen), so it passes whether or not DEMO-R1's sample news is still
@@ -91,7 +94,13 @@ WHAT IT READS AND WRITES
   On the BACKEND: yes, it adds a little obviously-fake test data there, all
   in round "SMOKE-R1": one "opened" signal and one or two saved survey
   submissions (each with one tiny fake "voice note" that is not real audio).
-  The backend keeps it.
+  The backend keeps it. Every test message gives "smoke-test" as its
+  questionnaire version (config_version). On the live backend that shows in
+  SMOKE-R1's data spreadsheet: in the config_version column of the
+  responses tab, and in the last column of the pings tab (config_version,
+  since 26 Oct 2026; an older spreadsheet gets that column from this test's
+  signal). This test cannot read the spreadsheet itself: to see it, open
+  it from the control panel (Rounds > SMOKE-R1 > Answers sheet).
     - The fake DC is new for every run, for example
       DC-SMOKE-20261021-105312-4f9a: "DC-SMOKE-", the date and time on this
       Mac, and 4 random characters. Why: the live backend saves at most 10
@@ -149,6 +158,7 @@ DEFAULT_URL = "http://localhost:8787/api"
 MOCK_SECRET = "mock-dev-secret-not-for-production"   # the local test server's public secret
 SERVICE_NAME = "valmo-partner-pulse"
 LANGUAGES = ("en", "hi", "ta", "te", "kn", "ml")      # used only if the questionnaire does not list its languages
+FLOW_GRAPH_FORMAT = "pp-flow/1"            # a flow written as a graph (docs/flow-engine.md); a list also works
 
 SMOKE_ROUND = "SMOKE-R1"                   # the test round that every test message goes to
 DEMO_ROUND = "DEMO-R1"                     # the demo round: sample "What changed" news, if the backend still has it
@@ -454,14 +464,51 @@ def check_health(context: Context) -> str:
             f"its clock says {answer.get('time')}).")
 
 
+def flow_screens(flow) -> tuple[int, str]:
+    """How many screens a questionnaire's "flow" has, and how to say it.
+    The form understands two shapes (web/js/flow.js, docs/flow-engine.md):
+      - a list of screens (every version published before 23 Oct 2026):
+        one per line, e.g. (9, "9 screens");
+      - a graph {"format": "pp-flow/1", "nodes": [...]}: every node that is a
+        screen, also inside groups (a group itself is not a screen),
+        e.g. (9, "a flow graph (pp-flow/1) of 9 screens").
+    (0, ...) when the form could not use it (it would show its own copy)."""
+    if isinstance(flow, list):
+        return len(flow), f"{len(flow)} screens"
+    if isinstance(flow, dict) and flow.get("format") == FLOW_GRAPH_FORMAT:
+        count = graph_screen_count(flow.get("nodes"))
+        return count, f"a flow graph ({FLOW_GRAPH_FORMAT}) of {count} screens"
+    return 0, "no flow the form can use"
+
+
+def graph_screen_count(nodes) -> int:
+    total = 0
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, dict):
+            continue
+        body = node.get("body")
+        if node.get("type") == "group":
+            total += graph_screen_count(body.get("nodes") if isinstance(body, dict) else None)
+        else:
+            total += 1
+    return total
+
+
 def check_bootstrap(context: Context) -> str:
     answer = context.backend.get(action="bootstrap", round=SMOKE_ROUND)
     fail_if_not_published(context, answer)
     survey = answer.get("survey")
     strings = answer.get("strings")
     flow = survey.get("flow") if isinstance(survey, dict) else None
-    if answer.get("ok") is not True or not isinstance(flow, list) or not flow:
-        raise CheckFailed('expected {"ok": true, "survey": {"flow": [...screens...], ...}, "strings": {...}, ...} '
+    screens, flow_text = flow_screens(flow)
+    if isinstance(flow, dict) and answer.get("ok") is True and flow.get("format") != FLOW_GRAPH_FORMAT:
+        raise CheckFailed(f'the questionnaire\'s flow has the format "{flow.get("format")}", which this form does '
+                          f'not know (it understands a list of screens or "{FLOW_GRAPH_FORMAT}"), so every partner '
+                          "would get the form's own copy instead. Update the form (web/js/flow.js) or publish the "
+                          "questionnaire in a format it knows.")
+    if answer.get("ok") is not True or not screens:
+        raise CheckFailed('expected {"ok": true, "survey": {"flow": [...screens...] or a flow graph '
+                          f'{{"format": "{FLOW_GRAPH_FORMAT}", "nodes": [...]}}, ...}}, "strings": {{...}}, ...}} '
                           f"but got {brief(answer)}")
     # The form uses a questionnaire only when it lists its languages too
     # (web/js/net.js); without them every partner would get the form's own copy.
@@ -479,7 +526,7 @@ def check_bootstrap(context: Context) -> str:
     context.bootstrap_news = news if isinstance(news, dict) else None
     round_info = answer.get("round") if isinstance(answer.get("round"), dict) else {}
     status = round_info.get("status", "not given")
-    result = (f"a questionnaire with {len(flow)} screens, {len(languages)} language(s) ({', '.join(languages)}) "
+    result = (f"a questionnaire with {flow_text}, {len(languages)} language(s) ({', '.join(languages)}) "
               f"and {len(strings)} texts (version {answer.get('config_version')}); round {SMOKE_ROUND} is {status}.")
     if status not in ("open", "closed"):
         result += (f" Heads-up: test messages for a round that is {status} are refused (round_not_open), "

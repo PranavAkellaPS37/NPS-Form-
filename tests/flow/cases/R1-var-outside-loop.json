@@ -1,0 +1,22 @@
+{
+ "_about": "A rule that uses {area} on a screen that is not in a loop.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "fn_rating:{area}",
+    "at_most": 2
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

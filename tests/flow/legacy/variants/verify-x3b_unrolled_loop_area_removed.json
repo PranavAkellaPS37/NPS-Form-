@@ -1,0 +1,30 @@
+{
+  "_source": "flow audit 22 Oct 2026 (workflow wf_43b4b1dd-f39), data verifier, verify-data/variants/x3b_unrolled_loop_area_removed/web/config/survey.json",
+  "_note": "as x3a, with the area \"app\" removed afterwards",
+  "_expect": "same",
+  "_why": "No chained or forward rule: the new engine must give exactly the old screens, Next rules and message bytes.",
+  "functions": [
+    {"id":"losses","issues":["wrong_debit","no_proof","dispute_slow","dispute_rejected","amount_too_high"]},
+    {"id":"payments","issues":["payout_delayed","short_payment","unclear_breakup","invoice_gst","incentive_missing"],"threshold":2},
+    {"id":"linehaul","issues":["late_arrival","trip_missed","damaged_on_arrival","short_receipt","rto_pickup_delay"]},
+    {"id":"consumables","issues":["short_supply","late_supply","poor_quality","wrong_charge","hard_to_request"]},
+    {"id":"orders","issues":["volume_low","volume_spike","forecast_wrong","pincode_mapping","capacity_mismatch"]}
+  ],
+  "flow": [
+    {"id":"language","type":"language_picker","skip_if":"lang_in_url"},
+    {"id":"whats_changed","type":"whats_changed","skip_if":"empty"},
+    {"id":"nps","type":"nps_0_10","text":"q.nps","low_label":"nps.low","high_label":"nps.high","scale_hint":"nps.scale_hint","required":true},
+    {"id":"fn_ratings","type":"function_ratings"},
+    {"id":"fn_deep_dives","type":"function_deep_dives"},
+    {"id":"fu_losses","type":"rating_1_5","text":"q.fu_losses","required":true,"show_if":{"answer":"fn_rating:losses","at_most":3}},
+    {"id":"fu_payments","type":"rating_1_5","text":"q.fu_payments","required":true,"show_if":{"answer":"fn_rating:payments","at_most":3}},
+    {"id":"fu_linehaul","type":"rating_1_5","text":"q.fu_linehaul","required":true,"show_if":{"answer":"fn_rating:linehaul","at_most":3}},
+    {"id":"fu_consumables","type":"rating_1_5","text":"q.fu_consumables","required":true,"show_if":{"answer":"fn_rating:consumables","at_most":3}},
+    {"id":"fu_orders","type":"rating_1_5","text":"q.fu_orders","required":true,"show_if":{"answer":"fn_rating:orders","at_most":3}},
+    {"id":"fu_app","type":"rating_1_5","text":"q.fu_app","required":true,"show_if":{"answer":"fn_rating:app","at_most":3}},
+    {"id":"support_gate","type":"yes_no","text":"q.support_gate","required":true},
+    {"id":"support","type":"support_block","text":"q.support_block","show_if":{"answer":"support_gate","equals":"yes"}},
+    {"id":"one_fix","type":"free_text","text":"q.one_fix","required":false},
+    {"id":"thanks","type":"thank_you"}
+  ]
+}

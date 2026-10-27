@@ -44,6 +44,10 @@ HOW TO RUN IT
                             refused with round_not_open. Preview links still work.
                             (Every other round counts as open.)
     --data-dir PATH         Save in another folder instead of local_data/.
+    --survey FILE           Hand out this questionnaire file instead of web/config/survey.json
+                            (for example one whose "flow" is a graph, docs/flow-engine.md), to
+                            try it before it is published. The form's own copy stays
+                            web/config/survey.json; the texts stay web/i18n/strings.json.
     --reset                 Delete all saved test answers (asks you to type "yes" first).
   Full explanation of each option:  python3 scripts/mock_server.py --help
   To check that the server works:   python3 scripts/smoke_test.py   (in a second Terminal window)
@@ -54,6 +58,8 @@ WHAT YOU SEE WHILE IT RUNS (one line per message, for example)
   11:23:40  SUBMIT  DC-DEMO-001  DEMO-R1  sent again (sub_...): already saved, nothing new written
   11:22:29  GET  bootstrap  round=DEMO-R1 (open)  -> questionnaire 2026-10-19.1, 9 screens, 130 texts, 3 'what changed' item(s)
     GET bootstrap = the form asking for its questionnaire when a link is opened
+                    (a questionnaire whose flow is a graph says e.g. "a flow graph
+                    (pp-flow/1) of 10 nodes" instead of "9 screens")
     PING     = a progress signal from the form (it never contains answers)
     SUBMIT   = a finished survey
     REFUSED  = the message was not accepted; the line says why
@@ -65,6 +71,12 @@ WHAT IT READS
   web/i18n/strings.json,         without the notes for humans and without the
   web/config/audio_clips.json    settings that say where answers go. Read again on
                                  every request, so your edits show up without a restart.
+                                 (With --survey FILE, that file instead of survey.json.)
+                                 Its "flow" may be a list of screens or a graph
+                                 ("format": "pp-flow/1", docs/flow-engine.md).
+  scripts/dev/simulate.js        the developer drawer, sent at /dev/simulate.js when a
+                                 test link carries &simulate=1 (it is not in web/, so it
+                                 is never published and partners never get it)
   web/config/whats_changed.json  the "What changed" news. It is read again on every
                                  request, so your edits show up without a restart.
   local_data/responses.jsonl     read once at start-up, so a survey that arrives twice
@@ -76,7 +88,11 @@ WHAT IT READS
 WHAT IT WRITES  (only inside local_data/, which git ignores, so it is never uploaded)
   local_data/responses.jsonl     one line per finished survey (marked "late": true when
                                  it arrived for a round listed in --closed-rounds)
-  local_data/events.jsonl        one line per progress signal (opened / started / progress)
+  local_data/events.jsonl        one line per progress signal (opened / started / progress):
+                                 the whole signal minus the token, so it includes
+                                 config_version, the questionnaire version the phone
+                                 showed (the live backend keeps that in the last column
+                                 of its pings tab: docs/submission-format.md, section 9)
   local_data/audio/<round>/<dc>/ one file per voice note
   It never changes anything in web/, docs/ or scripts/.
 
@@ -135,6 +151,17 @@ AUDIO_CLIPS_FILE = WEB_DIR / "config" / "audio_clips.json"
 WHATS_CHANGED_FILE = WEB_DIR / "config" / "whats_changed.json"
 DEFAULT_DATA_DIR = REPO_DIR / "local_data"
 DEFAULT_PORT = 8787
+
+# Developer-only files served outside web/ (so they are never published to
+# GitHub Pages): browser address -> file. The form asks for the drawer only
+# in test mode with &simulate=1 (web/js/app.js, loadSimulator).
+DEV_FILES = {
+    "/dev/simulate.js": REPO_DIR / "scripts" / "dev" / "simulate.js",
+}
+
+# The flow format the form understands besides a plain list of screens
+# (web/js/flow.js, PP.flow.FORMAT; docs/flow-engine.md).
+FLOW_GRAPH_FORMAT = "pp-flow/1"
 
 SERVICE_NAME = "valmo-partner-pulse"
 SCHEMA_VERSION = 1
@@ -251,6 +278,7 @@ class Settings:
     secret_is_default: bool
     closed_rounds: frozenset = frozenset()   # --closed-rounds
     draft_rounds: frozenset = frozenset()    # --draft-rounds
+    survey_file: Path = SURVEY_FILE          # --survey: the questionnaire handed out in the bootstrap
 
     def round_status(self, round_id: str) -> str:
         """"open", "closed" or "draft", as the control panel's Rounds tab would say.
@@ -735,6 +763,33 @@ def survey_as_published(survey: dict) -> dict:
     return survey
 
 
+def count_graph_nodes(nodes) -> int:
+    """The nodes of a flow graph, counting the nodes inside groups (a group's
+    "body") and the groups themselves."""
+    total = 0
+    for node in nodes if isinstance(nodes, list) else []:
+        if isinstance(node, dict):
+            total += 1
+            body = node.get("body")
+            if isinstance(body, dict):
+                total += count_graph_nodes(body.get("nodes"))
+    return total
+
+
+def describe_flow(flow) -> str:
+    """For the bootstrap log line: '9 screens' for a list of screens (the old
+    format), 'a flow graph (pp-flow/1) of 10 nodes' for a graph, or a warning
+    for anything the form cannot use (it would then use its own copy)."""
+    if isinstance(flow, list):
+        return f"{len(flow)} screens"
+    if isinstance(flow, dict) and flow.get("format") == FLOW_GRAPH_FORMAT:
+        return f"a flow graph ({FLOW_GRAPH_FORMAT}) of {count_graph_nodes(flow.get('nodes'))} nodes"
+    if isinstance(flow, dict) and "format" in flow:
+        return (f'a flow in an unknown format "{printable(flow.get("format"))}" (the form will use its own '
+                "copy instead)")
+    return "no usable flow (the form will use its own copy instead)"
+
+
 def read_audio_clips() -> dict:
     """The read-aloud clips from web/config/audio_clips.json. The file is
     optional: if it is missing or broken, there are simply no clips."""
@@ -751,10 +806,12 @@ def read_audio_clips() -> dict:
 
 def bootstrap_answer(round_id: str, draft: bool, settings: Settings) -> dict:
     """The answer to GET /api?action=bootstrap&round=<round_id>[&draft=1]:
-    the questionnaire built from the files in web/, shaped like the live
-    backend's answer. Every file is read again, so edits show up at once.
-    draft=1 (preview links) gets the same content here: on this Mac the files
-    in web/ are both the draft and the published version."""
+    the questionnaire built from the files in web/ (or the --survey file),
+    shaped like the live backend's answer. Every file is read again, so edits
+    show up at once. draft=1 (preview links) gets the same content here: on
+    this Mac the files in web/ are both the draft and the published version.
+    The questionnaire's "flow" is passed on as it is: a list of screens or a
+    pp-flow/1 graph (the form understands both, docs/flow-engine.md)."""
     if not round_id:
         log("REFUSED  GET bootstrap without a round")
         return bad_request_answer('The "round" is missing. Example: ?action=bootstrap&round=DEMO-R1')
@@ -763,7 +820,7 @@ def bootstrap_answer(round_id: str, draft: bool, settings: Settings) -> dict:
         return bad_request_answer('The "round" is not valid. It must be 1 to 64 characters: '
                                   'letters, digits, "-", "_" or ".".')
     try:
-        survey = survey_as_published(read_json_file(SURVEY_FILE, "the questionnaire"))
+        survey = survey_as_published(read_json_file(settings.survey_file, "the questionnaire"))
         strings = without_notes(read_json_file(STRINGS_FILE, "the texts"))
         title, items = read_whats_changed(round_id)
     except QuestionnaireFileProblem as problem:
@@ -775,11 +832,9 @@ def bootstrap_answer(round_id: str, draft: bool, settings: Settings) -> dict:
             "files. Fix the file and save it; no restart needed.")
         return server_error_answer(f"web/config/whats_changed.json {problem}.")
     status = settings.round_status(round_id)
-    flow = survey.get("flow")
-    screens = len(flow) if isinstance(flow, list) else 0
     kind = "  (preview of the draft)" if draft else ""
     log(f"GET  bootstrap{kind}  round={printable(round_id)} ({status})  -> questionnaire "
-        f"{printable(survey.get('config_version', '?'))}, {screens} screens, {len(strings)} texts, "
+        f"{printable(survey.get('config_version', '?'))}, {describe_flow(survey.get('flow'))}, {len(strings)} texts, "
         f"{len(items)} 'what changed' item(s)")
     return {
         "ok": True,
@@ -1055,8 +1110,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     # ---- files of the form ----------------------------------------------------
 
     def serve_web_file(self, url_path: str, include_body: bool) -> None:
-        """Send one file from web/ to the browser (HEAD requests get only the headers)."""
-        file_path = find_web_file(url_path)
+        """Send one file from web/ to the browser (HEAD requests get only the headers).
+        The few developer files in DEV_FILES (outside web/) are sent the same way."""
+        file_path = DEV_FILES.get(url_path) or find_web_file(url_path)
         try:
             data = file_path.read_bytes() if file_path else None
         except OSError:
@@ -1234,6 +1290,9 @@ def print_banner(settings: Settings, store: Store, unreadable_lines: list[int]) 
                                        if settings.slow_seconds else "off"))
     say("   Token secret:         " + ("the built-in test secret" if settings.secret_is_default
                                        else "taken from the MOCK_SECRET setting"))
+    if settings.survey_file != SURVEY_FILE:
+        say(f"   Questionnaire:        {shown_name(settings.survey_file)} (--survey), handed out instead of")
+        say("                         web/config/survey.json; the form's own copy is unchanged")
     print_round_settings(settings)
     print_warnings(settings, unreadable_lines, lan_ip)
     say("")
@@ -1250,6 +1309,9 @@ def print_banner(settings: Settings, store: Store, unreadable_lines: list[int]) 
     say("   PREVIEW, as the control panel's Preview button makes it (works for any round, sends")
     say("   nothing, saves nothing):")
     say(f"      {base_url}/?{urlencode([('preview', '1'), ('round', DEMO_ROUND), ('lang', 'en'), ('mock', '1')])}")
+    say("   The English link with the developer drawer (&simulate=1, test mode only): the route ahead,")
+    say("   the screens skipped and why, paste answers, jump to a screen:")
+    say(f"      {demo_link(base_url, settings.secret, DEMO_LINKS[0][1], DEMO_LINKS[0][2])}&simulate=1")
     for round_id in sorted(settings.closed_rounds | settings.draft_rounds):
         say(f"   Round {round_id} ({settings.round_status(round_id)}), demo DC DC-DEMO-001:")
         say(f"      {demo_link(base_url, settings.secret, 'DC-DEMO-001', 'en', round_id=round_id)}")
@@ -1411,6 +1473,8 @@ examples:
   python3 scripts/mock_server.py --fail-rate 0.3 --slow 3   bad network: 30% of sends fail, all are slow
   python3 scripts/mock_server.py --closed-rounds DEMO-R1    the demo round has closed
   python3 scripts/mock_server.py --draft-rounds DEMO-R1     the demo round is not open yet
+  python3 scripts/mock_server.py --survey local_data/try.json
+                                                            hand out another questionnaire (e.g. a flow graph)
   python3 scripts/mock_server.py --reset                    delete all saved test answers (asks first)
 
 Then check it in a second Terminal window with:  python3 scripts/smoke_test.py
@@ -1499,6 +1563,12 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--data-dir", type=Path, default=None, metavar="PATH",
                         help="Folder to save answers in. Default: "
                              + str(DEFAULT_DATA_DIR).replace("%", "%%"))
+    parser.add_argument("--survey", type=Path, default=None, metavar="FILE",
+                        help="Hand out this questionnaire file instead of web/config/survey.json when the form "
+                             "asks for its questionnaire (bootstrap), for example one whose flow is a graph "
+                             "(docs/flow-engine.md), to try it before it is published. It is read again on every "
+                             "request. The form's own copy (web/config/survey.json) and the texts "
+                             "(web/i18n/strings.json) stay as they are.")
     parser.add_argument("--reset", action="store_true",
                         help="Delete responses.jsonl, events.jsonl and audio/ in the data folder (after you type "
                              "yes), then exit.")
@@ -1535,12 +1605,19 @@ def main(argv: list[str] | None = None) -> int:
         say("Remove it from --closed-rounds or from --draft-rounds, then start the server again.")
         return 1
 
+    survey_file = args.survey.expanduser().resolve() if args.survey else SURVEY_FILE
+    if not survey_file.is_file():
+        say(f"The questionnaire file given with --survey does not exist: {survey_file}")
+        say("Check the path (for example --survey local_data/my-survey.json), then start the server again.")
+        return 1
+
     secret = os.environ.get("MOCK_SECRET") or DEFAULT_SECRET
     settings = Settings(port=args.port, lan=args.lan, strict=args.strict,
                         one_response_per_dc=args.one_response_per_dc, fail_rate=args.fail_rate,
                         slow_seconds=args.slow, data_dir=data_dir, secret=secret,
                         secret_is_default=(secret == DEFAULT_SECRET),
-                        closed_rounds=closed_rounds, draft_rounds=draft_rounds)
+                        closed_rounds=closed_rounds, draft_rounds=draft_rounds,
+                        survey_file=survey_file)
     store = Store(data_dir)
     try:
         data_dir.mkdir(parents=True, exist_ok=True)

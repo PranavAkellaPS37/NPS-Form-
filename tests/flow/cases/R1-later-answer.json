@@ -1,0 +1,22 @@
+{
+ "_about": "A rule on an answer that only comes later.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "show_if",
+   "value": {
+    "answer": "support_gate",
+    "equals": "yes"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "nps"
+  }
+ ]
+}

@@ -15,8 +15,10 @@
      exit code 0. Exit code 1 means the shrinking save failed.
 
    WHAT IT READS / WRITES
-     Reads apps-script/Model.gs (or the given copy), ZZ_check.gs next to this
-     file, and web/config + web/i18n. Writes a temporary run-* folder here and
+     Reads apps-script/Model.gs (or the given copy), apps-script/Flow.gs (the
+     route code Model.gs uses since 23 Oct 2026; needed once the repo's
+     survey.json holds the route as a graph), ZZ_check.gs next to this file,
+     and web/config + web/i18n. Writes a temporary run-* folder here and
      deletes it at the end.
    ============================================================================= */
 'use strict';
@@ -27,12 +29,15 @@ const HARNESS = path.join(__dirname, '..', '..', 'gas-harness');   // tests/gas-
 const REPO = path.resolve(__dirname, '..', '..', '..');            // the project folder
 const { loadGas } = require(path.join(HARNESS, 'load-gas.js'));
 const modelFile = process.argv[2] || path.join(REPO, 'apps-script', 'Model.gs');
+const flowFile = path.join(REPO, 'apps-script', 'Flow.gs');
 const dir = fs.mkdtempSync(path.join(__dirname, 'run-'));
 fs.copyFileSync(modelFile, path.join(dir, 'Model.gs'));
+fs.copyFileSync(flowFile, path.join(dir, 'Flow.gs'));
 fs.copyFileSync(path.join(__dirname, 'ZZ_check.gs'), path.join(dir, 'ZZ_check.gs'));
-// The models are built with the same Model.gs in a plain Node space.
+// The models are built with the same Model.gs (and Flow.gs) in a plain Node space.
 const ctx = vm.createContext({ console });
 vm.runInContext(fs.readFileSync(modelFile, 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(flowFile, 'utf8'), ctx);
 const web = path.join(REPO, 'web') + '/';
 const read = p => JSON.parse(fs.readFileSync(web + p, 'utf8'));
 const files = { survey: read('config/survey.json'), strings: read('i18n/strings.json'), whats_changed: read('config/whats_changed.json'), audio_clips: read('config/audio_clips.json') };

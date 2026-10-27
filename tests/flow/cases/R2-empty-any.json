@@ -1,0 +1,21 @@
+{
+ "_about": "An empty \"any\".",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "any": []
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

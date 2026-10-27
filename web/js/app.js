@@ -75,6 +75,21 @@
      phone's own back button (one browser-history entry per screen).
    - Every screen view is recorded in state.events (screen id + time) so the
      dashboard can show where partners drop off.
+   - flow.js decides the screens after every answer, from the "flow" (a
+     list, or a graph with jumps, loops and endings: docs/flow-engine.md).
+     Rules see only answers on the partner's CURRENT route: an answer left
+     behind by going Back and changing an earlier one stays on the phone but
+     is never tested or sent. Reaching an ending (a thank-you) sends.
+   - A screen can drop off the route while it is on show (a rule on the
+     language, after the partner switches language with the button at the
+     top). Next then goes on where a resumed visit would (the first screen
+     not seen yet or not complete) and Back to the screen before that: never
+     back to the start (place()).
+   - A questionnaire whose route goes straight to an ending before anything
+     is answered has nothing to ask: like one that breaks the form, the
+     form's own copy is used instead (checkRoute()).
+   - The checks BEFORE the questionnaire (link, round status, already sent,
+     resume) stay here on purpose: no questionnaire edit can switch them off.
 
    SENDING (see docs/submission-format.md)
    - After the last question the thank-you screen sends the answers.
@@ -99,6 +114,12 @@
    - A link the server rejected stays blocked only while it is the same link;
      a corrected link, or the server accepting it again, unlocks it.
    - If another tab already sent this link's answers, this tab never undoes it.
+   - A questionnaire whose areas or support items are not a list is broken:
+     a published one falls back to the form's own copy (checkLists).
+
+   DEVELOPER DRAWER: in test mode only, &simulate=1 loads
+   scripts/dev/simulate.js from the local test server (never part of web/);
+   it sees the form through PP.dev (loadSimulator).
 
    You do not need to edit this file to change the questionnaire: use the
    control panel (Google Sheet), or web/config + web/i18n for the form's own copy.
@@ -139,7 +160,7 @@
   var wc = { title: null, items: [] };
   var steps = [];        // the screens on this partner's path (see flow.js)
   var current = null;    // the step on screen
-  var screen = null;     // what screens.js returned for it
+  var screen = null;     // what its drawing returned (PP.screens: web/js/types.js and js/types/, built with ui.js)
   var cleanups = [];
   var advanceTimer = null;
   var saveTimer = null;
@@ -155,6 +176,8 @@
   var submit = { status: 'idle', retryIn: 0, retryAt: 0, timer: null, tick: null, inFlight: false, sessionTries: 0 };
   var el = {};
   var eventsBound = false; // bindEvents() ran (setup() can run twice: see prepare())
+  var listsChecked = null; // the questionnaire checkLists() accepted
+  var simulate = false;    // ?simulate=1 (test mode): the developer drawer
 
   /* ---------------------------------------------------------------------------
      Start-up, step 1: the form's own copy of the questionnaire
@@ -196,6 +219,7 @@
      ------------------------------------------------------------------------- */
   function prepare(ownCfg, params) {
     preview = params.preview === '1';
+    simulate = params.simulate === '1';
     config = ownCfg;
     applyBranding(); // the form's own colours while waiting
     chooseBackend(ownCfg, params);
@@ -384,8 +408,7 @@
     // The form's own copy: "what changed" from config/whats_changed.json
     // (only needed if that screen is in the flow)
     var empty = { title: null, items: [] };
-    var needWc = !state.finished && !state.submitted &&
-      (cfg.flow || []).some(function (e) { return e.type === 'whats_changed'; });
+    var needWc = !state.finished && !state.submitted && PP.flow.hasType(cfg, 'whats_changed');
     var waitMs = ((cfg.whats_changed && Number(cfg.whats_changed.timeout_seconds)) || 4) * 1000;
     var loading = needWc ? withTimeout(PP.net.loadStaticWhatsChanged(link.round, waitMs), waitMs + 2000, empty) : Promise.resolve(empty);
     return loading.then(function (data) {
@@ -433,8 +456,23 @@
       save();
     }
     pruneMissingAudio();
+    if (!state.submitted) checkRoute();
     showInitialScreen();
     pingOpened();
+    loadSimulator();
+  }
+
+  /* A questionnaire whose route goes straight to an ending before anything
+     was answered (for example a published graph whose every screen is
+     skipped) has nothing to ask: it would only say thank you and send an
+     empty answer. Like a questionnaire that breaks the form, it is not used:
+     the error lets prepare() show the form's own copy instead (in a preview:
+     "the draft is broken"). */
+  function checkRoute() {
+    rebuildSteps();
+    if (steps.length && PP.flow.isEnd(steps[0]) && !hasProgress()) {
+      throw new Error('The questionnaire\'s route goes straight to an ending: it has nothing to ask');
+    }
   }
 
   function showInitialScreen() {
@@ -458,16 +496,39 @@
 
   /* Where to continue: the saved screen. If the questionnaire changed since and
      that screen is gone, the first screen on the new path that was never seen
-     or is not answered yet. */
+     or is not answered yet (when that is the ending: the screen before it). */
   function resumeTarget() {
     if (state.current && PP.flow.indexOf(steps, state.current) !== -1) return state.current;
+    var i = firstOpen();
+    return steps[PP.flow.isEnd(steps[i]) ? Math.max(0, i - 1) : i].id;
+  }
+
+  /* The place on the route of the first screen the partner has not seen yet,
+     or whose answer is not complete; the ending's place when every screen
+     before it is done. */
+  function firstOpen() {
     var seen = {};
-    state.events.forEach(function (ev) { seen[ev.screen] = true; });
+    ((state && state.events) || []).forEach(function (ev) { seen[ev.screen] = true; });
     for (var i = 0; i < steps.length; i++) {
-      if (steps[i].type === 'thank_you') return steps[Math.max(0, i - 1)].id;
-      if (!seen[steps[i].id] || !PP.flow.canProceed(steps[i], state, config)) return steps[i].id;
+      if (PP.flow.isEnd(steps[i])) return i;
+      if (!has(seen, steps[i].id) || !PP.flow.canProceed(steps[i], state, config)) return i;
     }
-    return steps[0].id;
+    return 0;
+  }
+
+  /* Where the screen on show sits on the route, as places in steps:
+     { at (for the progress bar), back, next, off }. Normally its own place.
+     A screen can drop off the route while it is on show: a rule on the
+     partner's language, after they switch language with the button at the
+     top. It then counts as sitting just before the first screen not seen yet
+     or not complete: Next goes where resumeTarget() would, Back to the screen
+     before that, and the history keeps working. Never back to the start. */
+  function place() {
+    var idx = current ? PP.flow.indexOf(steps, current.id) : -1;
+    if (idx !== -1 || !current) return { at: Math.max(0, idx), back: idx - 1, next: idx + 1, off: false };
+    var open = firstOpen();
+    var next = PP.flow.isEnd(steps[open]) ? Math.max(0, open - 1) : open;   // = resumeTarget()
+    return { at: Math.max(0, open - 0.5), back: open - 1, next: next, off: true };
   }
 
   /* A voice note whose recording could not be stored on the phone (storage
@@ -501,9 +562,9 @@
       lang: null,
       lang_chosen: false,
       lang_set_by_user: false,
-      answers: {},
-      texts: {},
-      audio: {},
+      answers: dict(),
+      texts: dict(),
+      audio: dict(),
       current: null,
       events: [],
       event_seq: 0,
@@ -530,9 +591,9 @@
       PP.store.remove('state:' + ns);
       return newState();
     }
-    saved.answers = saved.answers || {};
-    saved.texts = saved.texts || {};
-    saved.audio = saved.audio || {};
+    saved.answers = dict(saved.answers);
+    saved.texts = dict(saved.texts);
+    saved.audio = dict(saved.audio);
     saved.events = saved.events || [];
     if (!saved.finished && !saved.submitted && saved.events.length) {
       saved.resume_count = (saved.resume_count || 0) + 1;
@@ -588,11 +649,41 @@
   /* ---------------------------------------------------------------------------
      Moving between screens
      ------------------------------------------------------------------------- */
-  function rebuildSteps() {
-    steps = PP.flow.buildSteps(config, {
-      answers: PP.flow.ruleAnswers(state),
+  /* What flow.js works the route out from: the answers saved on the phone
+     and the facts rules may test (docs/flow-engine.md 2.3). */
+  function flowContext() {
+    return {
+      state: state,
       langInUrl: langInUrl,
-      hasWhatsChanged: Boolean(wc.items && wc.items.length)
+      whatsChangedCount: (wc && wc.items && wc.items.length) || 0,
+      lang: PP.i18n.lang,
+      round: link.round
+    };
+  }
+
+  function rebuildSteps() {
+    if (listsChecked !== config) {
+      checkLists(config);
+      listsChecked = config;
+    }
+    steps = PP.flow.buildSteps(config, flowContext());
+  }
+
+  /* The lists screens repeat over (areas, support items) must be lists. The
+     old engine stopped on such a questionnaire; the new one would quietly
+     drop those screens and their answers. Stopping here makes a broken
+     published questionnaire fall back to the form's own copy, as before. */
+  function checkLists(cfg) {
+    var collections = PP.flow.load(cfg).collections || {};
+    Object.keys(collections).forEach(function (name) {
+      var spec = collections[name];
+      var list = cfg;
+      String((spec && spec.list) || '').split('.').forEach(function (part) {
+        list = list !== null && typeof list === 'object' ? list[part] : undefined;
+      });
+      if (list && !Array.isArray(list)) {
+        throw new Error('The questionnaire\'s "' + spec.list + '" is not a list');
+      }
     });
   }
 
@@ -619,8 +710,8 @@
     rebuildSteps();
     var idx = PP.flow.indexOf(steps, id);
     current = steps[idx === -1 ? 0 : idx];
-    if (current.type === 'thank_you') {
-      showThanks();
+    if (PP.flow.isEnd(current)) {
+      showThanks(current);
       return;
     }
     state.current = current.id;
@@ -641,7 +732,7 @@
   function renderCurrent(sameScreen) {
     hideToast();
     if (sameScreen !== true) shownAt = Date.now();
-    var draw = PP.screens[current.type];
+    var draw = has(PP.screens, current.type) ? PP.screens[current.type] : null;
     if (!draw) {
       if (root.console) console.error('[Partner Pulse] Unknown screen type "' + current.type + '" in config/survey.json');
       draw = PP.screens.info_card;
@@ -719,15 +810,12 @@
 
   function goNext() {
     rebuildSteps();
-    var idx = PP.flow.indexOf(steps, current.id);
-    if (idx === -1) {
-      showStep(steps[0].id, 'replace');
-      return;
-    }
-    var target = steps[idx + 1];
+    var p = place();
+    var target = steps[p.next];
     if (!target) return;
-    if (target.type === 'thank_you') finish();
-    else showStep(target.id, 'push');
+    if (PP.flow.isEnd(target)) finish(target);
+    // a screen that dropped off the route gives its history entry to the next one
+    else showStep(target.id, p.off ? 'replace' : 'push');
   }
 
   function onBack() {
@@ -736,8 +824,8 @@
       root.history.back(); // the "popstate" handler below does the rest
       return;
     }
-    var idx = PP.flow.indexOf(steps, current.id);
-    if (idx > 0) showStep(steps[idx - 1].id, 'replace');
+    var p = place();
+    if (p.back >= 0) showStep(steps[p.back].id, 'replace');
   }
 
   /* The phone's back (or forward) button. */
@@ -751,21 +839,22 @@
       // We just jumped back over the survey's history entries after finishing.
       collapsingHistory = false;
       navDepth = 0;
-      try { root.history.replaceState({ pp: 'thanks', n: 0 }, ''); } catch (err) { /* ignore */ }
+      var ending = current && PP.flow.isEnd(current) ? current.id : 'thanks';
+      try { root.history.replaceState({ pp: ending, n: 0 }, ''); } catch (err) { /* ignore */ }
       return;
     }
-    if (!state || !current || state.finished || state.submitted || state.bad_link || current.type === 'thank_you') return;
+    if (!state || !current || state.finished || state.submitted || state.bad_link || PP.flow.isEnd(current)) return;
 
     clearTimeout(advanceTimer);
     rebuildSteps();
-    var idx = PP.flow.indexOf(steps, current.id);
+    var p = place();
     var target = null;
     if (forward) {
-      var next = steps[idx + 1];
-      if (next && next.type !== 'thank_you' && PP.flow.canProceed(current, state, config)) target = next;
+      var next = steps[p.next];
+      if (next && !PP.flow.isEnd(next) && PP.flow.canProceed(current, state, config)) target = next;
     } else {
       var wanted = s.pp ? PP.flow.indexOf(steps, s.pp) : -1;
-      target = wanted !== -1 && wanted < idx ? steps[wanted] : steps[Math.max(0, idx - 1)];
+      target = wanted !== -1 && wanted < p.at ? steps[wanted] : steps[Math.max(0, p.back)];
     }
     if (target && target.id !== current.id) showStep(target.id, 'none');
   }
@@ -875,29 +964,28 @@
   }
 
   function updateProgress() {
-    el.progress.hidden = Boolean(current && current.type === 'thank_you' && NO_PROGRESS_BAR.indexOf(submit.status) !== -1);
+    el.progress.hidden = Boolean(current && PP.flow.isEnd(current) && NO_PROGRESS_BAR.indexOf(submit.status) !== -1);
     var pct = 100;
-    if (current && current.type !== 'thank_you' && steps.length > 1) {
-      var idx = Math.max(0, PP.flow.indexOf(steps, current.id));
-      pct = Math.max(4, Math.round((idx / (steps.length - 1)) * 100));
+    if (current && !PP.flow.isEnd(current) && steps.length > 1) {
+      pct = Math.max(4, Math.round((place().at / (steps.length - 1)) * 100));
     }
     el.progressFill.style.width = pct + '%';
     el.progress.setAttribute('aria-valuenow', String(pct));
   }
 
   function updateNav() {
-    if (!current || !screen || !state || current.type === 'thank_you') {
+    if (!current || !screen || !state || PP.flow.isEnd(current)) {
       el.navbar.hidden = true;
       return;
     }
-    // Answers on this screen can add or remove later screens (show_if), so
-    // work out the path again: the Next/Submit label and progress stay right.
+    // Answers on this screen can add or remove later screens (show_if, jumps),
+    // so work out the path again: the Next/Submit label and progress stay right.
     rebuildSteps();
     updateProgress();
-    var idx = PP.flow.indexOf(steps, current.id);
+    var p = place();
     var entry = current.entry || {};
-    var nextStep = steps[idx + 1];
-    var isLastQuestion = Boolean(nextStep && nextStep.type === 'thank_you');
+    var nextStep = steps[p.next];
+    var isLastQuestion = Boolean(nextStep && PP.flow.isEnd(nextStep));
     var canGo = PP.flow.canProceed(current, state, config);
     var showNext = true;
     var showSkip = false;
@@ -914,7 +1002,7 @@
     }
 
     el.back.textContent = t('ui.back');
-    el.back.hidden = idx <= 0;
+    el.back.hidden = p.back < 0;
     el.skip.textContent = t('ui.skip');
     el.skip.hidden = !showSkip;
     el.next.textContent = t(isLastQuestion ? 'ui.submit' : (screen.nextLabel || 'ui.next'));
@@ -962,15 +1050,16 @@
   /* ---------------------------------------------------------------------------
      Finishing and sending
      ------------------------------------------------------------------------- */
+  /* The ending this route reaches (there may be several, each with its own texts). */
   function thanksStep() {
-    for (var i = 0; i < steps.length; i++) if (steps[i].type === 'thank_you') return steps[i];
+    for (var i = 0; i < steps.length; i++) if (PP.flow.isEnd(steps[i])) return steps[i];
     return { id: 'thanks', type: 'thank_you', entry: {} };
   }
 
-  function showThanks() {
+  function showThanks(endStep) {
     runCleanups();
     PP.speech.stop();
-    current = thanksStep();
+    current = endStep || thanksStep();
     state.current = current.id;
     save();
     renderCurrent();
@@ -991,14 +1080,14 @@
     focusTitle();
   }
 
-  function finish() {
+  function finish(endStep) {
     clearTimeout(advanceTimer);
     runCleanups(); // stops a recording that is still running (it still gets saved)
     PP.speech.stop();
     state.finished = true;
     state.submitted_at = state.submitted_at || PP.now();
     state.submission_id = state.submission_id || PP.randomId('sub');
-    current = thanksStep();
+    current = endStep || thanksStep();
     state.current = current.id;
     recordView(current.id);
     save();
@@ -1024,7 +1113,7 @@
     submit.status = status;
     submit.retryIn = retryIn || 0;
     if (status !== 'failed') clearInterval(submit.tick);
-    if (current && current.type === 'thank_you' && screen && screen.update) screen.update(submit);
+    if (current && PP.flow.isEnd(current) && screen && screen.update) screen.update(submit);
     updateProgress();
   }
 
@@ -1278,6 +1367,27 @@
   }
 
   /* ---------------------------------------------------------------------------
+     ?simulate=1 in test mode: load the developer drawer from the local test
+     server (scripts/dev/simulate.js; never in web/, never in live mode).
+     PP.dev is all it can reach. changed(): it edited state.answers / texts.
+     ------------------------------------------------------------------------- */
+  function loadSimulator() {
+    if (!simulate || mode !== 'mock' || PP.dev) return;
+    PP.dev = {
+      config: function () { return config; },
+      state: function () { return state; },
+      context: flowContext,
+      steps: function () { if (state) rebuildSteps(); return steps; },
+      current: function () { return current; },
+      changed: function () { markStarted(); save(); redraw(); },
+      go: function (id) { showStep(id, 'push'); }
+    };
+    var tag = document.createElement('script');
+    try { tag.src = new URL('/dev/simulate.js', PP.net.endpoint).href; } catch (e) { tag.src = '/dev/simulate.js'; }
+    document.head.appendChild(tag);
+  }
+
+  /* ---------------------------------------------------------------------------
      Small helpers
      ------------------------------------------------------------------------- */
   function bindEvents() {
@@ -1325,6 +1435,19 @@
 
   function absoluteUrl(url) {
     try { return new URL(url, root.location.href).href; } catch (e) { return url; }
+  }
+
+  /* Own keys only: a code such as "constructor" must never find what every
+     JavaScript object inherits. */
+  function has(o, k) { return o !== null && o !== undefined && Object.prototype.hasOwnProperty.call(o, k); }
+
+  /* The phone's answers, typed texts and voice notes are kept in maps that
+     inherit nothing, for the same reason (web/js/voice.js fills the typing
+     box from state.texts[id]). Saved and read back as ordinary JSON. */
+  function dict(src) {
+    var out = Object.create(null);
+    if (src && typeof src === 'object') Object.keys(src).forEach(function (k) { out[k] = src[k]; });
+    return out;
   }
 
   function withTimeout(promise, ms, fallback) {

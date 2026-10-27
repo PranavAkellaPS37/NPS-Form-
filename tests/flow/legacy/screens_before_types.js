@@ -23,6 +23,15 @@
      onCleanup(fn), chooseLanguage(code), ns, submit (status), retryNow(),
      startOver()
 
+   TEXT KEYS (docs/flow-engine.md 4.6): step.keys (from flow.js, templates
+   filled in) names the texts (text, label, help, options, rows, comment,
+   ...) and step.node holds the screen's settings. Where the questionnaire
+   sets nothing, the screen uses the key it always used (q.fn_rating,
+   fn.<area>.name, thanks.title ...) and survey.json's rating / deep_dive /
+   support settings, so today's questionnaire looks exactly as before. The
+   support rows and comment box follow step.keys exactly (flow.js requires
+   and sends only those).
+
    All words come from the texts (control panel "Texts", or the form's own
    copy web/i18n/strings.json); nothing here needs editing to
    change questions, areas, chips or languages. A text still waiting for its
@@ -85,6 +94,28 @@
      scan of literal keys does not mistake a prefix for a missing key). */
   function ratingKey(n) { return 'rating.' + n; }
   function supportKey(item) { return 'support.' + item; }
+
+  /* A text key of the screen: step.keys[field] if set, else fallback. */
+  function keyOf(step, field, fallback) {
+    var k = step.keys;
+    return k && k[field] !== undefined ? k[field] : fallback;
+  }
+
+  /* A yes/no setting: the node's own field if set, else fallback (survey.json). */
+  function nodeSetting(step, field, fallback) {
+    var node = step.node;
+    return node && node[field] !== undefined ? node[field] === true : fallback;
+  }
+
+  /* Options as [{code, text}], from step.keys.options or a list of codes;
+     an option without a text key gets defaultKey(code). */
+  function withTexts(list, defaultKey) {
+    return (list || []).map(function (option) {
+      var code = option !== null && typeof option === 'object' ? option.code : option;
+      var text = option !== null && typeof option === 'object' ? option.text : undefined;
+      return { code: code, text: typeof text === 'string' ? text : defaultKey(code) };
+    });
+  }
 
   function faces(config) {
     var f = (config.rating && config.rating.faces) || [];
@@ -194,7 +225,11 @@
 
   /* ---- S2: NPS 0-10 ------------------------------------------------------- */
   S.nps_0_10 = function (ctx) {
-    var e = ctx.step.entry;
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
+    var lowKey = keyOf(ctx.step, 'low_label', e.low_label);
+    var highKey = keyOf(ctx.step, 'high_label', e.high_label);
+    var hintKey = keyOf(ctx.step, 'scale_hint', e.scale_hint);
     var value = ctx.state.answers[ctx.step.id];
     var buttons = [];
     var rowA = h('div', { 'class': 'nps-row nps-row-a' });
@@ -215,14 +250,14 @@
       }(n));
     }
     var ends = h('div', { 'class': 'nps-ends', 'aria-hidden': 'true' }, [
-      h('span', { text: e.low_label ? '0 = ' + t(e.low_label) : '' }),
-      h('span', { text: e.high_label ? t(e.high_label) + ' = 10' : '' })
+      h('span', { text: lowKey ? '0 = ' + t(lowKey) : '' }),
+      h('span', { text: highKey ? t(highKey) + ' = 10' : '' })
     ]);
-    var speak = [{ key: e.text }];
-    if (e.scale_hint) speak.push({ key: e.scale_hint });
-    var group = h('div', { role: 'group', 'aria-label': t(e.text) }, [rowA, rowB]);
+    var speak = [{ key: textKey }];
+    if (hintKey) speak.push({ key: hintKey });
+    var group = h('div', { role: 'group', 'aria-label': t(textKey) }, [rowA, rowB]);
     return {
-      el: section([questionHead(e.text, speak), group, ends]),
+      el: section([questionHead(textKey, speak), group, ends]),
       auto: true,
       blockedHint: function () { return t('ui.choose_one'); }
     };
@@ -230,11 +265,12 @@
 
   /* ---- S3: one area, 1-5 faces ---------------------------------------------- */
   S.function_rating = function (ctx) {
-    var fn = ctx.step.fn;
-    var nameKey = 'fn.' + fn.id + '.name';
-    var helpKey = 'fn.' + fn.id + '.help';
+    var fn = ctx.step.fn || {};
+    var nameKey = keyOf(ctx.step, 'label', 'fn.' + fn.id + '.name');
+    var helpKey = keyOf(ctx.step, 'help', 'fn.' + fn.id + '.help');
+    var questionKey = keyOf(ctx.step, 'text', 'q.fn_rating');
     var value = ctx.state.answers[ctx.step.id];
-    var speak = [{ key: nameKey }, { key: helpKey }, { key: 'q.fn_rating' }];
+    var speak = [{ key: nameKey }, { key: helpKey }, { key: questionKey }];
 
     var naBtn = null;
     var row = facesRow(ctx.config, value, function (score) {
@@ -245,10 +281,10 @@
     var kids = [
       textEl('p', 'area-name', nameKey),
       textEl('p', 'area-help', helpKey),
-      questionHead('q.fn_rating', speak, t(nameKey)),
+      questionHead(questionKey, speak, t(nameKey)),
       row
     ];
-    if (ctx.config.rating && ctx.config.rating.allow_not_applicable) {
+    if (nodeSetting(ctx.step, 'allow_not_applicable', Boolean(ctx.config.rating && ctx.config.rating.allow_not_applicable))) {
       naBtn = naButton('rating.na', value === 'na', function (b) {
         markSelected(row._ppButtons, null);
         markSelected([b], b);
@@ -265,13 +301,22 @@
 
   /* ---- S4: main problem + tell us more (for low-rated areas) --------------- */
   S.function_deep_dive = function (ctx) {
-    var fn = ctx.step.fn;
+    var step = ctx.step;
+    var fn = step.fn || {};
+    var node = step.node;
     var dd = ctx.config.deep_dive || {};
-    var nameKey = 'fn.' + fn.id + '.name';
-    var rating = ctx.state.answers['fn_rating:' + fn.id];
-    var chosen = ctx.state.answers[ctx.step.id];
-    var codes = (fn.issues || []).concat(['other']);
-    var labelKey = function (code) { return code === 'other' ? 'issue.other' : 'issue.' + fn.id + '.' + code; };
+    var nameKey = keyOf(step, 'label', 'fn.' + fn.id + '.name');
+    var questionKey = keyOf(step, 'text', 'q.deep_dive');
+    var tellOptionalKey = keyOf(step, 'detail_text', 'q.tell_more');
+    var tellRequiredKey = keyOf(step, 'detail_text_required', 'q.tell_more_required');
+    // The rating shown at the top: the node's rating_from, else fn_rating:<area>
+    var ratingId = node && typeof node.rating_from === 'string' ? PP.flow.fill(node.rating_from, step.vars) : 'fn_rating:' + fn.id;
+    var rating = ctx.state.answers[ratingId];
+    var chosen = ctx.state.answers[step.id];
+    var chipKey = function (code) { return code === 'other' ? 'issue.other' : 'issue.' + fn.id + '.' + code; };
+    var options = withTexts(keyOf(step, 'options', null) || (fn.issues || []).concat(['other']), chipKey);
+    // "Other" needs a voice note or text? The rule flow.js applies to Next.
+    var detailIfOther = node ? node.require_detail_if_other !== false : dd.require_detail_if_other !== false;
 
     var hint = textEl('p', 'hint is-error', 'dd.other_needs_detail');
     hint.hidden = true;
@@ -279,14 +324,14 @@
     // With "Other" picked, a voice note or text becomes required: the heading
     // drops "(optional)" and the red hint shows until something is added.
     var tellRequired = function () {
-      return ctx.state.answers[ctx.step.id] === 'other' && dd.require_detail_if_other !== false;
+      return ctx.state.answers[step.id] === 'other' && detailIfOther;
     };
-    var tellKey = function () { return tellRequired() ? 'q.tell_more_required' : 'q.tell_more'; };
+    var tellKey = function () { return tellRequired() ? tellRequiredKey : tellOptionalKey; };
     // The heading has its own speaker, which reads whichever text is showing.
     var tellSpeak = PP.speech.button(function () { return [{ key: tellKey() }]; });
     var tellHead = h('div', { 'class': 'q-head sub-head' }, [tellTitle, tellSpeak]);
     var updateHint = function () {
-      hint.hidden = !(tellRequired() && !PP.flow.hasDetail(ctx.state, ctx.step.id));
+      hint.hidden = !(tellRequired() && !PP.flow.hasDetail(ctx.state, step.id));
       var info = say(tellKey());
       tellTitle.textContent = info.text;
       if (langAttr(info)) tellTitle.setAttribute('lang', langAttr(info));
@@ -295,24 +340,25 @@
     };
 
     var buttons = [];
-    var chips = h('div', { 'class': 'chips', role: 'group', 'aria-label': t('q.deep_dive') });
-    codes.forEach(function (code) {
+    var chips = h('div', { 'class': 'chips', role: 'group', 'aria-label': t(questionKey) });
+    options.forEach(function (option) {
+      var code = option.code;
       var b = h('button', {
         type: 'button',
         'class': 'choice chip' + (chosen === code ? ' is-selected' : ''),
         'aria-pressed': chosen === code ? 'true' : 'false'
-      }, [PP.icon('check'), textEl('span', null, labelKey(code))]);
+      }, [PP.icon('check'), textEl('span', null, option.text)]);
       b.addEventListener('click', function () {
         markSelected(buttons, b);
-        ctx.setAnswer(ctx.step.id, code, false);
+        ctx.setAnswer(step.id, code, false);
         updateHint();
       });
       buttons.push(b);
       chips.appendChild(b);
     });
 
-    var speak = [{ key: nameKey }, { key: 'q.deep_dive' }].concat(codes.map(function (c) {
-      return { key: labelKey(c) };
+    var speak = [{ key: nameKey }, { key: questionKey }].concat(options.map(function (option) {
+      return { key: option.text };
     }));
 
     var emoji = faces(ctx.config);
@@ -322,14 +368,14 @@
     var widgetCtx = Object.assign({}, ctx, {
       refreshNav: function () { updateHint(); ctx.refreshNav(); }
     });
-    var widget = tellWidget(widgetCtx, ctx.step.id);
+    var widget = tellWidget(widgetCtx, step.id);
     updateHint();
 
     return {
       el: section([
         textEl('p', 'area-name', nameKey),
         h('p', { 'class': 'your-rating', text: t('dd.your_rating') + ': ' + ratingText }),
-        questionHead('q.deep_dive', speak, t(nameKey)),
+        questionHead(questionKey, speak, t(nameKey)),
         chips,
         tellHead,
         hint,
@@ -337,7 +383,7 @@
       ]),
       auto: false,
       blockedHint: function () {
-        if (!ctx.state.answers[ctx.step.id]) return t('ui.choose_one');
+        if (!ctx.state.answers[step.id]) return t('ui.choose_one');
         return t('dd.other_needs_detail');
       }
     };
@@ -345,10 +391,11 @@
 
   /* ---- Yes / No (support gate, or any extra yes/no question) -------------- */
   S.yes_no = function (ctx) {
-    var e = ctx.step.entry;
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
     var value = ctx.state.answers[ctx.step.id];
     var buttons = [];
-    var box = h('div', { 'class': 'yesno', role: 'group', 'aria-label': t(e.text) });
+    var box = h('div', { 'class': 'yesno', role: 'group', 'aria-label': t(textKey) });
     [['yes', 'ui.yes'], ['no', 'ui.no']].forEach(function (pair) {
       var label = say(pair[1]);
       var b = h('button', {
@@ -365,28 +412,39 @@
       box.appendChild(b);
     });
     return {
-      el: section([questionHead(e.text, [{ key: e.text }]), box]),
+      el: section([questionHead(textKey, [{ key: textKey }]), box]),
       auto: true,
       blockedHint: function () { return t('ui.choose_one'); }
     };
   };
 
-  /* ---- S5: support block (all items on one screen) ------------------------- */
+  /* ---- S5: support block (all items on one screen) -------------------------
+     Rows and comment box: step.keys (a step made without a node: survey.json). */
   S.support_block = function (ctx) {
-    var e = ctx.step.entry;
+    var step = ctx.step;
+    var e = step.entry || {};
+    var textKey = keyOf(step, 'text', e.text);
     var support = ctx.config.support || {};
-    var items = support.items || [];
+    var keys = step.keys || {};
+    var oldComment = support.allow_comment !== false ?
+      { key: 'support_comment', text: support.comment_text || 'q.support_comment' } : null;
+    var items = step.node ? (keys.rows || []) : (support.items || []).map(function (item) {
+      return { id: item, key: 'support:' + item, text: supportKey(item) };
+    });
+    var comment = step.node ? keys.comment || null : oldComment;
+    var allowNa = nodeSetting(step, 'allow_not_applicable', support.allow_not_applicable === true);
     var emoji = faces(ctx.config);
     var rows = [];
+    var rowText = function (item) { return typeof item.text === 'string' ? item.text : supportKey(item.id); };
     var kids = [
-      questionHead(e.text, [{ key: e.text }].concat(items.map(function (i) { return { key: supportKey(i) }; }))),
+      questionHead(textKey, [{ key: textKey }].concat(items.map(function (i) { return { key: rowText(i) }; }))),
       h('p', { 'class': 'legend', text: emoji[0] + ' ' + t('rating.1') + '   …   ' + emoji[4] + ' ' + t('rating.5') })
     ];
     items.forEach(function (item) {
-      var id = 'support:' + item;
+      var id = item.key;
       var value = ctx.state.answers[id];
-      var label = t(supportKey(item));
-      var rowEl = h('div', { 'class': 'srow' }, [textEl('p', 'srow-label', supportKey(item))]);
+      var label = t(rowText(item));
+      var rowEl = h('div', { 'class': 'srow' }, [textEl('p', 'srow-label', rowText(item))]);
       var naBtn = null;
       var facesEl = facesRow(ctx.config, value, function (score) {
         rowEl.classList.remove('is-missing');
@@ -394,8 +452,7 @@
         ctx.setAnswer(id, score, false);
       }, true, label);
       rowEl.appendChild(facesEl);
-      // Optional "Doesn't apply" per row (support.allow_not_applicable in survey.json)
-      if (support.allow_not_applicable === true) {
+      if (allowNa) {
         naBtn = naButton('support.not_applicable', value === 'na', function (b) {
           rowEl.classList.remove('is-missing');
           markSelected(facesEl._ppButtons, null);
@@ -407,13 +464,13 @@
       rows.push({ id: id, el: rowEl });
       kids.push(rowEl);
     });
-    if (support.allow_comment !== false) {
-      var commentKey = support.comment_text || 'q.support_comment';
+    if (comment && comment.key !== undefined) {
+      var commentKey = typeof comment.text === 'string' ? comment.text : 'q.support_comment';
       kids.push(h('div', { 'class': 'q-head sub-head' }, [
         textEl('h2', 'sub-title', commentKey),
         PP.speech.button(function () { return [{ key: commentKey }]; })
       ]));
-      kids.push(tellWidget(ctx, 'support_comment'));
+      kids.push(tellWidget(ctx, comment.key));
     }
     return {
       el: section(kids),
@@ -433,9 +490,10 @@
 
   /* ---- S6 and any extra open question: voice note or text ------------------ */
   S.free_text = function (ctx) {
-    var e = ctx.step.entry;
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
     return {
-      el: section([questionHead(e.text, [{ key: e.text }]), tellWidget(ctx, ctx.step.id)]),
+      el: section([questionHead(textKey, [{ key: textKey }]), tellWidget(ctx, ctx.step.id)]),
       auto: false,
       optional: e.required !== true,
       blockedHint: function () { return t('text.required'); }
@@ -444,29 +502,35 @@
 
   /* ---- Extra question types you can add in "flow" without code --------------- */
   S.rating_1_5 = function (ctx) {
-    var e = ctx.step.entry;
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
     var row = facesRow(ctx.config, ctx.state.answers[ctx.step.id], function (score) {
       ctx.setAnswer(ctx.step.id, score, true);
-    }, false, t(e.text));
+    }, false, t(textKey));
     return {
-      el: section([questionHead(e.text, [{ key: e.text }]), row]),
+      el: section([questionHead(textKey, [{ key: textKey }]), row]),
       auto: true,
       blockedHint: function () { return t('ui.choose_one'); }
     };
   };
 
   S.single_choice = function (ctx) {
-    var e = ctx.step.entry;
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
+    var ownId = (ctx.step.node && ctx.step.node.id) || ctx.step.id;
+    var options = withTexts(keyOf(ctx.step, 'options', null) || e.options, function (code) {
+      return 'choice.' + ownId + '.' + code;
+    });
     var value = ctx.state.answers[ctx.step.id];
     var buttons = [];
-    var list = h('div', { 'class': 'chips one-col', role: 'group', 'aria-label': t(e.text) });
-    (e.options || []).forEach(function (code) {
-      var key = 'choice.' + ctx.step.id + '.' + code;
+    var list = h('div', { 'class': 'chips one-col', role: 'group', 'aria-label': t(textKey) });
+    options.forEach(function (option) {
+      var code = option.code;
       var b = h('button', {
         type: 'button',
         'class': 'choice chip' + (value === code ? ' is-selected' : ''),
         'aria-pressed': value === code ? 'true' : 'false'
-      }, [PP.icon('check'), textEl('span', null, key)]);
+      }, [PP.icon('check'), textEl('span', null, option.text)]);
       b.addEventListener('click', function () {
         markSelected(buttons, b);
         ctx.setAnswer(ctx.step.id, code, true);
@@ -474,21 +538,23 @@
       buttons.push(b);
       list.appendChild(b);
     });
-    var speak = [{ key: e.text }].concat((e.options || []).map(function (code) {
-      return { key: 'choice.' + ctx.step.id + '.' + code };
+    var speak = [{ key: textKey }].concat(options.map(function (option) {
+      return { key: option.text };
     }));
     return {
-      el: section([questionHead(e.text, speak), list]),
+      el: section([questionHead(textKey, speak), list]),
       auto: true,
       blockedHint: function () { return t('ui.choose_one'); }
     };
   };
 
   S.info_card = function (ctx) {
-    var e = ctx.step.entry;
-    var speak = e.body ? [{ key: e.text }, { key: e.body }] : [{ key: e.text }];
-    var kids = [questionHead(e.text, speak)];
-    if (e.body) kids.push(textEl('p', 'body-text', e.body));
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
+    var bodyKey = keyOf(ctx.step, 'body', e.body);
+    var speak = bodyKey ? [{ key: textKey }, { key: bodyKey }] : [{ key: textKey }];
+    var kids = [questionHead(textKey, speak)];
+    if (bodyKey) kids.push(textEl('p', 'body-text', bodyKey));
     return { el: section(kids), auto: false, nextLabel: 'ui.continue' };
   };
 
@@ -504,6 +570,9 @@
     var box = h('section', { 'class': 'q final', role: 'status', 'aria-live': 'polite', tabindex: '-1' });
     var shownStatus = null;
     var countdown = null;
+    // Each ending may have its own title and text (several endings)
+    var endTitleKey = keyOf(ctx.step, 'text', 'thanks.title');
+    var endBodyKey = keyOf(ctx.step, 'body', 'thanks.body');
 
     /* tone: null = green (all good), 'warn' = red (a problem), 'info' = brand
        colour (nothing wrong, just information, e.g. "not open yet"). */
@@ -536,18 +605,18 @@
           kids = [h('div', { 'class': 'spinner', 'aria-hidden': 'true' }), textEl('p', null, 'submit.sending')];
           break;
         case 'done':
-          kids = message('checkCircle', null, 'thanks.title', [
-            textEl('p', null, 'thanks.body'),
+          kids = message('checkCircle', null, endTitleKey, [
+            textEl('p', null, endBodyKey),
             textEl('p', 'muted', 'thanks.close')
-          ], ['thanks.title', 'thanks.body']);
+          ], [endTitleKey, endBodyKey]);
           break;
         case 'failed':
           countdown = h('p', { 'class': 'muted' });
-          kids = message(null, null, 'thanks.title', [textEl('p', null, 'submit.failed'), countdown, retryButton()],
-            ['thanks.title', 'submit.failed']);
+          kids = message(null, null, endTitleKey, [textEl('p', null, 'submit.failed'), countdown, retryButton()],
+            [endTitleKey, 'submit.failed']);
           break;
         case 'error':
-          kids = message('warn', 'warn', 'thanks.title', [textEl('p', null, 'submit.error'), retryButton()], ['submit.error']);
+          kids = message('warn', 'warn', endTitleKey, [textEl('p', null, 'submit.error'), retryButton()], ['submit.error']);
           break;
         case 'already':
           kids = message('checkCircle', null, 'already.title', [textEl('p', null, 'already.body')],
@@ -570,8 +639,8 @@
             ['round.not_open_title', 'round.not_open_body']);
           break;
         case 'preview':
-          kids = message('checkCircle', null, 'thanks.title', [textEl('p', null, 'dev.preview_done')],
-            ['thanks.title', 'dev.preview_done']);
+          kids = message('checkCircle', null, endTitleKey, [textEl('p', null, 'dev.preview_done')],
+            [endTitleKey, 'dev.preview_done']);
           break;
         default:
           kids = [];

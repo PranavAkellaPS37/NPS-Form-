@@ -1,0 +1,31 @@
+{
+ "_about": "List format, \"immediate\" mode: a rule on the problem-screens line is ignored by the form (a warning).",
+ "base": "list",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "immediate",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "patch": [
+  {
+   "op": "set",
+   "node": "fn_deep_dives",
+   "field": "show_if",
+   "value": {
+    "answer": "nps",
+    "at_most": 6
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "P3",
+   "level": "warning",
+   "node": "fn_deep_dives"
+  }
+ ],
+ "expect_no_errors": true
+}

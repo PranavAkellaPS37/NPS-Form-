@@ -1,0 +1,32 @@
+{
+ "_about": "A group with no body.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "replace",
+   "node": "fn_deep_dives",
+   "value": {
+    "id": "area_loop",
+    "type": "group",
+    "repeat_for": {
+     "each": "area",
+     "in": "areas"
+    },
+    "next": "support_gate"
+   }
+  },
+  {
+   "op": "set",
+   "node": "fn_ratings",
+   "field": "next",
+   "value": "area_loop"
+  }
+ ],
+ "expect": [
+  {
+   "code": "L2",
+   "level": "error",
+   "node": "area_loop"
+  }
+ ]
+}

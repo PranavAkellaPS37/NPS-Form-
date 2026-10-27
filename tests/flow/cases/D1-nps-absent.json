@@ -1,0 +1,23 @@
+{
+ "_about": "No screen stores \"nps\": its data column stays empty (a warning in the repo).",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "remove",
+   "node": "nps"
+  },
+  {
+   "op": "set",
+   "node": "whats_changed",
+   "field": "next",
+   "value": "fn_ratings"
+  }
+ ],
+ "expect": [
+  {
+   "code": "D1",
+   "level": "warning"
+  }
+ ],
+ "expect_no_errors": true
+}

@@ -1,0 +1,19 @@
+{
+ "_about": "A screen type the form does not know.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "type",
+   "value": "slider_0_100"
+  }
+ ],
+ "expect": [
+  {
+   "code": "F1",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

@@ -1,0 +1,19 @@
+{
+ "_about": "A screen whose question text is not in strings.json.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "support_gate",
+   "field": "text",
+   "value": "q.not_there"
+  }
+ ],
+ "expect": [
+  {
+   "code": "T1",
+   "level": "error",
+   "node": "support_gate"
+  }
+ ]
+}

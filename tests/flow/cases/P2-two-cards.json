@@ -1,0 +1,22 @@
+{
+ "_about": "Two \"what changed\" cards (list format): an error.",
+ "base": "list",
+ "patch": [
+  {
+   "op": "add",
+   "after": "nps",
+   "value": {
+    "id": "whats_changed_2",
+    "type": "whats_changed",
+    "skip_if": "empty"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "P2",
+   "level": "error",
+   "node": "whats_changed_2"
+  }
+ ]
+}

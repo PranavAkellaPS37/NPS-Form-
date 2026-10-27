@@ -1,0 +1,30 @@
+{
+ "_about": "Proposal example \"a jump\": promoters (nps 9 or 10) skip the area questions (both the ratings and the problem screens).",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "next",
+   "value": [
+    {
+     "when": {
+      "answer": "nps",
+      "at_least": 9
+     },
+     "goto": "support_gate"
+    },
+    {
+     "default": "fn_ratings"
+    }
+   ]
+  }
+ ],
+ "expect_clean": true,
+ "forbid": [
+  {
+   "code": "R5",
+   "level": "info"
+  }
+ ]
+}

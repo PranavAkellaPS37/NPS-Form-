@@ -1,0 +1,22 @@
+{
+ "_about": "An unknown fact (\"region\").",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "fact": "region",
+    "equals": "south"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

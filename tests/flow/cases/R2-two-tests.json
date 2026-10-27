@@ -1,0 +1,23 @@
+{
+ "_about": "Two tests in one rule.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "nps",
+    "at_least": 2,
+    "at_most": 6
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R2",
+   "level": "error",
+   "node": "one_fix"
+  }
+ ]
+}

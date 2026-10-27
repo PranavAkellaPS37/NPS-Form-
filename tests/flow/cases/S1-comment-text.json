@@ -1,0 +1,24 @@
+{
+ "_about": "Graph format: survey.json's support > comment_text names another question than the support screen's comment > text.",
+ "base": "graph",
+ "survey": {
+  "support": {
+   "items": [
+    "agent_behaviour",
+    "understood_problem",
+    "time_to_resolve",
+    "kept_updated"
+   ],
+   "allow_not_applicable": false,
+   "allow_comment": true,
+   "comment_text": "q.one_fix"
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

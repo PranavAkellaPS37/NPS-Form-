@@ -1,0 +1,25 @@
+{
+ "_about": "List format, \"immediate\" mode: problem screens but no area ratings, so nothing is ever rated (the old check_config.py rule).",
+ "base": "list",
+ "survey": {
+  "deep_dive": {
+   "threshold": 3,
+   "when": "immediate",
+   "require_chip": true,
+   "require_detail_if_other": true
+  }
+ },
+ "patch": [
+  {
+   "op": "remove",
+   "node": "fn_ratings"
+  }
+ ],
+ "expect": [
+  {
+   "code": "R1",
+   "level": "error",
+   "node": "fn_deep_dives"
+  }
+ ]
+}

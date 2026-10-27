@@ -240,6 +240,20 @@ module.exports = function register(add) {
         `errors: ${K.show((r.errors || []).map((e) => `${e.section}/${e.ref}: ${e.message}`), 400)}`);
       checkIssues(s, r.errors, name);
     }
+    // 26 Oct 2026: the route is checked by the one flow checker (Flow.gs) and each problem is reported once, in the
+    // panel's words: a built-in screen shown twice is one error (the route is checked once the rows are fixed), and a
+    // missing English text is reported under Texts only (the checker's own text check is left out).
+    {
+      const twice = H.clone(base);
+      twice.screens.splice(idx(twice, 'thanks'), 0, Object.assign({}, twice.screens[idx(twice, 'support')], { id: 'support_again', show_if: null }));
+      const r1 = P(h, s, 'panelValidate', [twice]);
+      s.eq(r1 && r1.errors.filter((e) => e.section === 'screens').length, 1, 'a built-in screen used twice: exactly one error (no follow-on route errors)');
+      const noEnglish = H.clone(base);
+      noEnglish.texts['q.nps'].en = '';
+      const r2 = P(h, s, 'panelValidate', [noEnglish]);
+      s.ok(r2 && r2.errors.some((e) => e.section === 'texts') && !r2.errors.some((e) => e.section === 'screens'),
+        'an empty English text: reported under Texts only', K.show(r2 && r2.errors));
+    }
     for (const [name, sections, pattern, mutate] of WARNING_CASES) {
       const m = H.clone(base);
       mutate(m);
@@ -377,9 +391,12 @@ module.exports = function register(add) {
       s.ok(!('links' in sv), 'survey has no "links" (static-only)');
       const repo = H.withoutNotes(facts.survey);
       for (const key of ['survey_id', 'branding', 'navigation', 'rating', 'deep_dive', 'voice', 'text', 'read_aloud', 'whats_changed',
-        'telemetry', 'languages', 'default_language', 'fallback_language', 'functions', 'support', 'flow']) {
+        'telemetry', 'languages', 'default_language', 'fallback_language', 'functions', 'support']) {
         s.eq(sv[key], repo[key], `published survey.${key} = web/config/survey.json (notes removed)`);
       }
+      // Since 23 Oct 2026 (flow-graph stage 4) the route is published as the graph; since 26 Oct 2026 the repo's
+      // survey.json holds that same graph (it was PP.flow.fromLegacy of the old list), so partners see the same screens.
+      s.eq(sv.flow, facts.graph, 'published survey.flow = the graph in web/config/survey.json (its note left out)');
       const strings = doc.strings || {};
       s.ok(!Object.keys(strings).some((k) => k.startsWith('_')), 'strings has no "_" note keys');
       s.eq(strings['q.nps'] && strings['q.nps'].en, newText, 'the edited English text is published');
@@ -430,7 +447,7 @@ module.exports = function register(add) {
         const d = c3.value;
         const losses = (d.survey.functions || []).find((f) => f.id === 'losses');
         s.ok(losses && losses.issues.indexOf('wrong_debit') < 0, 'an inactive chip is left out', K.show(losses));
-        s.ok(!(d.survey.flow || []).some((x) => x.id === 'one_fix'), 'an inactive screen is left out');
+        s.ok(!C.flowIdsOf(d.survey.flow).some((id) => id === 'one_fix'), 'an inactive screen is left out');
         s.ok(!(d.survey.languages || []).some((l) => l.code === 'ml') && !Object.values(d.strings).some((v) => 'ml' in v), 'an inactive language is left out (also from strings)');
         s.eq(d.strings['ui.next'] && d.strings['ui.next'].ta, '[TRANSLATE] Next', 'a missing translation is published as "[TRANSLATE] " + English');
       }
@@ -653,7 +670,13 @@ module.exports = function register(add) {
 
     const ex = P(h, s, 'panelExport', [], { need: true });
     const files = (ex && ex.files) || {};
-    s.eq(Object.keys(files).sort(), ['audio_clips.json', 'strings.json', 'survey.json', 'whats_changed.json'], 'panelExport returns the four repo files');
+    // CHANGED EXPECTATION (26 Oct 2026, review finding 10): the copy also brings docs/flow.md ("flow.md"), the map of the route.
+    s.eq(Object.keys(files).sort(), ['audio_clips.json', 'flow.md', 'strings.json', 'survey.json', 'whats_changed.json'],
+      'panelExport returns the four repo files and docs/flow.md');
+    const apartFromVersion = (t) => String(t).replace(/config_version `[^`]*`/, 'config_version `…`');
+    s.soft(apartFromVersion(files['flow.md']) === apartFromVersion(C.flowMap()),
+      'flow.md is byte-for-byte what "node scripts/flow.js map" makes of the repo files (apart from config_version, like survey.json)',
+      firstDiff(apartFromVersion(files['flow.md']), apartFromVersion(C.flowMap())));
     let survey = null;
     try { survey = JSON.parse(files['survey.json']); } catch (e) { s.ok(false, 'exported survey.json is valid JSON', String(e)); }
     if (survey) {
@@ -664,16 +687,18 @@ module.exports = function register(add) {
       'exported backend without a recorded web app address = { mode: mock (test mode), mock_url: /api, apps_script_url: "", the three sending settings }');
       s.ok(H.plainEnglish(ex.warning) && /web app address/i.test(ex.warning) && /test mode/.test(ex.warning),
         'and panelExport answers a plain-English warning: no web app address, so the form stays in test mode', K.show(ex.warning));
+      // Since 23 Oct 2026 (flow-graph stage 4) the copy writes the route as the graph, and since 26 Oct 2026 the
+      // repo's own survey.json holds it ("python3 scripts/flow.py migrate --write"): facts.migrated is the repo file.
       const sameApartFromVersion = (t) => String(t).replace(/"config_version": "[^"]*"/, '"config_version": "…"');
-      s.soft(sameApartFromVersion(files['survey.json']) === sameApartFromVersion(facts.raw['survey.json']),
-        'without a web app address, the exported survey.json is byte-for-byte the repo\'s own copy (apart from config_version)',
-        firstDiff(sameApartFromVersion(files['survey.json']), sameApartFromVersion(facts.raw['survey.json'])));
+      s.soft(sameApartFromVersion(files['survey.json']) === sameApartFromVersion(facts.migrated.raw),
+        'without a web app address, the exported survey.json is byte-for-byte the repo\'s own copy, its graph included (apart from config_version)',
+        firstDiff(sameApartFromVersion(files['survey.json']), sameApartFromVersion(facts.migrated.raw)));
       s.eq(survey.links && survey.links.mock_defaults, facts.survey.links.mock_defaults, 'exported links = the Phase 1 mock_defaults');
       const strip = (x) => { const c = H.withoutNotes(x); delete c.backend; delete c.config_version; return c; };
-      s.eq(strip(survey), strip(facts.survey), 'exported survey.json has the same content as the repo (apart from backend and config_version)');
+      s.eq(strip(survey), strip(facts.migrated.survey), 'exported survey.json has the same content as the repo, flow as the graph (apart from backend and config_version)');
       const helpKeys = (o, at) => Object.entries(o).flatMap(([k, v]) => (k.startsWith('_') ? [at + k] : (v && typeof v === 'object' && !Array.isArray(v) ? helpKeys(v, at + k + '.') : [])));
-      s.soft(K.deepEqual(helpKeys(survey, '').sort(), helpKeys(facts.survey, '').sort()), 'exported survey.json keeps the same _help notes',
-        K.show({ export: helpKeys(survey, ''), repo: helpKeys(facts.survey, '') }));
+      s.soft(K.deepEqual(helpKeys(survey, '').sort(), helpKeys(facts.migrated.survey, '').sort()), 'exported survey.json keeps the same _help notes (the route\'s own note in flow._help)',
+        K.show({ export: helpKeys(survey, ''), repo: helpKeys(facts.migrated.survey, '') }));
     }
     for (const name of ['strings.json', 'whats_changed.json', 'audio_clips.json']) {
       let parsed = null;
@@ -802,7 +827,7 @@ module.exports = function register(add) {
     const info = H.roundInfo(h, '2026-R1');
     const book = info && info.sheet_id ? h.evaluate(`SpreadsheetApp.openById(${JSON.stringify(info.sheet_id)})`) : null;
     if (book) {
-      const want = { responses: 29, function_ratings: 11, free_text: 29, events: 8, pings: 14 };
+      const want = { responses: 29, function_ratings: 11, free_text: 29, events: 8, pings: 15 };   // pings: + config_version (26 Oct 2026)
       Object.keys(want).forEach((tab) => {
         const sh = book.getSheetByName(tab);
         s.eq(sh ? sh.getMaxColumns() : null, want[tab], `data tab "${tab}" is exactly ${want[tab]} columns wide (Google counts empty cells)`);

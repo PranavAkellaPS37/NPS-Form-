@@ -1,0 +1,17 @@
+{
+ "_about": "\"start\" names a screen that does not exist.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set_flow",
+   "field": "start",
+   "value": "welcome"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G4",
+   "level": "error"
+  }
+ ]
+}

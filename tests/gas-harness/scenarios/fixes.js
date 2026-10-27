@@ -26,8 +26,9 @@
            has no Range.clearContents) reads back exactly
        G7  "Authorization is required": one message, word for word the same
            on the server and in the panel (Panel.html MSG_AUTHORIZATION)
-       G8  the nps and support_gate questions (a warning if one goes
-           missing), and a new, empty round is not an unpublished change
+       G8  the nps and support_gate questions (since 26 Oct 2026: deleted
+           is an error, hidden a warning, re-typed an error), and a new,
+           empty round is not an unpublished change
        G9  a DC id Sheets turned into a date gets no link; read-aloud clip
            addresses follow the settings check's rule; a round whose name
            has a dot can't be opened; a real round opened before anything
@@ -509,37 +510,49 @@ module.exports = function register(add) {
     H.contractClean(s, h);
   });
 
-  add('G8', 'The nps and support_gate questions: a warning if one goes missing (hiding is fine); a new, empty round is not an unpublished change', async (s) => {
+  // CHANGED EXPECTATION (26 Oct 2026, docs/flow-engine.md check D1, decision 8): the route is checked by the one flow
+  // checker (Flow.gs). Deleting "nps" or "support_gate" is now an ERROR in the panel (21 Oct: a warning), hiding one is
+  // a warning at its row (its column stays empty while hidden), and re-typing "nps" is an error (audit problem 3).
+  add('G8', 'The nps and support_gate questions: deleted is an error, hidden a warning, re-typed an error; a new, empty round is not an unpublished change', async (s) => {
     const h = H.setupPublished(s);
     const L = P(h, s, 'panelLoad', [], { need: true });
-    const missing = (v, code) => ((v && v.warnings) || []).filter((w) => w.section === 'screens' &&
+    const missing = (list, code) => (list || []).filter((w) => w.section === 'screens' &&
       w.message.indexOf(`The question with the code "${code}" is missing`) === 0);
     // nps deleted
     const m1 = H.clone(L.model);
     m1.screens = m1.screens.filter((x) => x.id !== 'nps');
     const v1 = P(h, s, 'panelValidate', [m1]);
-    const w1 = missing(v1, 'nps');
-    s.ok(w1.length === 1 && /nps column/.test(w1[0].message) && /headline score/.test(w1[0].message) && H.plainEnglish(w1[0].message),
-      'without the "nps" question: a warning naming its code and the nps column (the dashboard\'s headline score)', K.show(v1 && v1.warnings.filter((w) => w.section === 'screens')));
-    s.eq(v1 && v1.errors, [], 'it is only a warning (it never blocks)');
+    const e1 = missing(v1 && v1.errors, 'nps');
+    s.ok(e1.length === 1 && /nps column/.test(e1[0].message) && /headline score/.test(e1[0].message) && /never deleted or re-coded/.test(e1[0].message) &&
+      H.plainEnglish(e1[0].message), 'without the "nps" question: an error naming its code and the nps column (the dashboard\'s headline score)',
+    K.show(v1 && v1.errors.filter((w) => w.section === 'screens')));
+    s.eq(missing(v1 && v1.warnings, 'nps'), [], 'it is not a warning too');
     // support_gate deleted (with the support block's rule that tested it)
     const m2 = H.clone(L.model);
     m2.screens = m2.screens.filter((x) => x.id !== 'support_gate');
     m2.screens[idx(m2, 'support')].show_if = null;
     const v2 = P(h, s, 'panelValidate', [m2]);
-    const w2 = missing(v2, 'support_gate');
-    s.ok(w2.length === 1 && /support_contacted column/.test(w2[0].message) && H.plainEnglish(w2[0].message),
-      'without the "support_gate" question: a warning naming its code and the support_contacted column', K.show(v2 && v2.warnings.filter((w) => w.section === 'screens')));
-    s.eq(v2 && v2.errors, [], 'it is only a warning too');
-    // hidden, not deleted: no such warning; the full questionnaire has none either
+    const e2 = missing(v2 && v2.errors, 'support_gate');
+    s.ok(e2.length === 1 && /support_contacted column/.test(e2[0].message) && H.plainEnglish(e2[0].message),
+      'without the "support_gate" question: an error naming its code and the support_contacted column', K.show(v2 && v2.errors.filter((w) => w.section === 'screens')));
+    // hidden, not deleted: a warning at its row, never an error; the full questionnaire has none
     const m3 = H.clone(L.model);
     m3.screens[idx(m3, 'nps')].active = false;
     m3.screens[idx(m3, 'support_gate')].active = false;
+    m3.screens[idx(m3, 'support')].show_if = null;
     const v3 = P(h, s, 'panelValidate', [m3]);
-    s.ok(v3 && missing(v3, 'nps').length === 0 && missing(v3, 'support_gate').length === 0, 'hiding them is fine: no "is missing" warning',
-      K.show(v3 && v3.warnings.filter((w) => /is missing/.test(w.message))));
+    const hiddenWarn = (code, column) => ((v3 && v3.warnings) || []).filter((w) => w.section === 'screens' && w.ref === 'screen ' + (idx(m3, code) + 1) &&
+      / is hidden, so the /.test(w.message) && w.message.indexOf(column + ' column') !== -1 && w.message.indexOf('(Its code is "' + code + '".)') !== -1);
+    s.ok(hiddenWarn('nps', 'nps').length === 1 && hiddenWarn('support_gate', 'support_contacted').length === 1,
+      'hiding them: one warning each, at its row, naming the column that stays empty', K.show(v3 && v3.warnings.filter((w) => w.section === 'screens')));
+    s.eq(v3 && v3.errors, [], 'hiding them is never an error');
+    const m4r = H.clone(L.model);
+    m4r.screens[idx(m4r, 'nps')].type = 'rating_1_5';
+    const v4 = P(h, s, 'panelValidate', [m4r]);
+    s.ok(v4 && v4.errors.some((e) => e.ref === 'screen ' + (idx(m4r, 'nps') + 1) && /must stay of the kind "0 to 10 question"/.test(e.message)),
+      '"nps" re-typed as a faces question: an error at its row (its answers fill the nps column)', K.show(v4 && v4.errors));
     const v0 = P(h, s, 'panelValidate', [L.model]);
-    s.ok(v0 && missing(v0, 'nps').length + missing(v0, 'support_gate').length === 0, 'the full questionnaire has no such warning');
+    s.ok(v0 && v0.errors.concat(v0.warnings).every((w) => !/"(nps|support_gate)"/.test(w.message)), 'the full questionnaire has no such problem');
     // An empty new round is not an unpublished change (21 Oct fix: no needless "Publish first")
     s.eq(L.draft_differs_from_live, false, 'right after set-up the draft is the live version');
     const m4 = H.clone(L.model);

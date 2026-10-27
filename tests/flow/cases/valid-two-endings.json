@@ -1,0 +1,33 @@
+{
+ "_about": "Two endings (decision 8): promoters finish early on their own thank-you screen; everyone else goes on.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "nps",
+   "field": "next",
+   "value": [
+    {
+     "when": {
+      "answer": "nps",
+      "at_least": 9
+     },
+     "goto": "quick_thanks"
+    },
+    {
+     "default": "fn_ratings"
+    }
+   ]
+  },
+  {
+   "op": "add",
+   "after": "thanks",
+   "value": {
+    "id": "quick_thanks",
+    "type": "thank_you",
+    "text": "q.quick_thanks"
+   }
+  }
+ ],
+ "expect_clean": true
+}

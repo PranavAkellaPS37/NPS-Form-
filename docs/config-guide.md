@@ -52,7 +52,8 @@ You do not need to read it all. Read [Before you start](#before-you-start) and [
 - [JSON in two minutes](#json-in-two-minutes)
 - [The four settings files](#the-four-settings-files)
 - [survey.json: the main settings](#surveyjson-the-main-settings)
-  - [The flow: the screens, in order](#flow-the-screens-in-order)
+  - [The flow: the screens, in order](#flow-the-screens-in-order) (jumps, endings, loops, rules on the language or the round)
+  - [The settings the screens carry](#the-settings-the-screens-carry)
   - [show_if: show a screen only to some partners](#show_if-show-a-screen-only-to-some-partners)
 - [strings.json: every word on screen](#stringsjson-every-word-on-screen)
 - [whats_changed.json: the "What changed" card](#whats_changedjson-the-what-changed-card)
@@ -73,6 +74,7 @@ You do not need to read it all. Read [Before you start](#before-you-start) and [
   13. [Add a pre-recorded audio clip](#recipe-13-add-a-pre-recorded-audio-clip)
   14. [Translate a language with a spreadsheet](#recipe-14-translate-a-language-with-a-spreadsheet)
   15. [Bump config_version](#recipe-15-bump-config_version)
+- [How to add a question type (for a developer)](#how-to-add-a-question-type-for-a-developer)
 - [If check_config.py reports a problem](#if-check_configpy-reports-a-problem)
 
 ---
@@ -132,7 +134,7 @@ If the last line says "Please fix the errors above", fix each error and run it a
 >
 > - **Area ids**, such as `losses`, `payments`, `linehaul`
 > - **Problem chip codes**, such as `wrong_debit`, `payout_delayed`
-> - **Screen ids** in `flow`, such as `nps`, `support_gate`, `one_fix`
+> - **Screen ids** in `flow`, such as `nps`, `support_gate`, `one_fix` (and a screen's `store_as` code, such as `fn_rating:{area}`)
 >
 > Every answer is saved under these codes, and the dashboard compares rounds using them. If you renamed `payments` to `payouts`, the dashboard would see one area disappear and a new one appear, and the trend line would break.
 >
@@ -193,6 +195,8 @@ If you make one of these, `check_config.py` usually tells you the line.
 | [`web/config/whats_changed.json`](../web/config/whats_changed.json) | The "What changed since your last feedback" card, one block per round. | Before the control panel: once per round. After: only when refreshing the backup copy. |
 | [`web/config/audio_clips.json`](../web/config/audio_clips.json) | Optional recorded read-aloud clips. | Rarely. |
 
+Two more files are **made by commands, never edited by hand**: `web/config/types.json` (the catalogue of the kinds of screen, see [How to add a question type](#how-to-add-a-question-type-for-a-developer)) and `docs/flow.md` (the route drawn as a map, see [After every change to the flow](#after-every-change-to-the-flow)). `check_config.py` says when either is out of date.
+
 **Why words and settings are kept apart.** `survey.json` never contains the words partners read. It refers to each text by a short code called a **string key**, such as `q.nps`. The words themselves live in `strings.json`, in all six languages. So translators only ever touch `strings.json`, and changing a word can never break the survey's logic.
 
 > [!NOTE]
@@ -206,7 +210,7 @@ The sections below follow the order of the file.
 
 ### Notes for humans
 
-Every setting whose name starts with `_` (such as `_help` or `_flow_help`) is a note. The form ignores notes. They are short reminders of what this guide explains.
+Every setting whose name starts with `_` (such as `_help`) is a note. The form ignores notes. They are short reminders of what this guide explains.
 
 ### survey_id and config_version
 
@@ -297,6 +301,8 @@ Never change a language's code: it would break every link and every text that us
 | `faces` | The five faces, from 1 (worst) to 5 (best). Their labels are the texts `rating.1` to `rating.5` (Very bad, Bad, Okay, Good, Very good). Keep exactly five. | 😠 🙁 😐 🙂 😄 |
 | `allow_not_applicable` | `true` adds a small **I don't handle this** option under each area rating (text `rating.na`). For example, a captain may never deal with payouts. These answers are left out of averages. | `true` |
 
+The area ratings screen in `flow` (`fn_ratings`) carries its own copy of `allow_not_applicable`, and phones follow that copy: change both ([The settings the screens carry](#the-settings-the-screens-carry)).
+
 ### deep_dive: the "main problem" screens
 
 | Setting | What it means | Today |
@@ -307,6 +313,8 @@ Never change a language's code: it would break every link and every text that us
 | `require_detail_if_other` | `true` = if the partner picks **Other**, a voice note or typed text is required. | `true` |
 
 **Why "after all ratings" is recommended:** partners cannot learn half-way through that a low score means extra questions. If they could, some would give higher scores to finish faster.
+
+The screens in `flow` carry their own copies of these four settings, and phones follow those: change both ([The settings the screens carry](#the-settings-the-screens-carry); Recipes [5](#recipe-5-change-the-threshold) and [6](#recipe-6-ask-about-problems-right-after-each-low-rating)).
 
 ### functions: the areas and their problem chips
 
@@ -346,6 +354,8 @@ Shown only to partners who answer **Yes** to "In the last 30 days, did you conta
 | `allow_comment` | `true` adds an optional voice note or typed comment under the four rows. | `true` |
 | `comment_text` | The string key of the comment's question. | `"q.support_comment"` |
 
+The `support` screen in `flow` carries its own copies of `allow_not_applicable`, `allow_comment` (its `comment`) and `comment_text`, and phones follow those: change both ([The settings the screens carry](#the-settings-the-screens-carry)).
+
 ### voice: voice notes
 
 | Setting | What it means | Today |
@@ -370,46 +380,82 @@ If a phone cannot record, or the partner blocks the microphone, the form quietly
 
 ### flow: the screens, in order
 
-`flow` is the list of screens, in the order partners see them.
+`flow` is the **route** through the questionnaire: every screen, and which one comes after which. Since 26 Oct 2026 it is written as a small map (a "graph", format `pp-flow/1`): each screen says where to go next. So a question can send some partners elsewhere (a **jump**), a screen can be asked once for each area (a **loop**), and there can be several thank-you screens (**endings**).
+
+> [!NOTE]
+> **Live, the route is edited in the control panel** (Questions > edit a question > **After this question**), which also writes this copy for you ([control panel guide, How the route works](control-panel.md#how-the-route-works)). Edit it here by hand only for the backup copy or to test on this Mac, and always finish with [After every change to the flow](#after-every-change-to-the-flow). The exact format, for developers: [flow-engine.md](flow-engine.md). The route drawn as a map: [flow.md](flow.md).
+
+**The shape** (the screens shortened):
+
+```json
+"flow": {
+  "_help": "…",
+  "format": "pp-flow/1",
+  "start": "language",
+  "collections": {
+    "areas": { "list": "functions", "defaults": { "threshold": 3 } },
+    "support_items": { "list": "support.items" }
+  },
+  "nodes": [
+    { "id": "language", "type": "language_picker", …, "next": "whats_changed" },
+    …
+    { "id": "thanks", "type": "thank_you" }
+  ]
+}
+```
+
+| Part | What it means |
+|---|---|
+| `format` | Always `"pp-flow/1"`. Never change it. |
+| `start` | The `id` of the first screen. |
+| `collections` | The lists a screen can repeat over: `areas` (the areas in `functions`) and `support_items` (the support questions). `defaults` > `threshold` is the threshold every area uses unless it has its own ([Recipe 5](#recipe-5-change-the-threshold)). |
+| `nodes` | The screens, one `{ }` each, in the order the control panel lists them. The arrows (`next`) decide the order partners see, not the place in this list. |
 
 **Today's screens:**
 
-| # | `id` | `type` | What the partner sees |
-|---|---|---|---|
-| 1 | `language` | `language_picker` | Choose your language. Skipped when the link already has `lang=`. |
-| 2 | `whats_changed` | `whats_changed` | What changed since your last feedback. Skipped when the round has no items. |
-| 3 | `nps` | `nps_0_10` | How likely are you to recommend Valmo to another DC owner? (0–10) |
-| 4 | `fn_ratings` | `function_ratings` | One faces screen per area: six screens. |
-| 5 | `fn_deep_dives` | `function_deep_dives` | What is the main problem? Once for each area rated at or below the threshold. |
-| 6 | `support_gate` | `yes_no` | In the last 30 days, did you contact Valmo support? |
-| 7 | `support` | `support_block` | Four support rows and an optional comment. Only after **Yes**. |
-| 8 | `one_fix` | `free_text` | If Valmo could fix just one thing for you, what should it be? Optional. |
-| 9 | `thanks` | `thank_you` | Sends the answers and says thank you. |
+| # | `id` | `type` | What the partner sees | `next` |
+|---|---|---|---|---|
+| 1 | `language` | `language_picker` | Choose your language. Skipped when the link already has `lang=`. | `whats_changed` |
+| 2 | `whats_changed` | `whats_changed` | What changed since your last feedback. Skipped when the round has no items. | `nps` |
+| 3 | `nps` | `nps_0_10` | How likely are you to recommend Valmo to another DC owner? (0–10) | `fn_ratings` |
+| 4 | `fn_ratings` | `function_rating` | One faces screen per area: six screens (it repeats for each area). | `fn_deep_dives` |
+| 5 | `fn_deep_dives` | `function_deep_dive` | What is the main problem? Once for each area rated at or below its threshold. | `support_gate` |
+| 6 | `support_gate` | `yes_no` | In the last 30 days, did you contact Valmo support? | `support` |
+| 7 | `support` | `support_block` | Four support rows and an optional comment. Only after **Yes**; otherwise skipped. | `one_fix` |
+| 8 | `one_fix` | `free_text` | If Valmo could fix just one thing for you, what should it be? Optional. | `thanks` |
+| 9 | `thanks` | `thank_you` | Sends the answers and says thank you. | (an ending: none) |
 
-**The parts of a screen line:**
+**The parts of a screen:**
 
 | Part | What it means |
 |---|---|
 | `id` | The screen's permanent code. Answers are saved under it. Use lowercase letters, digits and underscores (`_`), starting with a letter, and never rename it. |
-| `type` | The kind of screen (see the next table). |
+| `type` | The kind of screen (see the next tables). |
 | `text` | The string key of the question, such as `"q.one_fix"`. |
 | `required` | `true` = the partner must answer. `false` = adds a **Skip** button. Write it on every question screen you add. |
-| `show_if` | Show this screen only when an earlier answer matches. See [show_if](#show_if-show-a-screen-only-to-some-partners). |
-| `skip_if` | A built-in skip rule, used only by the first two screens: `"lang_in_url"` (skip the language screen when the link has `lang=`) and `"empty"` (skip "What changed" when there is nothing to show). Leave them as they are. |
+| `next` | Where to go after this screen: the `id` of a screen further along, or a list of [jumps](#jumps-send-some-partners-elsewhere). Every screen needs one, except a thank-you screen. |
+| `show_if` | Show this screen only when the rule is true ([show_if](#show_if-show-a-screen-only-to-some-partners)). Otherwise it is skipped, and the route follows its `next` (with jumps: the `default`). |
+| `repeat_for` | Ask this screen once for each area ([Loops](#loops-ask-a-question-for-each-area)). |
+| `store_as` | The answer's code, when it is not the `id`. A screen asked for each area needs one with `{area}` in it, such as `"long_running:{area}"`, so each area's answer has its own code. |
+| `label` | On a screen asked for each area: `"fn.{area}.name"`, the area's name above the question. |
 | `low_label`, `high_label`, `scale_hint` | 0–10 screens only: the words under 0 and under 10, and the one-line hint. All three are string keys. |
 | `options` | Single-choice screens only: the list of option codes. |
-| `body` | Info cards only: optional longer text under the title (a string key). |
+| `body` | Info cards and thank-you screens: optional longer text under the title (a string key). |
 
-**Screen types.** The **built-in** types are already in the flow. Use each one only once.
+The built-in screens have more parts (for example `rows`, `comment`, `issue_code_from`, `require_choice`, and the rules that skip the first two screens). Leave them as they are, except the settings listed in [The settings the screens carry](#the-settings-the-screens-carry).
+
+**Screen types.** The **built-in** types are already in the flow. Use each one only once (thank-you screens excepted).
 
 | Built-in type | What it is |
 |---|---|
-| `language_picker` | The language buttons. |
+| `language_picker` | The language buttons. Must be the first screen. |
 | `whats_changed` | The "What changed" card. |
-| `function_ratings` | One faces screen per area in `functions`. |
-| `function_deep_dives` | The "main problem" screens. |
+| `function_rating` | The faces screen for one area, repeated for each area in `functions`. |
+| `function_deep_dive` | The "main problem" screen, repeated for each area rated low. |
 | `support_block` | The four support rows, from `support`. |
-| `thank_you` | Sends the answers and says thank you. **Must be last.** |
+| `thank_you` | Sends the answers and says thank you: an **ending**. There may be several. |
+
+(The control panel's Screens tab, and versions published before 26 Oct 2026, call the two area screens `function_ratings` and `function_deep_dives`.)
 
 The **generic** types can be added freely. Every screen costs partners time, though, so add only what you will act on.
 
@@ -422,17 +468,118 @@ The **generic** types can be added freely. Every screen costs partners time, tho
 | `free_text` | A voice note or a typed answer. | `text`, `required` |
 | `info_card` | A message, with nothing to answer. | `text` (the title), optional `body` |
 
-**Rules for the flow:**
+A new kind of question needs a developer: [How to add a question type](#how-to-add-a-question-type-for-a-developer).
 
-- `thanks` stays **last**. The answers are sent from that screen.
+#### Jumps: send some partners elsewhere
+
+Instead of one screen, `next` can be a list:
+
+```json
+"next": [
+  { "when": { "answer": "nps", "at_least": 9 }, "goto": "promoter_q" },
+  { "default": "fn_ratings" }
+]
+```
+
+Read it as: "after this screen, partners who scored 9 or 10 go to `promoter_q`; everyone else goes to `fn_ratings`". The first `when` that is true wins, and `default` (for everyone else) comes last. A `when` is written exactly like a [show_if](#show_if-show-a-screen-only-to-some-partners) rule, and it may test the screen's own answer.
+
+#### Endings: more than one thank-you screen
+
+Every `thank_you` screen is an **ending**: partners stop there and their answers are sent. A short route can end on its own thank-you screen, with its own title and message. With the jump above:
+
+```json
+{ "id": "promoter_q", "type": "free_text", "text": "q.promoter_q", "required": false, "next": "promoter_end" },
+{ "id": "promoter_end", "type": "thank_you", "text": "end.promoter_end.title", "body": "end.promoter_end.body" }
+```
+
+Promoters then see `nps`, `promoter_q` ("What does Valmo do well that we should keep doing?") and `promoter_end`. Put such screens **after** `thanks` in `nodes`, as the control panel does: only a jump leads to them. Add their texts to `strings.json` ([Adding a new text](#adding-a-new-text)).
+
+#### Loops: ask a question for each area
+
+```json
+{ "id": "long_running", "type": "yes_no", "text": "q.long_running", "label": "fn.{area}.name", "required": true,
+  "store_as": "long_running:{area}",
+  "repeat_for": { "each": "area", "in": "areas",
+                  "where": { "answer": "fn_rating:{area}", "at_most": { "var": "area.threshold" } } },
+  "next": "support_gate" },
+```
+
+Read it as: "for each area rated at or below its threshold, ask 'Has this problem been going on for more than a month?', with the area's name above the question". Put it after `fn_deep_dives` in `nodes` and point `fn_deep_dives` at it (`"next": "long_running"`). The answers arrive as `long_running:payments`, `long_running:app` and so on. Leave out `where` to ask for every area.
+
+#### Rules on the language or the round
+
+A `show_if`, or a jump's `when`, can also test facts about the visit instead of an answer:
+
+| Write | Means |
+|---|---|
+| `{ "fact": "lang", "in": ["hi", "en"] }` | the partner reads Hindi or English |
+| `{ "fact": "round", "equals": "2026-R2" }` | the link is for round `2026-R2` |
+| `{ "fact": "lang_in_url", "equals": true }` | the link chose the language |
+| `{ "fact": "whats_changed_count", "at_least": 1 }` | the round has "What changed" items |
+
+For example, an information card only in round `2026-R2` (and `"next": "r2_note"` on `whats_changed`):
+
+```json
+{ "id": "r2_note", "type": "info_card", "text": "info.r2_note", "show_if": { "fact": "round", "equals": "2026-R2" }, "next": "nps" },
+```
+
+Partners can switch language with the button at the top. A screen shown only in some languages then appears or disappears, and the form carries on from the first screen not answered yet.
+
+#### Rules for the flow
+
+- `start` names the first screen, `language`, and the language screen stays first.
+- Every `id` is different. Ids and `store_as` codes are permanent ([Codes you must not change](#codes-you-must-not-change-mid-round)).
+- Every screen except a thank-you screen has `next`. Arrows only go **forward**, to a screen further along the route, never back: going round in circles is refused. A screen repeats only through `repeat_for`.
+- A rule can only test answers given **before** it on the route (a jump also its own screen's answer).
 - `fn_deep_dives` comes after `fn_ratings`.
-- A screen with `show_if` must come **after** the screen it looks at.
-- Every `id` is different.
-- Every line ends with a comma, except the last one before the closing `]`.
+- Every route ends at a thank-you screen.
+- `nps` stays a 0–10 question and `support_gate` a yes/no question: their answers fill their own columns in every round's answers sheet.
+- Mind the commas: between the screens in `nodes`, and between the jumps of a list.
+
+#### After every change to the flow
+
+Run these in Terminal, in the project folder:
+
+```bash
+python3 scripts/flow.py check
+```
+
+What it does: looks for mistakes in the route (a jump to a screen that doesn't exist, a rule that can never be true, a screen nobody reaches, a setting that disagrees with the screens …) and explains each one, with how to fix it. **You should see** `All good: no errors.` (Codes such as `[R1]` are explained in [flow-engine.md](flow-engine.md), section 6.)
+
+```bash
+python3 scripts/flow.py map --write
+```
+
+What it does: redraws `docs/flow.md`, the map of the route (GitHub shows it as a picture). **You should see** `Wrote docs/flow.md (… lines).` Commit it together with `survey.json`; `check_config.py` warns while it is out of date.
+
+```bash
+python3 scripts/flow.py simulate --set nps=10
+```
+
+What it does: shows the screens a partner with these answers would see, in order, why every other screen is skipped, where **Next** would be blocked, and what would be sent. Try one example per route, for example `--set nps=10`, then `--set nps=4 --set fn_rating:payments=2 --set support_gate=no`. Add `--round 2026-R2` or `--lang ta` to try a rule on the round or the language. Nothing is sent anywhere.
+
+Then run `python3 scripts/check_config.py` as after every edit.
+
+### The settings the screens carry
+
+Some settings are kept twice: in the settings groups above (`deep_dive`, `rating`, `support`) and on the screens in `flow`. **Phones follow the copy in `flow`.** The control panel writes both when it publishes. When you edit by hand, **change both**: if they disagree, `python3 scripts/check_config.py` and `python3 scripts/flow.py check` report an error (check S1) that names both values, and GitHub does not publish the form.
+
+| Setting | Its copy in `flow` |
+|---|---|
+| `deep_dive` > `threshold` | `collections` > `areas` > `defaults` > `threshold` |
+| `deep_dive` > `require_chip` | `"require_choice"` on `fn_deep_dives` |
+| `deep_dive` > `require_detail_if_other` | `"require_detail_if_other"` on `fn_deep_dives` |
+| `deep_dive` > `when` | the shape of the flow: `"immediate"` needs the area loop of [Recipe 6](#recipe-6-ask-about-problems-right-after-each-low-rating) |
+| `rating` > `allow_not_applicable` | `"allow_not_applicable"` on `fn_ratings` |
+| `support` > `allow_not_applicable` | `"allow_not_applicable"` on `support` |
+| `support` > `allow_comment` | `"comment"` on `support`: there when `true`, removed when `false` |
+| `support` > `comment_text` | `"comment"` > `"text"` on `support` |
+
+An area's own `threshold` in `functions` still wins over both ([Recipe 5](#recipe-5-change-the-threshold)).
 
 ### show_if: show a screen only to some partners
 
-Add `show_if` to a screen in `flow` to show it only when an earlier answer matches. Otherwise the screen is skipped, and it sends no answer.
+Add `show_if` to a screen in `flow` to show it only when an earlier answer matches. Otherwise the screen is skipped (the route follows its `next`), and it sends no answer. A jump's `when` ([Jumps](#jumps-send-some-partners-elsewhere)) is written the same way, and so is a test on the language or the round ([Rules on the language or the round](#rules-on-the-language-or-the-round)).
 
 The basic shape:
 
@@ -454,7 +601,7 @@ Read it as: "show this screen only if the answer to `nps` is at most 6".
 | The `id` of a screen you added | Its answer. | `yes_no`: `"yes"` or `"no"`. `rating_1_5`: 1 to 5. `single_choice`: an option code. `nps_0_10`: 0 to 10. |
 | `"one_fix"`, `"support_comment"` or the `id` of a free-text screen you added | Whether the partner typed something or recorded a voice note there. | Use only with `answered`, e.g. `{ "answer": "one_fix", "answered": true }` |
 
-Info cards have no answer to test. A screen can only test answers from screens that come **before** it in `flow`. So `fn_rating:…` tests go after `fn_ratings`, `fn_deep_dive:…` tests after `fn_deep_dives`, and `support:…` tests after `support`.
+Info cards have no answer to test. A screen can only test answers from screens that come **before** it on the route. So `fn_rating:…` tests go after `fn_ratings`, `fn_deep_dive:…` tests after `fn_deep_dives`, and `support:…` tests after `support`. A screen asked for each area stores one answer per area, such as `"long_running:payments"` ([Loops](#loops-ask-a-question-for-each-area)).
 
 **The tests:**
 
@@ -474,7 +621,7 @@ Two more examples:
 - `{ "answer": "fn_rating:app", "equals": "na" }` reads "tapped **I don't handle this** for App / Tech". That answer is not a number, so `at_most` and `at_least` never match it.
 - `{ "answer": "fn_deep_dive:payments", "equals": "payout_delayed" }` reads "picked **Payout delayed** as the main Payments problem".
 
-**When there is no answer.** If the earlier screen was skipped, or never shown, it has no answer. Then `equals`, `in`, `at_most` and `at_least` do **not** match, but `not_equals` **does** (no answer counts as "not that"). To target exactly the partners who skipped, use `"answered": false`.
+**When there is no answer.** If the earlier screen was skipped, or never shown on this partner's route, it has no answer. (An answer given on a screen the partner later left behind, by going **Back** and changing an earlier answer, counts as no answer too, and it is not sent.) Then `equals`, `in`, `at_most` and `at_least` do **not** match, but `not_equals` **does** (no answer counts as "not that"). To target exactly the partners who skipped, use `"answered": false`.
 
 **Combining tests.** Use `all` when **every** test must match:
 
@@ -504,10 +651,10 @@ Read it as: "rated Payments 1 or 2 **or** rated Losses 1 or 2".
 - `true` and `false` never have quotes: `"answered": "false"` in quotes would count as **true**.
 - Codes must match exactly, in lowercase: `"yes"`, not `"Yes"`.
 - Each test sits in its own `{ }` with one `"answer"` and exactly one test. To use two tests, combine them with `all` or `any`.
-- Here is a whole screen line with `show_if` (from [Recipe 7](#recipe-7-add-a-yesno-question-only-for-scores-of-6-or-below)):
+- Here is a whole screen with `show_if` (from [Recipe 7](#recipe-7-add-a-yesno-question-only-for-scores-of-6-or-below)):
 
   ```json
-  { "id": "callback", "type": "yes_no", "text": "q.callback", "required": true, "show_if": { "answer": "nps", "at_most": 6 } },
+  { "id": "callback", "type": "yes_no", "text": "q.callback", "required": true, "show_if": { "answer": "nps", "at_most": 6 }, "next": "support_gate" },
   ```
 
 ---
@@ -768,19 +915,24 @@ The threshold decides who gets a "What is the main problem?" screen: an area rat
 | `3` (today) | 1 Very bad, 2 Bad and 3 Okay |
 | `4` | Everything except 5 Very good |
 
-**For all areas:** in `web/config/survey.json`, inside `deep_dive`, change
+**For all areas:** in `web/config/survey.json`, change the number in **two** places (phones follow the second one; [why](#the-settings-the-screens-carry)):
 
-```json
-"threshold": 3,
-```
+1. inside `deep_dive`, change `"threshold": 3,` to `"threshold": 2,`;
+2. inside `flow`, in `collections`, change
 
-to
+   ```json
+   "areas": { "list": "functions", "defaults": { "threshold": 3 } },
+   ```
 
-```json
-"threshold": 2,
-```
+   to
 
-**For one area only:** add `"threshold"` next to that area's `id` in `functions`. The other areas keep the value in `deep_dive`. Example: for Payments, ask only after ratings of 1 or 2:
+   ```json
+   "areas": { "list": "functions", "defaults": { "threshold": 2 } },
+   ```
+
+If you change only one, the check reports an error (S1) naming both numbers.
+
+**For one area only:** add `"threshold"` next to that area's `id` in `functions`. The other areas keep the value above. Example: for Payments, ask only after ratings of 1 or 2:
 
 ```json
 { "id": "payments", "threshold": 2, "issues": ["payout_delayed", "short_payment", "unclear_breakup", "invoice_gst", "incentive_missing"] },
@@ -792,42 +944,57 @@ Every saved rating records the threshold that applied, so the dashboard can stil
 
 Today the problem screens come after all six ratings. That is the recommended setting, because partners cannot learn half-way through that a low score means extra questions.
 
-To ask straight after each low rating instead, in `web/config/survey.json`, inside `deep_dive`, change
+> [!TIP]
+> In the control panel this is one choice: **Questions**, **Edit** on **Problem screens**, then under **Where the problem screens go** pick **Straight after each low rating** ([control panel guide, Recipe 16](control-panel.md#recipe-16-choose-where-the-problem-screens-go)). The panel then builds the route below by itself.
 
-```json
-"when": "after_all_ratings",
-```
+By hand it takes three changes in `web/config/survey.json`:
 
-to
+1. Inside `deep_dive`, change `"when": "after_all_ratings",` to `"when": "immediate",`.
+2. In `flow` > `nodes`, replace the two screens `fn_ratings` and `fn_deep_dives` with this one **group**. It repeats for each area: first the area's rating, then its problem screen if the rating is low.
 
-```json
-"when": "immediate",
-```
+   ```json
+   { "id": "area_loop", "type": "group",
+     "repeat_for": { "each": "area", "in": "areas" },
+     "body": {
+       "start": "fn_ratings",
+       "nodes": [
+         { "id": "fn_ratings", "type": "function_rating", "store_as": "fn_rating:{area}",
+           "text": "q.fn_rating", "label": "fn.{area}.name", "help": "fn.{area}.help",
+           "issue_code_from": "fn_deep_dive:{area}", "allow_not_applicable": true,
+           "next": "fn_deep_dives" },
+         { "id": "fn_deep_dives", "type": "function_deep_dive", "store_as": "fn_deep_dive:{area}",
+           "show_if": { "answer": "fn_rating:{area}", "at_most": { "var": "area.threshold" } },
+           "text": "q.deep_dive", "label": "fn.{area}.name", "detail_text": "q.tell_more", "detail_text_required": "q.tell_more_required",
+           "options": { "from": "area.issues", "text": "issue.{area}.{code}", "other": "issue.other" },
+           "rating_from": "fn_rating:{area}", "require_choice": true, "require_detail_if_other": true,
+           "next": "@next_item" }
+       ]
+     },
+     "next": "support_gate" },
+   ```
 
-Nothing else needs to change: leave the `fn_deep_dives` line in `flow` where it is. Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_version` bump.
+   `"@next_item"` means "this area is done: go on to the next area". The answer codes stay the same (`fn_rating:payments`, `fn_deep_dive:payments`), so the dashboard can still compare rounds.
+3. On the `nps` screen, change `"next": "fn_ratings"` to `"next": "area_loop"`.
+
+To go back, undo all three. Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_version` bump, and try it with `python3 scripts/flow.py simulate --set nps=5 --set fn_rating:payments=2 --set support_gate=no`: the Payments problem screen should come straight after the Payments rating.
 
 ### Recipe 7: Add a yes/no question only for scores of 6 or below
 
 Example: ask partners who scored 0 to 6 whether they would like a call from the Valmo team. Only add this if someone will really make those calls.
 
-**Step 1.** In `web/config/survey.json`, add the `callback` line to `flow`. Here it goes after `fn_deep_dives`, so partners have already told us their problems. Only the `callback` line is new:
+**Step 1.** In `web/config/survey.json`, in `flow` > `nodes`, add the `callback` screen after `fn_deep_dives`, so partners have already told us their problems, and point `fn_deep_dives` at it. Only these two screens change (the rest of `fn_deep_dives` stays as it is):
 
 ```json
-"flow": [
-  { "id": "language",      "type": "language_picker", "skip_if": "lang_in_url" },
-  { "id": "whats_changed", "type": "whats_changed",   "skip_if": "empty" },
-  { "id": "nps",           "type": "nps_0_10",        "text": "q.nps", "low_label": "nps.low", "high_label": "nps.high", "scale_hint": "nps.scale_hint", "required": true },
-  { "id": "fn_ratings",    "type": "function_ratings" },
-  { "id": "fn_deep_dives", "type": "function_deep_dives" },
-  { "id": "callback",      "type": "yes_no",          "text": "q.callback", "required": true, "show_if": { "answer": "nps", "at_most": 6 } },
-  { "id": "support_gate",  "type": "yes_no",          "text": "q.support_gate", "required": true },
-  { "id": "support",       "type": "support_block",   "text": "q.support_block", "show_if": { "answer": "support_gate", "equals": "yes" } },
-  { "id": "one_fix",       "type": "free_text",       "text": "q.one_fix", "required": false },
-  { "id": "thanks",        "type": "thank_you" }
-],
+{ "id": "fn_deep_dives", "type": "function_deep_dive", …, "next": "callback" },
+
+{ "id": "callback", "type": "yes_no",
+  "text": "q.callback",
+  "required": true,
+  "show_if": { "answer": "nps", "at_most": 6 },
+  "next": "support_gate" },
 ```
 
-The `show_if` part reads: "show this screen only if the answer to `nps` is at most 6".
+The `show_if` part reads: "show this screen only if the answer to `nps` is at most 6". Partners who scored 7 or more skip it and go straight on to `support_gate` (its `next`).
 
 **Step 2.** In `web/i18n/strings.json`, add the question:
 
@@ -837,7 +1004,7 @@ The `show_if` part reads: "show this screen only if the answer to `nps` is at mo
 
 The answer is saved under the screen's id: `"callback": "yes"` or `"callback": "no"`. Partners who score 7 or more never see the screen, so their answers have no `callback` value.
 
-**To test it:** score 6 and you should see the question. Then, in a new Incognito window, score 7 and you should not.
+**To test it:** `python3 scripts/flow.py simulate --set nps=6` lists `callback`, and `--set nps=7` does not. Then, in the form, score 6 and you should see the question; in a new Incognito window, score 7 and you should not.
 
 Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_version` bump.
 
@@ -845,11 +1012,17 @@ Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_v
 
 Example: "Who is filling in this survey?" with three options. It is optional (`"required": false`), so partners can skip it.
 
-**Step 1.** In `web/config/survey.json`, add this line to `flow`, just before the `one_fix` line:
+**Step 1.** In `web/config/survey.json`, in `flow` > `nodes`, add this screen just before `one_fix`, and change the `next` of the `support` screen from `"one_fix"` to `"role"`:
 
 ```json
-{ "id": "role", "type": "single_choice", "text": "q.role", "options": ["owner", "manager", "captain"], "required": false },
+{ "id": "role", "type": "single_choice",
+  "text": "q.role",
+  "options": ["owner", "manager", "captain"],
+  "required": false,
+  "next": "one_fix" },
 ```
+
+Partners who answer **No** to the support question skip `support` and follow its `next`, so they get `role` too.
 
 **Step 2.** In `web/i18n/strings.json`, add the question and one text per option. Option texts are named `choice.<screen id>.<option code>`:
 
@@ -866,37 +1039,27 @@ Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_v
 
 ### Recipe 9: Reorder or remove screens
 
-**To reorder,** move whole lines within `flow`. Example: ask "one thing to fix" before the support questions:
+The order partners see comes from the arrows (`next`), not from the place of a screen in `nodes`.
 
-```json
-"flow": [
-  { "id": "language",      "type": "language_picker", "skip_if": "lang_in_url" },
-  { "id": "whats_changed", "type": "whats_changed",   "skip_if": "empty" },
-  { "id": "nps",           "type": "nps_0_10",        "text": "q.nps", "low_label": "nps.low", "high_label": "nps.high", "scale_hint": "nps.scale_hint", "required": true },
-  { "id": "fn_ratings",    "type": "function_ratings" },
-  { "id": "fn_deep_dives", "type": "function_deep_dives" },
-  { "id": "one_fix",       "type": "free_text",       "text": "q.one_fix", "required": false },
-  { "id": "support_gate",  "type": "yes_no",          "text": "q.support_gate", "required": true },
-  { "id": "support",       "type": "support_block",   "text": "q.support_block", "show_if": { "answer": "support_gate", "equals": "yes" } },
-  { "id": "thanks",        "type": "thank_you" }
-],
-```
+**To reorder,** change the arrows. Example: ask "one thing to fix" before the support questions. Three `next` values change:
 
-**To remove** a screen, delete its whole line. Examples:
+| Screen | `next` before | `next` after |
+|---|---|---|
+| `fn_deep_dives` | `"support_gate"` | `"one_fix"` |
+| `one_fix` | `"thanks"` | `"support_gate"` |
+| `support` | `"one_fix"` | `"thanks"` |
 
-- **Drop "one thing to fix":** delete the `one_fix` line.
-- **Drop the support questions:** delete **both** the `support_gate` and `support` lines. If you deleted only `support_gate`, the `support` screen's `show_if` would point at a screen that no longer exists. (In the control panel you **hide** these screens instead: `support_gate`, like `nps`, can never be deleted there. A hidden screen is simply left out of these files, so deleting its line here has the same effect. If you bring it back, use exactly the same id.)
+Then move the `one_fix` screen above `support_gate` in `nodes` too, so the file (and the control panel) read in the order partners see.
+
+**To remove** a screen, delete its `{ … }` and point the arrow that led to it at the screen after it. Examples:
+
+- **Drop "one thing to fix":** delete the `one_fix` screen, and change the `next` of `support` from `"one_fix"` to `"thanks"`.
+- **Drop the support questions:** delete **both** `support_gate` and `support`, and change the `next` of `fn_deep_dives` to `"one_fix"`. The check then warns that the `support_contacted` column of the answers sheet will stay empty: that is expected. If you deleted only `support_gate`, the `support` screen's `show_if` would test an answer nothing asks for, which is an error. (In the control panel you **hide** these screens instead: `support_gate`, like `nps`, can never be deleted there. A hidden screen is simply left out of these files, so deleting it here has the same effect. If you bring it back, use exactly the same id.)
 - **Hide the "What changed" card for one round:** do not delete anything. Leave that round's `items` empty in `whats_changed.json`, and the screen is skipped by itself.
 
-**Rules:**
+**Rules:** the [rules for the flow](#rules-for-the-flow) apply. A removed screen's answers stop arriving, so the dashboard will show a gap. If you bring the screen back later, use the **same** id.
 
-- Never remove `thanks`, and keep it last: the answers are sent from that screen.
-- A screen with `show_if` must stay after the screen it looks at (`support` after `support_gate`).
-- `fn_deep_dives` stays after `fn_ratings`.
-- Mind the commas: every line ends with a comma except the last one before `]`.
-- A removed screen's answers stop arriving, so the dashboard will show a gap. If you bring the screen back later, use the **same** id.
-
-Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_version` bump.
+Then [finish as usual](#finish-every-recipe-the-same-way), including a `config_version` bump, and check every route with `python3 scripts/flow.py check`.
 
 ### Recipe 10: Change colours, the logo or the product name
 
@@ -1093,6 +1256,90 @@ Keep the quotes. Then run `check_config.py`.
 
 ---
 
+## How to add a question type (for a developer)
+
+> [!NOTE]
+> This section needs code. Everything above changes the survey with settings only; a **new kind of question** (a new `type`, for example ten stars, a slider or a pick-several list) also needs a small JavaScript file. Hand it to a developer.
+
+**First, check you need one.** The 12 kinds the form already knows cover most questions: `nps_0_10`, `rating_1_5` (faces), `yes_no`, `single_choice`, `free_text` (voice or typing) and `info_card`, plus the built-in ones (language buttons, "What changed", area ratings, problem screens, support ratings, thank-you). A new wording, a new answer option or a new rule is a setting, not a new kind.
+
+**What a kind is.** Every kind is described **once**, with `PP.types.register({...})`, and everything else reads that description: the phones, the flow checker (`python3 scripts/flow.py check`), `python3 scripts/check_config.py`, GitHub's deployment check and the control panel. The 12 built-in kinds are described in `web/js/flow.js` and drawn in `web/js/types.js`. A new kind is:
+
+1. **one file**, `web/js/types/<code>.js`, holding its whole description, drawing included;
+2. **one line** in `web/index.html`;
+3. its **texts** in `web/i18n/strings.json`;
+4. one **command** that refreshes the catalogue, `web/config/types.json` (made from the code, never edited by hand).
+
+A complete, tested example is [`tests/flow/fixtures/types/stars_1_10.js`](../tests/flow/fixtures/types/stars_1_10.js): ten numbered stars. Copy it and change it.
+
+### Step 1: write the file
+
+Name the file after the kind's code: `web/js/types/stars_1_10.js` for the type `stars_1_10`. Start it with a plain-English header saying what it is for, like every file in the project. The description has these parts:
+
+| Part | What it says | In the example |
+|---|---|---|
+| `type` | The code, written in the flow as `"type"`. Lowercase letters, digits and `_`, starting with a letter. **Permanent** once partners have answered a screen of this kind. | `"stars_1_10"` |
+| `label`, `description` | Its name, and one plain sentence about it. The map, the checks' messages and the control panel use them. | `"Stars (1 to 10)"` |
+| `fields` | The settings a screen of this kind may have, each `{ kind, required, default, values }`. Kinds: `text_key` (the name of a text in `strings.json`), `bool` (true or false, with its `default`), `choice` (one of `values`), `number`, `answer_key` (another screen's answer code), `options`, `rows`, `comment`. With `required: true` the checker refuses a screen without it. Every node may also have `id`, `type`, `store_as`, `show_if`, `repeat_for`, `next`, `required`, `text`, `help` and `label`. | `text` (required), `low_label`, `required` (default true) |
+| `answer` | What a rule (`show_if`, a jump) can test about its answer, or `null` when there is nothing to answer. `kind`: `number` (with `min` and `max`), `choice` (with `values`, or `values_from: "options"`), or `text` (typed or spoken: only `answered` can test it). `what`: how messages name it. `required_by`: the true/false setting that makes an answer required (default `"required"`; `null` = always required). `na_by`: the setting that allows `"na"`. | `{ "kind": "number", "min": 1, "max": 10, "what": "the star rating" }` |
+| `records` | What one screen adds to the data sent at the end: `answers` (the answer, under the screen's code), `ratings` (one ratings row with the answer as its rating: **only for an answer that is a number from 1 to 5**, because the ratings in the data are 1 to 5 and the dashboard averages them with the area and support ratings; `node scripts/flow.js types` refuses anything else), `free_text` (the typed text or voice note). These are also the limits the checker adds up (the server accepts 100, 64 and 64). | `{ "answers": 1 }`: a 1 to 10 answer is sent as an answer only, like the 0–10 question |
+| `flags` | `auto`: one tap answers it, so the form moves on by itself. `end`: an ending, which sends the answers. (`first`, `once` and `early` belong to the language buttons and the "What changed" card.) | `{ "auto": true }` |
+| `texts` | The text keys it shows when a screen sets none (templates such as `fn.{area}.name` are filled in). The checker then makes sure they exist in every language. | none |
+| `row` | How the control panel offers it in **Add a question**: `label`, `description`, `needs_text`, `fields` (the editor's boxes), `required_default`, `repeatable` (`true`: it may be asked once for each area, or each area rated low; the panel's **Ask this question** card and the route both read this flag), `icon` and `order` (its place in the list). Leave `row` out to keep the kind out of the panel. | `"repeatable": true`, `"order": 65` puts it after the information card |
+| `render(ctx)` | Draws one screen and returns `{ el, auto, optional, nextLabel, blockedHint, update }`; the header of `web/js/types.js` explains `ctx` and each of these. Build elements with `PP.h` and the shared pieces of `PP.ui` (`web/js/ui.js`: the question title with its read-aloud button, faces, the voice-or-typing box), so it looks like the rest of the form. Save an answer with `ctx.setAnswer(step.id, value, advance)`. | ten buttons |
+| `isComplete`, `collect` | Optional. Your own rule for when **Next** is allowed, and for what is sent. Without them the **standard rules** apply: Next needs an answer unless the screen's `required` setting is false (a `text` answer needs typed text or a voice note), and the data follows `records`. | not needed |
+
+Rules for the file:
+
+- **Only a NEW kind.** The file may only add a kind with its own new code. A file that registers a code that already exists (a built-in kind, or one from another file), or changes an existing kind, is refused by `node scripts/flow.js types`, and so by `check_config.py` and GitHub: phones would otherwise behave differently from what every check says.
+- **ES5 only**, because partners' old Android phones (Chrome 61) run it: no `let`, `const`, arrow functions, template strings, `?.` or `??`. A file such a phone can't read is skipped whole, and its screens would silently not work. `node scripts/flow.js es5` checks it, and `check_config.py` and GitHub run that check (on this Mac it needs `cd tests && npm install` once; without it the check is skipped with a warning).
+- **Touch the page only inside `render`.** The command line and the checks read the file without a page; `node scripts/flow.js types` says so if a file breaks this rule.
+- **Never put text into the page as HTML** (`innerHTML`): use `PP.h` with `text`, so nothing typed in the control panel can run as code.
+- **Every word comes from the texts** (`PP.t('key')`), never from the file.
+- **Keep it small.** Every phone downloads it; `check_config.py` adds it to the page weight (the limit is 300 KB).
+
+### Step 2: add one line to web/index.html
+
+Open `web/index.html` and add the file's line where the comment says, after `js/types.js` and before `js/app.js`:
+
+```html
+  <script defer src="js/types/stars_1_10.js"></script>
+```
+
+Keep `defer`: it makes the file run in order, after the form's own code.
+
+### Step 3: add its texts
+
+Add every text key the kind shows to `web/i18n/strings.json`, in all six languages: real English and everyday Hindi, and `"[TRANSLATE] "` followed by the English for Tamil, Telugu, Kannada and Malayalam ([Adding a new text](#adding-a-new-text)). Never machine-translate.
+
+### Step 4: refresh the catalogue
+
+In Terminal, in the project folder:
+
+```bash
+node scripts/flow.js types --write
+```
+
+What it does: runs the form's type files (without a page), checks each description, and writes the catalogue `web/config/types.json`. It also refreshes the GENERATED part of `apps-script/Model.gs`: the control panel's list of kinds (`PP_SCREEN_TYPES`) and the whole description of each added kind (`PP_ADDED_TYPES_`), from which Publish's checks and the panel learn it.
+
+**You should see** `Wrote: web/config/types.json (13 kinds of screen: 12 built in, 1 added (stars_1_10)).` and `Wrote: apps-script/Model.gs (its list of kinds, PP_SCREEN_TYPES). Paste Model.gs into the Apps Script project.` If it lists mistakes instead, nothing was written: fix them and run it again. `node scripts/flow.js types --check` only checks; `python3 scripts/check_config.py` runs it too, and stops a GitHub deployment while `web/config/types.json` is out of date.
+
+### Step 5: use it, and test it
+
+- **In the form's own copy:** add a node of the new type to `flow` in `web/config/survey.json`, for example `{ "id": "stars", "type": "stars_1_10", "text": "q.stars", "next": "thanks" }`, and point the screen before it at it.
+- **Check:** `python3 scripts/check_config.py` (all files, the catalogue, the page weight), then `python3 scripts/flow.py check`, then try it with `python3 scripts/flow.py simulate --set stars=8`.
+- **See it:** `python3 scripts/mock_server.py`, then open a printed link and go through the survey on a phone-sized window.
+- **Tests:** `node tests/flow/types_test.js` and `node tests/e2e/e2e.js`. A new kind should get its own test: copy what `types_test.js` does with `stars_1_10.js`.
+- **ES5:** `node scripts/flow.js es5` should end with `All ES5`, counting one file more than before.
+- **The control panel:** after the change is on GitHub, paste the new `apps-script/Model.gs` into the Apps Script project and deploy a new version ([setup guide, Update the code later](../apps-script/README.md#update-the-code-later-same-address)). `Flow.gs` does not change: it holds only the built-in kinds. The new kind then appears in **Questions > Add a question**, and Publish's checks, the rule and jump builders, the Map and **Try a path** all know it. With `"repeatable": true` it can be asked for each area.
+
+> [!NOTE]
+> The command line and the control panel know a new kind from its description (`web/config/types.json`, and `PP_ADDED_TYPES_` in Model.gs), so they use the **standard** rules for it. A kind with its own `isComplete` or `collect` behaves exactly like that only on phones; `simulate` and **Try a path** show the standard data for it.
+
+**What still needs more than this.** Some changes are bigger than a new kind: new data columns in the Google Sheet, a new kind of rule test (for example "contains", for a pick-several question), facts from the DC list (region, state), or repeating a question over a list that is not in `survey.json`. Those need changes to the form's engine and to Apps Script.
+
+---
+
 ## If check_config.py reports a problem
 
 - Fix everything under **ERRORS** first. **WARNINGS** do not break the form, but read them: they often point at a typo.
@@ -1100,4 +1347,6 @@ Keep the quotes. Then run `check_config.py`.
 - The mistake is often on the line **before** the one mentioned. A missing comma at the end of one line is only noticed at the start of the next.
 - Look for the [common mistakes](#json-in-two-minutes): missing or extra commas, curly quotes, a bracket left open.
 - If it says a text is missing, add it to `strings.json` in all six languages ([Adding a new text](#adding-a-new-text)).
+- A message ending in `[flow check …]` comes from the route checker: `python3 scripts/flow.py check` shows the same message with the screen it is about. `[flow check S1]` means a setting and its copy in `flow` disagree ([The settings the screens carry](#the-settings-the-screens-carry)).
+- "The map of the questionnaire (docs/flow.md) is out of date" is a warning: run `python3 scripts/flow.py map --write` and commit the map with your change ([After every change to the flow](#after-every-change-to-the-flow)).
 - If you are stuck, put your backup back (see [Before you start](#before-you-start)) and redo the change in smaller steps, running the check after each one.

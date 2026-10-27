@@ -1,0 +1,23 @@
+{
+  "_source": "flow audit 22 Oct 2026 (workflow wf_43b4b1dd-f39), form auditor, form/cfgs/",
+  "_note": "one hand-written follow-up per area, each testing its own rating",
+  "_expect": "same",
+  "_why": "No chained or forward rule: the new engine must give exactly the old screens, Next rules and message bytes.",
+  "flow": [
+    {"id":"language","type":"language_picker","skip_if":"lang_in_url"},
+    {"id":"whats_changed","type":"whats_changed","skip_if":"empty"},
+    {"id":"nps","type":"nps_0_10","text":"q.nps","low_label":"nps.low","high_label":"nps.high","scale_hint":"nps.scale_hint","required":true},
+    {"id":"fn_ratings","type":"function_ratings"},
+    {"id":"fn_deep_dives","type":"function_deep_dives"},
+    {"id":"followup_losses","type":"yes_no","text":"q.support_gate","show_if":{"answer":"fn_rating:losses","at_most":3}},
+    {"id":"followup_payments","type":"yes_no","text":"q.support_gate","show_if":{"answer":"fn_rating:payments","at_most":3}},
+    {"id":"followup_linehaul","type":"yes_no","text":"q.support_gate","show_if":{"answer":"fn_rating:linehaul","at_most":3}},
+    {"id":"followup_consumables","type":"yes_no","text":"q.support_gate","show_if":{"answer":"fn_rating:consumables","at_most":3}},
+    {"id":"followup_orders","type":"yes_no","text":"q.support_gate","show_if":{"answer":"fn_rating:orders","at_most":3}},
+    {"id":"followup_app","type":"yes_no","text":"q.support_gate","show_if":{"answer":"fn_rating:app","at_most":3}},
+    {"id":"support_gate","type":"yes_no","text":"q.support_gate","required":true},
+    {"id":"support","type":"support_block","text":"q.support_block","show_if":{"answer":"support_gate","equals":"yes"}},
+    {"id":"one_fix","type":"free_text","text":"q.one_fix","required":false},
+    {"id":"thanks","type":"thank_you"}
+  ]
+}

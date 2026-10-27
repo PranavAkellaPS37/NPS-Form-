@@ -1,0 +1,31 @@
+{
+ "_about": "A screen with a show_if whose jump does not test its own answer: the jump is ignored whenever the screen is skipped.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "support",
+   "field": "next",
+   "value": [
+    {
+     "when": {
+      "answer": "nps",
+      "at_most": 6
+     },
+     "goto": "thanks"
+    },
+    {
+     "default": "one_fix"
+    }
+   ]
+  }
+ ],
+ "expect": [
+  {
+   "code": "R4",
+   "level": "warning",
+   "node": "support"
+  }
+ ],
+ "expect_no_errors": true
+}

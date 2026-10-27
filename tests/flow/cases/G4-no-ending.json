@@ -1,0 +1,22 @@
+{
+ "_about": "No ending at all (no thank_you).",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "remove",
+   "node": "thanks"
+  },
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "next",
+   "value": "support_gate"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G4",
+   "level": "error"
+  }
+ ]
+}

@@ -1,0 +1,26 @@
+{
+ "_about": "The language buttons after the NPS question (list format).",
+ "base": "list",
+ "patch": [
+  {
+   "op": "remove",
+   "node": "language"
+  },
+  {
+   "op": "add",
+   "after": "nps",
+   "value": {
+    "id": "language",
+    "type": "language_picker",
+    "skip_if": "lang_in_url"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "P1",
+   "level": "error",
+   "node": "language"
+  }
+ ]
+}

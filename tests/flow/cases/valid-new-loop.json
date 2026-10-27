@@ -1,0 +1,34 @@
+{
+ "_about": "Proposal example \"a new loop\": a callback question for each area rated low, after the problem screens.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "fn_deep_dives",
+   "field": "next",
+   "value": "callback"
+  },
+  {
+   "op": "add",
+   "after": "fn_deep_dives",
+   "value": {
+    "id": "callback",
+    "type": "yes_no",
+    "text": "q.callback",
+    "store_as": "callback:{area}",
+    "repeat_for": {
+     "each": "area",
+     "in": "areas",
+     "where": {
+      "answer": "fn_rating:{area}",
+      "at_most": {
+       "var": "area.threshold"
+      }
+     }
+    },
+    "next": "support_gate"
+   }
+  }
+ ],
+ "expect_clean": true
+}

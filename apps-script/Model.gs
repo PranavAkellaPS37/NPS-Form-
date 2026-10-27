@@ -3,7 +3,7 @@
    =============================================================================
 
    WHAT THIS FILE IS
-     One of the four code files inside the Google Sheet "Valmo Partner Pulse -
+     One of the five code files inside the Google Sheet "Valmo Partner Pulse -
      Control" (open the Sheet, then Extensions > Apps Script). This one
      understands the QUESTIONNAIRE. It:
        1. reads the questionnaire tabs of the Sheet (Settings, Languages, Areas,
@@ -16,7 +16,8 @@
           download (PP_compile). Publish saves it as published/p<N>.json;
        4. reads the questionnaire files of the GitHub project
           (PP_importStatic) and writes them back in exactly the same layout
-          (PP_exportStatic), so the copy in GitHub can be refreshed;
+          (PP_exportStatic), so the copy in GitHub can be refreshed, together
+          with docs/flow.md, the map of the route (since 26 Oct 2026);
        5. turns an old published version back into a model
           (PP_modelFromPublished), for "Restore this version as the draft".
           Anything the draft has that the old version lacks (hidden items,
@@ -24,8 +25,31 @@
        6. helps translators whenever texts are saved
           (PP_applyTranslationHelpers).
      The other files: Code.gs (menu, set-up, publishing, the public web
-     address), PanelServer.gs (what the control panel asks for) and Panel.html (the
-     control panel's screens).
+     address), PanelServer.gs (what the control panel asks for), Panel.html (the
+     control panel's screens) and Flow.gs (the questionnaire's ROUTE: the same
+     code partners' phones run, generated from web/js/flow.js,
+     web/js/flow-panel.js and web/js/flow-check.js; this file calls it through
+     PP_flowLib_).
+
+   THE ROUTE (since 23 Oct 2026, docs/flow-engine.md section 9)
+     The Screens tab still has one row per screen, plus three columns:
+     next (where to go after it; empty = the following row), jumps (exceptions,
+     checked first: [{"when": rule, "goto": code}]) and repeat (empty, each_area
+     or each_low_area). Compiling turns the rows into a graph ("flow" with
+     format pp-flow/1) through Flow.gs: a Sheet that uses none of the three
+     columns gives exactly the graph phones make of the old list, so nothing
+     changes for partners. Import and Restore accept both the old list and a
+     graph; the GitHub copy writes the graph (as web/config/survey.json holds
+     it since 26 Oct 2026).
+     Since 26 Oct 2026 the route is CHECKED by the project's one flow checker
+     too (PP.flowCheck from Flow.gs: the same rules GitHub's settings check and
+     "python3 scripts/flow.py check" use), on the compiled questionnaire, and
+     its findings are told here in the panel's words (PP_mdlCheckRoute_). This
+     file only checks what the route checker cannot see: the Screens tab's own
+     rules and what compiling leaves out (PP_mdlCheckScreens_), a route below
+     the thank-you screen that would run on into another one
+     (PP_mdlCheckRunIntoRoutes_), and the codes lock over the codes partners
+     answered, kind by kind (PP_mdlCheckLiveCodes_).
 
    HOW TO USE IT
      You never run anything in this file by hand: the control panel, set-up
@@ -76,7 +100,10 @@
        support:    [ { code, active } ]                               in order
        screens:    [ { id, type, text, required (true / false / null),
                        show_if (a rule, or null), skip_if, options [codes],
-                       low_label, high_label, scale_hint, body, active } ]
+                       low_label, high_label, scale_hint, body, active,
+                       next ("" = the following row), jumps ([] or
+                       [{ when, goto }]), repeat ("", each_area,
+                       each_low_area) } ]
        texts:      { key: { en: "...", hi: "...", ... } }   one value per language
        text_notes: { key: "message for translators" }
        whats_changed: { round_id: [ { en: "...", hi: "...", ... } ] }
@@ -141,7 +168,7 @@ var PP_TABS = {
   'Chips': ['area_id', 'order', 'chip_code', 'active'],
   'Support': ['order', 'item_code', 'active'],
   'Screens': ['order', 'screen_id', 'type', 'text_key', 'required', 'show_if', 'skip_if', 'options',
-    'low_label', 'high_label', 'scale_hint', 'body', 'active'],
+    'low_label', 'high_label', 'scale_hint', 'body', 'active', 'next', 'jumps', 'repeat'],
   'Texts': ['key', 'en', 'hi', 'ta', 'te', 'kn', 'ml', 'note'],
   'What changed': ['round_id', 'order', 'en', 'hi', 'ta', 'te', 'kn', 'ml'],
   'Audio clips': ['key', 'lang', 'url'],
@@ -286,51 +313,76 @@ var PP_SETTINGS_SCHEMA = [
 ];
 
 /**
- * The kinds of screens (contract section 6). "builtin" screens may appear
- * only once and cannot be deleted; "fields" are the extra fields the panel's
- * editor shows (the question text is shown when needs_text is true);
- * "required_default" is what an empty "required" means for that type.
+ * The kinds of screens (contract section 6), as the Screens tab and the
+ * control panel offer them: one entry per kind of row. "builtin" screens may
+ * appear only once and cannot be deleted; "fields" are the extra fields the
+ * panel's editor shows (the question text is shown when needs_text is true);
+ * "required_default" is what an empty "required" means for that type. For the
+ * panel's "Add a question" picker: icon, order (its place in the list),
+ * default_id and default_text (the code and question text a new row of a
+ * built-in kind gets) and after_note (said after its name in "Put it after");
+ * repeatable: it can be asked once per area; node_type: the kind the row
+ * becomes in the route when that has another name.
+ *
+ * A kind ADDED in web/js/types/ (docs/config-guide.md, "How to add a question
+ * type") is not in the route code (Flow.gs holds only the built-in kinds), so
+ * its whole description is kept here too: PP_ADDED_TYPES_ (empty while there
+ * is none). PP_mdlFlowLib_ teaches it to the route code once per run, so
+ * Publish's checks and the route know the kind; its row in PP_SCREEN_TYPES
+ * carries the same description ("catalogue"), so the control panel's window
+ * learns it with the list of kinds (Panel.html teachKinds) for its badges,
+ * Map and "Try a path" (26 Oct 2026).
+ *
+ * GENERATED (26 Oct 2026, flow-graph stage 5): these lists are made from the
+ * form's catalogue of question types, web/config/types.json, itself made from
+ * the kinds the form registers (web/js/flow.js and web/js/types/), by
+ *     node scripts/flow.js types --write
+ * Never edit the lines between the two GENERATED marks by hand: change the
+ * kind's description in web/js/, run that command, then paste Model.gs into
+ * Apps Script. python3 scripts/check_config.py says when it is out of date.
  */
+// BEGIN GENERATED by  node scripts/flow.js types --write  from web/config/types.json: do not edit by hand
+/* The kinds of screen added in web/js/types/, as web/config/types.json describes them (none: []). */
+var PP_ADDED_TYPES_ = [];
 var PP_SCREEN_TYPES = [
-  { type: 'language_picker', label: 'Language buttons', builtin: true, needs_text: false,
-    description: 'The partner picks their language. Skipped when the link already says which language.',
-    fields: ['skip_if'], required_default: null },
-  { type: 'whats_changed', label: '"What changed" card', builtin: true, needs_text: false,
-    description: 'Shows what Valmo changed since the last round (edited under Rounds). Skipped when the ' +
-      'round has nothing to show.',
-    fields: ['skip_if'], required_default: null },
-  { type: 'function_ratings', label: 'Area ratings', builtin: true, needs_text: false,
-    description: 'One screen of five faces for each area that is switched on (Areas & problems).',
-    fields: [], required_default: null },
-  { type: 'function_deep_dives', label: 'Problem screens', builtin: true, needs_text: false,
-    description: '"What is the main problem?" for every area rated low, with that area\'s problem ' +
-      'buttons and an optional voice note or text. Must come after the area ratings.',
-    fields: [], required_default: null },
-  { type: 'support_block', label: 'Support ratings', builtin: true, needs_text: true,
-    description: 'The support questions on one screen, each with five faces, plus an optional comment.',
-    fields: [], required_default: true },
-  { type: 'thank_you', label: 'Thank-you screen', builtin: true, needs_text: false,
-    description: 'Sends the answers and says thank you. Always the last screen.',
-    fields: [], required_default: null },
-  { type: 'nps_0_10', label: '0 to 10 question', builtin: false, needs_text: true,
-    description: 'Eleven buttons from 0 to 10, with a label under each end.',
-    fields: ['low_label', 'high_label', 'scale_hint', 'required'], required_default: true },
-  { type: 'rating_1_5', label: 'Faces question (1 to 5)', builtin: false, needs_text: true,
-    description: 'One row of five faces, from very bad to very good.',
-    fields: ['required'], required_default: true },
-  { type: 'yes_no', label: 'Yes / No question', builtin: false, needs_text: true,
-    description: 'Two big buttons: Yes and No.',
-    fields: ['required'], required_default: true },
-  { type: 'single_choice', label: 'Pick one answer', builtin: false, needs_text: true,
-    description: 'A list of answers; the partner taps one.',
-    fields: ['options', 'required'], required_default: true },
-  { type: 'free_text', label: 'Voice note or typing', builtin: false, needs_text: true,
-    description: 'The partner records a voice note or types an answer.',
-    fields: ['required'], required_default: false },
-  { type: 'info_card', label: 'Information card', builtin: false, needs_text: true,
-    description: 'A title and an optional longer text, with nothing to answer.',
-    fields: ['body'], required_default: null }
+  { "type": "language_picker", "label": "Language buttons", "builtin": true, "needs_text": false,
+    "description": "The partner picks their language. Skipped when the link already says which language.",
+    "fields": ["skip_if"], "required_default": null, "skip_if": "lang_in_url", "icon": "🌐", "order": 70, "default_id": "language" },
+  { "type": "whats_changed", "label": "\"What changed\" card", "builtin": true, "needs_text": false,
+    "description": "Shows what Valmo changed since the last round (edited under Rounds). Skipped when the round has nothing to show.",
+    "fields": ["skip_if"], "required_default": null, "skip_if": "empty", "icon": "📰", "order": 80, "default_id": "whats_changed" },
+  { "type": "function_ratings", "label": "Area ratings", "builtin": true, "needs_text": false,
+    "description": "One screen of five faces for each area that is switched on (Areas & problems).",
+    "fields": [], "required_default": null, "icon": "⭐", "order": 90, "default_id": "fn_ratings", "after_note": " (one screen per area)", "node_type": "function_rating" },
+  { "type": "function_deep_dives", "label": "Problem screens", "builtin": true, "needs_text": false,
+    "description": "\"What is the main problem?\" for every area rated low, with that area's problem buttons and an optional voice note or text. Must come after the area ratings.",
+    "fields": [], "required_default": null, "icon": "🔍", "order": 100, "default_id": "fn_deep_dives", "after_note": " (one screen per area rated low)", "node_type": "function_deep_dive" },
+  { "type": "support_block", "label": "Support ratings", "builtin": true, "needs_text": true,
+    "description": "The support questions on one screen, each with five faces, plus an optional comment.",
+    "fields": [], "required_default": true, "icon": "🎧", "order": 110, "default_id": "support", "default_text": "q.support_block", "after_note": " (all support questions on one screen)" },
+  { "type": "thank_you", "label": "Thank-you screen", "builtin": true, "needs_text": false,
+    "description": "Sends the answers and says thank you. The main one comes after the last question; another ending may follow it, reached only by a jump.",
+    "fields": [], "required_default": null, "icon": "🙏", "order": 120, "default_id": "thanks" },
+  { "type": "nps_0_10", "label": "0 to 10 question", "builtin": false, "needs_text": true,
+    "description": "Eleven buttons from 0 to 10, with a label under each end.",
+    "fields": ["low_label", "high_label", "scale_hint", "required"], "required_default": true, "repeatable": true, "icon": "🔟", "order": 10 },
+  { "type": "rating_1_5", "label": "Faces question (1 to 5)", "builtin": false, "needs_text": true,
+    "description": "One row of five faces, from very bad to very good.",
+    "fields": ["required"], "required_default": true, "repeatable": true, "icon": "🙂", "order": 20 },
+  { "type": "yes_no", "label": "Yes / No question", "builtin": false, "needs_text": true,
+    "description": "Two big buttons: Yes and No.",
+    "fields": ["required"], "required_default": true, "repeatable": true, "icon": "👍", "order": 30 },
+  { "type": "single_choice", "label": "Pick one answer", "builtin": false, "needs_text": true,
+    "description": "A list of answers; the partner taps one.",
+    "fields": ["options", "required"], "required_default": true, "repeatable": true, "icon": "☑️", "order": 40 },
+  { "type": "free_text", "label": "Voice note or typing", "builtin": false, "needs_text": true,
+    "description": "The partner records a voice note or types an answer.",
+    "fields": ["required"], "required_default": false, "repeatable": true, "icon": "🎙️", "order": 50 },
+  { "type": "info_card", "label": "Information card", "builtin": false, "needs_text": true,
+    "description": "A title and an optional longer text, with nothing to answer.",
+    "fields": ["body"], "required_default": null, "repeatable": true, "icon": "ℹ️", "order": 60 }
 ];
+// END GENERATED (PP_ADDED_TYPES_ and PP_SCREEN_TYPES)
 
 /**
  * The texts the form's own code uses (buttons, messages). The same list, in
@@ -359,6 +411,8 @@ var PP_FORM_TEXT_KEYS = [
  * The notes for humans inside web/config/survey.json, word for word, so that
  * PP_exportStatic writes them back unchanged. The name says where each note
  * sits: "_help" at the top, "branding._help" inside "branding", and so on.
+ * The route ("flow", a graph since 26 Oct 2026) carries its own note inside
+ * it (Flow.gs, PP.flowPanel.FLOW_HELP); the old list's "_flow_help" is gone.
  */
 var PP_SURVEY_HELP = {
   '_help': 'Main settings for the Valmo Partner Pulse questionnaire. Keys that start with an underscore (_) are notes for humans; the app ignores them. Every word shown to partners lives in web/i18n/strings.json, not here. After ANY edit, run:  python3 scripts/check_config.py',
@@ -369,16 +423,15 @@ var PP_SURVEY_HELP = {
   '_languages_help': 'Order = order of buttons on the language screen. code = the key used in strings.json and in ?lang= links. bcp47 = language tag used for the read-aloud voice. native_name = the language\'s name written in its own script.',
   '_fallback_language_help': 'If a string is missing or still marked [TRANSLATE] for the chosen language, the fallback language\'s text is shown (and read aloud with the fallback language\'s voice).',
   'navigation._help': 'auto_advance = move to the next screen as soon as a single-answer question is tapped (NPS, faces, yes/no). The short delay lets the partner see what they tapped.',
-  'rating._help': 'The 1-5 faces used for area ratings and support ratings, from 1 (worst) to 5 (best). Labels under the faces are strings rating.1 ... rating.5. allow_not_applicable adds a small "I don\'t handle this" option under area ratings (string rating.na); those answers are left out of averages.',
-  'deep_dive._help': 'Every area rated at or below threshold gets a \'What is the main problem?\' screen with that area\'s chips, plus an optional voice note or text. when = after_all_ratings asks the problem screens after all six ratings (recommended: partners cannot learn mid-survey that a low score means extra questions). when = immediate asks right after each low rating. require_chip = a chip must be picked before Next. require_detail_if_other = if the partner picks Other, a voice note or text is required.',
+  'rating._help': 'The 1-5 faces used for area ratings and support ratings, from 1 (worst) to 5 (best). Labels under the faces are strings rating.1 ... rating.5. allow_not_applicable adds a small "I don\'t handle this" option under area ratings (string rating.na); those answers are left out of averages. On phones the area ratings screen in "flow" below (node fn_ratings) carries this value itself, as its own "allow_not_applicable": the control panel copies it there when it publishes. Editing this file by hand, change both; python3 scripts/flow.py check reports a mismatch.',
+  'deep_dive._help': 'Every area rated at or below threshold gets a \'What is the main problem?\' screen with that area\'s chips, plus an optional voice note or text. when = after_all_ratings asks the problem screens after all six ratings (recommended: partners cannot learn mid-survey that a low score means extra questions). when = immediate asks right after each low rating. require_chip = a chip must be picked before Next. require_detail_if_other = if the partner picks Other, a voice note or text is required. On phones the problem screen in "flow" below (node fn_deep_dives) carries these values itself: "require_choice" (= require_chip) and "require_detail_if_other" on the node, threshold in "collections" > "areas" > "defaults", and when = immediate puts the problem screen inside the area ratings (a group). The control panel copies them there when it publishes. Editing this file by hand, change both; python3 scripts/flow.py check reports a mismatch.',
   '_functions_help': 'The areas partners rate, one screen each, in this order. id and issue codes are permanent codes: the sheet, classifier and dashboard use them, so keep them the same from round to round (you may freely reword their labels). Labels live in strings.json as fn.<id>.name, fn.<id>.help and issue.<id>.<code>. An \'Other\' chip (code other, string issue.other) is added automatically. Use 4-6 chips per area. To give one area its own threshold add  "threshold": 2  next to its id.',
-  'support._help': 'Shown only to partners who answer Yes to the support question. items = the four things rated 1-5 on one screen (labels: support.<item> in strings.json). allow_comment adds an optional voice/text comment (question string: comment_text).',
+  'support._help': 'Shown only to partners who answer Yes to the support question. items = the four things rated 1-5 on one screen (labels: support.<item> in strings.json). allow_comment adds an optional voice/text comment (question string: comment_text). On phones the support screen in "flow" below (node support) carries these values itself: its own "allow_not_applicable", and its "comment" (there only while allow_comment is true; its "text" = comment_text). The control panel copies them there when it publishes. Editing this file by hand, change both; python3 scripts/flow.py check reports a mismatch.',
   'voice._help': 'Voice notes. gesture = hold (press and hold to record, release to stop) or tap (tap to start, tap again to stop). max_seconds = hard cap per note. min_seconds = shorter notes are thrown away as accidental taps. bitrate = bits per second (16000 keeps a 60 s note around 120 KB). mime_types = audio formats to try, best first. If the phone cannot record or the partner blocks the microphone, the form quietly falls back to typing.',
   'text._help': 'Free-text boxes accept any language or script, including Hindi/Tamil written in English letters. max_chars = maximum length of one answer.',
   'read_aloud._help': 'Speaker button on each question. Uses a pre-recorded clip if one exists for that text and language, otherwise the phone\'s built-in voice. The button hides itself when neither is available for the chosen language. In live mode the clips come with the published questionnaire (the Sheet\'s Audio clips tab, published from the control panel); config/audio_clips.json is used only when that doesn\'t arrive in time, and by the local test server.',
   'whats_changed._help': 'The \'What changed since last time\' screen. In live mode its content comes with the published questionnaire (control panel, Rounds), in the form\'s first request; the form waits at most timeout_seconds + 2 seconds for it, then uses its own copy, including config/whats_changed.json (the local test server uses that file too). If there are no items for the round, the screen is skipped.',
-  'telemetry._help': 'Small \'progress\' messages (started / which screen the partner reached) so the dashboard can show drop-off per screen. They never contain answers. The \'opened\' message is always sent, even when this is false, because it also checks that the link is genuine.',
-  '_flow_help': 'The screens, in order. id = permanent code for the screen (used in the data). type = what kind of screen. Built-in types: language_picker, whats_changed, function_ratings (one screen per area), function_deep_dives (problem screens for low-rated areas), support_block, thank_you (must be last). Generic types you can add freely: nps_0_10, rating_1_5, yes_no, single_choice (needs "options": [codes], labels in strings as choice.<id>.<code>), free_text, info_card (needs "text" and optional "body"). text = string key of the question. required = false adds a Skip button. show_if = only show this screen when an earlier answer matches, e.g. {"answer": "support_gate", "equals": "yes"}. Other tests: not_equals, at_most, at_least, in (a list), answered (true/false); combine with {"all": [...]} or {"any": [...]}. Area ratings can be tested too, e.g. {"answer": "fn_rating:payments", "at_most": 2}. skip_if: lang_in_url (language screen) or empty (what-changed screen).'
+  'telemetry._help': 'Small \'progress\' messages (started / which screen the partner reached) so the dashboard can show drop-off per screen. They never contain answers. The \'opened\' message is always sent, even when this is false, because it also checks that the link is genuine.'
 };
 
 /** The notes at the top of the other three GitHub files, word for word (for PP_exportStatic). */
@@ -404,10 +457,6 @@ var PP_MDL_TAG_ = '[TRANSLATE]';
 var PP_MDL_MAX_COMPILED_CHARS_ = 200000;
 /** Google Sheets refuses cells above 50,000 characters. */
 var PP_MDL_MAX_CELL_CHARS_ = 49000;
-var PP_MDL_SHOW_IF_TESTS_ = ['equals', 'not_equals', 'at_most', 'at_least', 'in', 'answered'];
-/** The words the control panel's rule builder uses for each test. */
-var PP_MDL_TEST_NAMES_ = { equals: 'is', not_equals: 'is not', at_most: 'is at most',
-  at_least: 'is at least', in: 'is one of', answered: 'was answered' };
 /** The only skip_if value each screen type accepts (empty is always fine). */
 var PP_MDL_SKIP_IF_ = { language_picker: 'lang_in_url', whats_changed: 'empty' };
 /** What the skip_if values mean, in the control panel's own words. */
@@ -457,6 +506,43 @@ var PP_MDL_ROW_IDENTITY_ = {
 };
 /** Columns that alone never make a row count as "filled in" (an order number or a tick box). */
 var PP_MDL_FLAG_COLUMNS_ = { order: true, active: true, required: true };
+/**
+ * Problems Flow.gs reports while it turns the rows into the route
+ * (PP.flowPanel.fromRows) that block Publish: an arrow to a code no row has
+ * (G2) or back to an earlier row (G3), and settings it had to leave out (F1).
+ * The others are warnings: an arrow to a hidden row or ending (C2), an
+ * ending's arrows (G4). A note Flow.gs marks level "warning" is always a
+ * warning: settings left on the problem-screens row while the problem screens
+ * follow each low rating change nothing for partners (26 Oct 2026, review
+ * finding 7), so they never block Publish; the message says to clear them.
+ */
+var PP_MDL_FLOW_ERRORS_ = { G2: true, G3: true, F1: true };
+/**
+ * The answer keys built-in area screens use, which the panel never changes:
+ * a published route's node "fn_ratings" stores fn_rating:<area>, and so on.
+ */
+var PP_MDL_IMPLIED_PREFIX_ = { function_rating: 'fn_rating', function_deep_dive: 'fn_deep_dive',
+  function_ratings: 'fn_rating', function_deep_dives: 'fn_deep_dive' };
+/** The route's own screen kinds, as the Screens tab names them (for messages). */
+var PP_MDL_NODE_TYPES_ = { function_rating: 'function_ratings', function_deep_dive: 'function_deep_dives' };
+/**
+ * The two questions that fill their own columns of every round's answers sheet
+ * (Code.gs): "nps" (column nps, which the dashboard's headline score reads)
+ * and "support_gate" (column support_contacted). They can be hidden, but never
+ * deleted, re-coded or re-typed (Pranav's decision 8, 21 Oct 2026); the flow
+ * checker's D1 and D2 find it, PP_mdlReportDataColumn_ words it.
+ */
+var PP_MDL_DATA_COLUMNS_ = [
+  { id: 'nps', type: 'nps_0_10', column: 'nps', reader: ' (the dashboard\'s headline score reads it)' },
+  { id: 'support_gate', type: 'yes_no', column: 'support_contacted', reader: '' }
+];
+/**
+ * Every code partners have ever answered under (Script Property
+ * CODES_EVER_LIVE, kept by Code.gs) must fit in one Script Property, which
+ * Google limits to 9 KB: from 8,000 characters the checks warn.
+ */
+var PP_MDL_EVER_LIVE_WARN_CHARS_ = 8000;
+var PP_MDL_EVER_LIVE_MAX_CHARS_ = 9000;
 
 
 /** Builds one PP_SETTINGS_SCHEMA entry with every field present. */
@@ -740,16 +826,6 @@ function PP_mdlIsBuiltin_(type) {
   const entry = PP_mdlScreenType_(type);
   return Boolean(entry && entry.builtin);
 }
-
-/** The value as JavaScript's String() writes it: how the form compares rule values. */
-function PP_mdlJsText_(value) {
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (typeof value === 'number') return String(value);
-  if (typeof value === 'string') return value;
-  if (value === null) return 'null';
-  return null;   // lists and groups never match anything
-}
-
 
 // =============================================================================
 // 3. Settings: turning cell values into proper values, and checking them
@@ -1097,11 +1173,44 @@ function PP_mdlNormalizeScreen_(item) {
     high_label: PP_mdlTrim_(item.high_label),
     scale_hint: PP_mdlTrim_(item.scale_hint),
     body: PP_mdlTrim_(item.body),
-    active: PP_mdlFlag_(item.active, true)
+    active: PP_mdlFlag_(item.active, true),
+    next: PP_mdlTrim_(item.next),
+    jumps: PP_mdlJumpsValue_(item.jumps),
+    repeat: PP_mdlTrim_(item.repeat)
   };
   const hasContent = screen.id || screen.type || screen.text || screen.skip_if || screen.options.length ||
-    screen.low_label || screen.high_label || screen.scale_hint || screen.body || screen.show_if;
+    screen.low_label || screen.high_label || screen.scale_hint || screen.body || screen.show_if ||
+    screen.next || screen.repeat || PP_mdlJumpsText_(screen.jumps);
   return hasContent ? screen : null;
+}
+
+/**
+ * A row's jumps: [] (none), a list of { when, goto } as the control panel
+ * builds them, or { unreadable: "the text as typed" } when the jumps column
+ * cannot be read (the check then points at it, and Publish waits).
+ */
+function PP_mdlJumpsValue_(value) {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) return PP_mdlCopy_(value);
+  if (PP_mdlIsObject_(value)) {
+    return { unreadable: PP_mdlHas_(value, 'unreadable') ? PP_mdlText_(value.unreadable) : JSON.stringify(value) };
+  }
+  const text = PP_mdlTrim_(value);
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (err) {
+    // Not a list of jumps: kept below, so the check can show it.
+  }
+  return { unreadable: text };
+}
+
+/** The jumps as the text in the Screens tab's jumps column ('' when there are none). */
+function PP_mdlJumpsText_(jumps) {
+  if (Array.isArray(jumps)) return jumps.length ? JSON.stringify(jumps) : '';
+  if (PP_mdlIsObject_(jumps) && PP_mdlHas_(jumps, 'unreadable')) return PP_mdlText_(jumps.unreadable);
+  return '';
 }
 
 /** true, false, or null (= the usual for this type). Anything else is kept for the check to explain. */
@@ -1381,7 +1490,8 @@ function PP_mdlScreenFromRow_(row) {
   return {
     id: row.screen_id, type: row.type, text: row.text_key, required: row.required, show_if: row.show_if,
     skip_if: row.skip_if, options: row.options, low_label: row.low_label, high_label: row.high_label,
-    scale_hint: row.scale_hint, body: row.body, active: row.active
+    scale_hint: row.scale_hint, body: row.body, active: row.active, next: row.next, jumps: row.jumps,
+    repeat: row.repeat
   };
 }
 
@@ -1546,7 +1656,8 @@ function PP_mdlChipRows_(chips) {
 function PP_mdlScreenRow_(screen, index) {
   return [index + 1, screen.id, screen.type, screen.text, screen.required === null ? '' : screen.required,
     PP_mdlRuleText_(screen.show_if), screen.skip_if, screen.options.join(', '), screen.low_label,
-    screen.high_label, screen.scale_hint, screen.body, screen.active];
+    screen.high_label, screen.scale_hint, screen.body, screen.active, screen.next, PP_mdlJumpsText_(screen.jumps),
+    screen.repeat];
 }
 
 /** A rule as the text that goes into the show_if column. */
@@ -1854,9 +1965,12 @@ function PP_mdlListRule_(values, help) {
  * The document partners' phones download (contract section 7). stamp =
  * { version, published_at, published_by, note } when publishing, or null for
  * a draft / Preview. Hidden items are always left out. The same model always
- * gives the same document (apart from the stamp).
+ * gives the same document (apart from the stamp). Its survey.flow is the
+ * route as a graph (format pp-flow/1), made by Flow.gs from the Screens rows.
+ * flowNotes (optional, a list): receives what Flow.gs had to say while
+ * making the route ({ code, node, row, message }; PP_validate reports them).
  */
-function PP_compile(model, stamp) {
+function PP_compile(model, stamp, flowNotes) {
   const tidy = PP_normalizeModel(model);
   const codes = PP_mdlLanguageCodes_(tidy.languages, true);
   const configVersion = stamp ? 'p' + stamp.version + '-' + PP_dateIST(stamp.published_at) : 'draft';
@@ -1867,7 +1981,7 @@ function PP_compile(model, stamp) {
     published_at: stamp ? PP_mdlIsoTime_(stamp.published_at) : null,
     published_by: stamp ? PP_mdlText_(stamp.published_by) : null,
     note: stamp ? PP_mdlText_(stamp.note) : null,
-    survey: PP_mdlCompileSurvey_(tidy, configVersion),
+    survey: PP_mdlCompileSurvey_(tidy, configVersion, flowNotes),
     strings: PP_mdlCompileStrings_(tidy, codes),
     whats_changed: PP_mdlCompileNews_(tidy, codes),
     clips: PP_mdlCompileClips_(tidy, codes)
@@ -1880,7 +1994,7 @@ function PP_mdlIsoTime_(value) {
 }
 
 /** The "survey" part: the same structure as web/config/survey.json, without backend addresses and links. */
-function PP_mdlCompileSurvey_(model, configVersion) {
+function PP_mdlCompileSurvey_(model, configVersion, flowNotes) {
   const settings = PP_mdlSettingsTree_(model.settings);
   const survey = {
     survey_id: PP_mdlTypedSetting_(PP_mdlSettingEntry_('survey_id'), model.settings.survey_id),
@@ -1905,7 +2019,7 @@ function PP_mdlCompileSurvey_(model, configVersion) {
   Object.keys(settings).forEach(name => {
     if (!PP_mdlHas_(survey, name)) survey[name] = settings[name];
   });
-  survey.flow = PP_mdlCompileFlow_(model.screens);
+  survey.flow = PP_mdlCompileFlow_(model, survey, flowNotes);
   return survey;
 }
 
@@ -1930,20 +2044,53 @@ function PP_mdlCompileAreas_(model) {
   });
 }
 
-/** Screens partners see, in order, with only the fields that are filled in. */
-function PP_mdlCompileFlow_(screens) {
-  return screens.filter(screen => screen.active).map(screen => {
-    const entry = { id: screen.id, type: screen.type };
-    if (screen.text) entry.text = screen.text;
-    if (screen.options.length) entry.options = screen.options.slice();
-    ['low_label', 'high_label', 'scale_hint', 'body'].forEach(field => {
-      if (screen[field]) entry[field] = screen[field];
-    });
-    if (typeof screen.required === 'boolean') entry.required = screen.required;
-    if (PP_mdlIsObject_(screen.show_if) && !PP_mdlHas_(screen.show_if, 'unreadable')) entry.show_if = PP_mdlCopy_(screen.show_if);
-    if (screen.skip_if) entry.skip_if = screen.skip_if;
-    return entry;
-  });
+/**
+ * The route partners walk: Flow.gs (PP.flowPanel.fromRows) builds the old
+ * list from the screens partners see (in order, only the fields that are
+ * filled in, exactly as this file always did), lets the form's own converter
+ * turn it into the graph, and adds next, jumps and repeat. Without those
+ * three columns the graph is exactly what phones make of the old list.
+ * survey = the survey being compiled (its settings decide the problem-screen
+ * mode). flowNotes (optional): receives Flow.gs's notes, see PP_compile.
+ */
+function PP_mdlCompileFlow_(model, survey, flowNotes) {
+  const result = PP_mdlFlowLib_().flowPanel.fromRows(model.screens, survey,
+    { nameOf: (screen, index) => PP_mdlQuestionName_(model, screen, index) });
+  if (Array.isArray(flowNotes)) result.warnings.forEach(note => flowNotes.push(note));
+  return result.graph;
+}
+
+/**
+ * The route code of Flow.gs ({ flow, flowPanel, ... }), or a plain message
+ * when that fifth file was never pasted into the Apps Script project.
+ * Once per run it also learns the kinds of question added in web/js/types/
+ * (PP_ADDED_TYPES_, generated above), which Flow.gs does not hold: so the
+ * checks of Publish, the route and Restore know them, with the standard
+ * rules of web/js/flow.js (as "node scripts/flow.js check" does from
+ * web/config/types.json). If it can't learn one, that kind stays unknown and
+ * the checks say so at its question.
+ */
+function PP_mdlFlowLib_() {
+  if (typeof PP_flowLib_ !== 'function') {
+    throw new Error('The script file "Flow" is missing from the Apps Script project, so the questions\' route ' +
+      'cannot be made. In the Sheet: Extensions > Apps Script > + > Script, name it Flow, paste the whole of ' +
+      'apps-script/Flow.gs from the GitHub project into it and save. Then try again.');
+  }
+  const lib = PP_flowLib_();
+  if (PP_mdlFlowLib_.taught !== lib) {
+    PP_mdlFlowLib_.taught = lib;
+    try {
+      if (PP_ADDED_TYPES_.length) lib.flowCheck.loadCatalogue(PP_ADDED_TYPES_);
+    } catch (err) {
+      // the kind stays unknown: the checks name it at its question
+    }
+  }
+  return lib;
+}
+
+/** True for a route in the graph format (pp-flow/1), false for the old list. */
+function PP_mdlIsGraph_(flow) {
+  return PP_mdlIsObject_(flow) && flow.format === 'pp-flow/1';
 }
 
 function PP_mdlCompileStrings_(model, codes) {
@@ -1996,6 +2143,11 @@ function PP_compileForCompare(modelOrDoc) {
   const doc = PP_mdlIsCompiledDoc_(modelOrDoc) ? PP_mdlCopy_(modelOrDoc) : PP_compile(modelOrDoc, null);
   ['version', 'config_version', 'published_at', 'published_by', 'note'].forEach(name => { delete doc[name]; });
   if (PP_mdlIsObject_(doc.survey)) delete doc.survey.config_version;
+  // A version published as the old list compares as the graph phones make of
+  // it: changing only the format is not a change partners would see.
+  if (PP_mdlIsObject_(doc.survey) && Array.isArray(doc.survey.flow)) {
+    doc.survey.flow = PP_mdlFlowLib_().flow.fromLegacy(doc.survey);
+  }
   // A round with no "What changed" bullets shows partners nothing, exactly
   // like a round that isn't there: a new, empty round is not a change.
   if (PP_mdlIsObject_(doc.whats_changed)) {
@@ -2043,25 +2195,39 @@ function PP_mdlCanonicalJson_(value) {
  * the way the control panel shows them ("question 4" followed by its English
  * text, areas, problems and support questions by their English labels,
  * languages by their English names) and mentions codes only in brackets at
- * the end. liveDoc = the live published document, or null.
+ * the end. liveDoc = the live published document, or null. everLive
+ * (optional) = every code partners have answered under since the first real
+ * round (Code.gs keeps it in the Script Property CODES_EVER_LIVE), or null.
+ *
+ * Since 26 Oct 2026 the questions' ROUTE (rules, jumps, order, endings,
+ * repeats, answer codes, sizes) is checked by the project's one flow checker,
+ * PP.flowCheck from Flow.gs (the same code GitHub's settings check and
+ * "python3 scripts/flow.py check" run), on the compiled questionnaire; see
+ * PP_mdlCheckRoute_. This file keeps the checks of everything else, and of
+ * what compiling leaves out of the route (see PP_mdlCheckScreens_).
  */
-function PP_validate(model, liveDoc) {
+function PP_validate(model, liveDoc, everLive) {
   const tidy = PP_normalizeModel(model);
   const ctx = PP_mdlCheckContext_(tidy);
   const report = PP_mdlNewReport_();
+  const flowNotes = [];
+  const compiled = PP_compile(tidy, null, flowNotes);
   PP_mdlCheckSettings_(tidy, ctx, report);
   PP_mdlCheckLanguages_(tidy, ctx, report);
   PP_mdlCheckAreas_(tidy, ctx, report);
   PP_mdlCheckChips_(tidy, ctx, report);
   PP_mdlCheckSupport_(tidy, ctx, report);
   PP_mdlCheckScreens_(tidy, ctx, report);
-  PP_mdlCheckRules_(tidy, ctx, report);
+  PP_mdlReportFlowNotes_(flowNotes, report);
+  PP_mdlCheckRoute_(tidy, compiled, report);
+  PP_mdlCheckRunIntoRoutes_(tidy, report);
   PP_mdlCheckTexts_(tidy, ctx, report);
   PP_mdlCheckNews_(tidy, ctx, report);
   PP_mdlCheckClips_(tidy, ctx, report);
   PP_mdlCheckRounds_(tidy, report);
-  PP_mdlCheckLiveCodes_(tidy, liveDoc, report);
-  const compiledChars = JSON.stringify(PP_compile(tidy, null)).length;
+  PP_mdlCheckLiveCodes_(tidy, liveDoc, report, everLive);
+  PP_mdlCheckEverLiveSize_(everLive, report);
+  const compiledChars = JSON.stringify(compiled).length;
   if (compiledChars > PP_MDL_MAX_COMPILED_CHARS_) {
     report.error('texts', '', 'The published questionnaire would be ' + compiledChars + ' characters long, more than ' +
       'the limit of ' + PP_MDL_MAX_COMPILED_CHARS_ + '. Partners download it on slow mobile data. Delete texts ' +
@@ -2088,7 +2254,6 @@ function PP_mdlCheckContext_(model) {
     activeAreas: {},
     areaChips: {},
     activeSupport: [],
-    byId: {},
     firstActive: {},
     roundIds: {}
   };
@@ -2107,7 +2272,6 @@ function PP_mdlCheckContext_(model) {
     if (item.active && ctx.activeSupport.indexOf(item.code) === -1) ctx.activeSupport.push(item.code);
   });
   model.screens.forEach((screen, index) => {
-    if (screen.id && PP_mdlSafeKey_(screen.id) && !PP_mdlHas_(ctx.byId, screen.id)) ctx.byId[screen.id] = index;
     if (screen.active && screen.type && PP_mdlSafeKey_(screen.type) && !PP_mdlHas_(ctx.firstActive, screen.type)) {
       ctx.firstActive[screen.type] = index;
     }
@@ -2358,9 +2522,19 @@ function PP_mdlCheckSupport_(model, ctx, report) {
   }
 }
 
-// ---- Screens -------------------------------------------------------------------
+// ---- Screens (the rows of the Screens tab) ---------------------------------------
 
-/** Codes, types and built-in screens are checked for every screen; the rest only for screens partners see. */
+/**
+ * The Screens tab's own rules. For every row, hidden ones too: its own valid
+ * code, a known kind of screen, and a built-in kind only once (thank-you
+ * screens excepted: several endings are allowed, docs/flow-engine.md 9.1).
+ * For the rows partners see: what compiling leaves out of the route, so the
+ * route checker never sees it (a skip setting, "required", a rule that
+ * cannot be read, a rule on the only ending), the main thank-you screen, and
+ * the problem screens in "straight after each low rating" mode. The route
+ * itself (rules, jumps, order, endings, answer codes, sizes) is checked by
+ * the one flow checker: PP_mdlCheckRoute_.
+ */
 function PP_mdlCheckScreens_(model, ctx, report) {
   const seenIds = {};
   const builtins = {};
@@ -2387,35 +2561,17 @@ function PP_mdlCheckScreens_(model, ctx, report) {
       report.error('screens', ref, PP_mdlUnknownTypeMessage_(label, screen.type));
       return;
     }
-    if (type.builtin && PP_mdlHas_(builtins, screen.type)) {
+    // Several thank-you screens are allowed: extra endings, reached by a jump (docs/flow-engine.md 9.1).
+    if (type.builtin && screen.type !== 'thank_you' && PP_mdlHas_(builtins, screen.type)) {
       report.error('screens', ref, label + ': there is already a "' + type.label + '" screen (question ' +
         builtins[screen.type] + '). This kind of screen can appear only once: delete one of them.');
     } else if (type.builtin) {
       builtins[screen.type] = index + 1;
     }
-    if (screen.active) PP_mdlCheckScreenFields_(model, screen, type, ref, label, report);
+    if (screen.active) PP_mdlCheckScreenFields_(model, screen, ref, label, report);
   });
-  PP_mdlCheckScreenOrder_(model, ctx, report);
-  PP_mdlCheckDataColumns_(model, report);
-}
-
-/**
- * Two questions fill their own columns of every round's answers sheet:
- * "nps" (the 0 to 10 score: column nps, which the dashboard's headline score
- * reads) and "support_gate" (did the partner contact support: column
- * support_contacted). The control panel never deletes them or changes their
- * codes (Pranav's decision, 21 Oct 2026). This warns when one went missing
- * anyway, for example after the Screens tab was edited by hand. Hiding
- * them is fine.
- */
-function PP_mdlCheckDataColumns_(model, report) {
-  [{ id: 'nps', column: 'nps', reader: ', which the dashboard\'s headline score reads' },
-    { id: 'support_gate', column: 'support_contacted', reader: '' }].forEach(item => {
-    if (model.screens.some(screen => screen.id === item.id)) return;
-    report.warn('screens', '', 'The question with the code "' + item.id + '" is missing. Its answers fill the ' +
-      item.column + ' column of every round\'s answers sheet' + item.reader + '. Undo the change, or add the ' +
-      'question back with exactly that code.');
-  });
+  PP_mdlCheckMainThanks_(model, report);
+  PP_mdlCheckImmediateDives_(model, ctx, report);
 }
 
 function PP_mdlUnknownTypeMessage_(label, type) {
@@ -2429,12 +2585,13 @@ function PP_mdlUnknownTypeMessage_(label, type) {
     PP_mdlDidYouMean_(type, PP_mdlTypeNames_()) + ' ' + known + ')';
 }
 
-function PP_mdlCheckScreenFields_(model, screen, type, ref, label, report) {
-  if (type.needs_text && !screen.text) {
-    report.error('screens', ref, label + ' has no question text. Choose or add one in the control panel. (In the ' +
-      'Screens tab, the name of its text goes in the text_key column.)');
-  }
-  if (screen.type === 'single_choice') PP_mdlCheckOptions_(model, screen, ref, label, report);
+/**
+ * A shown row's settings that compiling leaves out of the route (so the
+ * route checker cannot see them): a skip setting on the wrong kind of screen,
+ * "required" that is not TRUE / FALSE / empty, a rule ("Show this question
+ * only if…") that cannot be read, and a rule on the only ending.
+ */
+function PP_mdlCheckScreenFields_(model, screen, ref, label, report) {
   const allowed = PP_mdlHas_(PP_MDL_SKIP_IF_, screen.type) ? PP_MDL_SKIP_IF_[screen.type] : '';
   if (screen.skip_if && !allowed) {
     report.error('screens', ref, label + ' is set to be skipped, but only the language buttons and the "What ' +
@@ -2451,51 +2608,53 @@ function PP_mdlCheckScreenFields_(model, screen, type, ref, label, report) {
       'Screens tab, write TRUE (partners must answer), FALSE (they can skip) or leave it empty (the usual for this ' +
       'kind of question).');
   }
-  if (screen.type === 'thank_you' && screen.show_if) {
+  if (PP_mdlIsObject_(screen.show_if) && PP_mdlHas_(screen.show_if, 'unreadable')) {
+    report.error('screens', ref, label + ': the rule could not be read. Open this question in the control panel and ' +
+      'build the rule again. (In the Screens tab, show_if says ' + PP_mdlShowJson_(PP_mdlText_(screen.show_if.unreadable)) +
+      ', but it must be written like {"answer": "support_gate", "equals": "yes"}.)');
+  }
+  // With one ending, a rule on it has no use; with several, a rule can choose between them.
+  const endings = model.screens.filter(other => other.type === 'thank_you').length;
+  if (screen.type === 'thank_you' && screen.show_if && endings === 1) {
     report.warn('screens', ref, label + ' has a rule ("Show this question only if…"), which has no use there: the ' +
       'form always ends with the thank-you screen. Remove the rule.');
   }
 }
 
-function PP_mdlCheckOptions_(model, screen, ref, label, report) {
-  if (!screen.options.length) {
-    report.error('screens', ref, label + ' is a "pick one" question with no answers to pick from. Add at least ' +
-      'two. (Their labels are the texts choice.' + (screen.id || '<code>') + '.<answer code>.)');
-    return;
-  }
-  const seen = [];
-  screen.options.forEach(option => {
-    if (!PP_MDL_CODE_RE_.test(option)) {
-      report.error('screens', ref, label + ': one of its answers has a code that is not allowed: use ' +
-        PP_MDL_CODE_RULE_ + '.' + PP_mdlBadCodeNote_(option, screen.options).replace('(Its code', '(The answer code'));
-    } else if (seen.indexOf(option) !== -1) {
-      const answer = PP_mdlEnglishOf_(model, 'choice.' + screen.id + '.' + option);
-      report.error('screens', ref, label + ': ' + (answer ? 'the answer "' + answer + '"' : 'an answer') + ' is ' +
-        'listed twice. Delete one of them. (Its code is "' + option + '".)');
-    }
-    seen.push(option);
-  });
+/** The first thank-you screen that is shown (the main ending) as its place in the list, or -1. */
+function PP_mdlMainThanks_(model) {
+  let at = -1;
+  model.screens.forEach((screen, index) => { if (at < 0 && screen.type === 'thank_you' && screen.active) at = index; });
+  return at;
 }
 
-function PP_mdlCheckScreenOrder_(model, ctx, report) {
-  const thanks = [];
-  model.screens.forEach((screen, index) => { if (screen.type === 'thank_you') thanks.push(index); });
-  if (!thanks.length) {
+/**
+ * The main thank-you screen (the first one) must exist and be shown: the
+ * answers are sent from it. Compiling always ends the route on a thank-you
+ * screen (the form adds one when none is shown), so the route checker can't
+ * notice either problem.
+ */
+function PP_mdlCheckMainThanks_(model, report) {
+  let at = -1;
+  model.screens.forEach((screen, index) => { if (at < 0 && screen.type === 'thank_you') at = index; });
+  if (at < 0) {
     report.error('screens', '', 'There is no thank-you screen. Add one as the very last question: the answers are ' +
       'sent from it. (In the Screens tab its type is thank_you.)');
-  } else {
-    const at = thanks[0];
-    const after = model.screens.length - 1 - at;
-    if (!model.screens[at].active) {
-      report.error('screens', 'screen ' + (at + 1), 'The thank-you screen (question ' + (at + 1) + ') is hidden. ' +
-        'Show it again: the answers are sent from it.');
-    }
-    if (after > 0) {
-      report.error('screens', 'screen ' + (at + 1), 'The thank-you screen (question ' + (at + 1) + ') must be the ' +
-        'last one, but ' + (after === 1 ? '1 question comes' : after + ' questions come') + ' after it. Move it to ' +
-        'the end, or move ' + (after === 1 ? 'that question' : 'those questions') + ' above it.');
-    }
+  } else if (!model.screens[at].active) {
+    report.error('screens', 'screen ' + (at + 1), 'The thank-you screen (question ' + (at + 1) + ') is hidden. ' +
+      'Show it again: the answers are sent from it.');
   }
+}
+
+/**
+ * In "straight after each low rating" mode the route has no problem-screens
+ * row: each problem screen follows its own rating inside the area ratings
+ * (PP.flow.fromLegacy), so the route checker never sees that row. Its two
+ * rules stay here for that mode (in the other mode the checker reports them:
+ * the problem screens' filter tests ratings that do not exist yet, R1).
+ */
+function PP_mdlCheckImmediateDives_(model, ctx, report) {
+  if (model.settings['deep_dive.when'] !== 'immediate') return;
   const ratings = PP_mdlHas_(ctx.firstActive, 'function_ratings') ? ctx.firstActive.function_ratings : -1;
   const dives = PP_mdlHas_(ctx.firstActive, 'function_deep_dives') ? ctx.firstActive.function_deep_dives : -1;
   if (dives >= 0 && ratings < 0) {
@@ -2508,311 +2667,406 @@ function PP_mdlCheckScreenOrder_(model, ctx, report) {
   }
 }
 
-// ---- Rules ("Show this question only if…") -------------------------------------
-
-function PP_mdlCheckRules_(model, ctx, report) {
-  model.screens.forEach((screen, index) => {
-    if (!screen.active || !screen.show_if) return;
-    const site = { index: index, ref: 'screen ' + (index + 1),
-      label: PP_mdlCapital_(PP_mdlQuestionName_(model, screen, index)), report: report };
-    PP_mdlCheckCondition_(screen.show_if, site, 'the rule', ctx);
+/**
+ * What Flow.gs said while it made the route from the rows (PP_compile's
+ * flowNotes), as errors (PP_MDL_FLOW_ERRORS_) or warnings, at their row. A
+ * note with level "warning" is a warning whatever its code.
+ */
+function PP_mdlReportFlowNotes_(notes, report) {
+  notes.forEach(note => {
+    const ref = typeof note.row === 'number' && note.row >= 0 ? 'screen ' + (note.row + 1) : '';
+    if (note.level !== 'warning' && PP_mdlHas_(PP_MDL_FLOW_ERRORS_, note.code)) report.error('screens', ref, note.message);
+    else report.warn('screens', ref, note.message);
   });
 }
 
-function PP_mdlRuleError_(site, where, text) {
-  site.report.error('screens', site.ref, site.label + ': ' + where + ' ' + text);
+/**
+ * Rows below the main thank-you screen are other routes, each started by a
+ * jump. A shown row there without its own "usually go to" goes on to the next
+ * shown row: when that row starts ANOTHER route (a jump of another question
+ * leads to it), partners of the first route would run on into the second one
+ * (for example promoters into the detractors' questions, after an ending
+ * between them was deleted). That is an error, so Publish waits (26 Oct 2026,
+ * review finding 1). A hidden ending between them is fine: it still ends the
+ * route, at the main thank-you screen (Flow.gs, PP.flowPanel.fromRows).
+ * Only the rows decide here, so the message can name both questions.
+ */
+function PP_mdlCheckRunIntoRoutes_(model, report) {
+  const main = PP_mdlMainThanks_(model);
+  if (main < 0) return;
+  const screens = model.screens;
+  const immediate = model.settings['deep_dive.when'] === 'immediate';
+  const jumpedTo = {};   // '#code' -> the shown rows whose jumps lead there
+  screens.forEach((screen, index) => {
+    if (!screen.active || !Array.isArray(screen.jumps)) return;
+    screen.jumps.forEach(jump => {
+      const to = PP_mdlIsObject_(jump) ? PP_mdlTrim_(jump['goto']) : '';
+      if (!to) return;
+      if (!PP_mdlHas_(jumpedTo, '#' + to)) jumpedTo['#' + to] = [];
+      if (jumpedTo['#' + to].indexOf(index) === -1) jumpedTo['#' + to].push(index);
+    });
+  });
+  for (let i = main + 1; i < screens.length; i += 1) {
+    const row = screens[i];
+    if (!row.active || row.type === 'thank_you' || PP_mdlTrim_(row.next)) continue;
+    if (immediate && row.type === 'function_deep_dives') continue;   // not part of the route in that mode
+    let k = i + 1;
+    while (k < screens.length && !screens[k].active && screens[k].type !== 'thank_you') k += 1;
+    if (k >= screens.length || !screens[k].active) continue;         // the end, or a hidden ending: the route ends
+    const into = screens[k];
+    const from = (PP_mdlHas_(jumpedTo, '#' + into.id) ? jumpedTo['#' + into.id] : []).filter(at => at !== i);
+    if (!into.id || !from.length) continue;
+    const name = PP_mdlQuestionName_(model, row, i);
+    const next = PP_mdlQuestionName_(model, into, k);
+    const jumpers = from.map(at => 'question ' + (at + 1));
+    report.error('screens', 'screen ' + (i + 1), PP_mdlCapital_(name) + ' has no "usually go to", so partners who ' +
+      'answer it go straight on to ' + next + (into.type === 'thank_you' ? ', the ending of another route (' :
+      ', which starts another route (') + PP_mdlWordList_(jumpers, 'and') + ' ' + (jumpers.length === 1 ? 'jumps' : 'jump') +
+      ' there). Choose where question ' + (i + 1) + ' goes (Edit it > After this question > Usually go to), for ' +
+      'example to an ending of its own, or add an ending between them. If both routes should carry on there, choose ' +
+      'it under "Usually go to" to say so. (Its code is "' + row.id + '"; question ' + (k + 1) + '\'s code is "' +
+      into.id + '".)');
+  }
 }
 
-function PP_mdlRuleWarning_(site, where, text) {
-  site.report.warn('screens', site.ref, site.label + ': ' + where + ' ' + text);
+/** A warning when the list of codes partners have answered nears the 9 KB limit of one Script Property. */
+function PP_mdlCheckEverLiveSize_(everLive, report) {
+  if (!Array.isArray(everLive)) return;
+  const size = JSON.stringify(everLive).length;
+  if (size < PP_MDL_EVER_LIVE_WARN_CHARS_) return;
+  report.warn('screens', '', 'The list of every code partners have answered under is ' + size + ' characters long; ' +
+    'Google keeps at most about ' + PP_MDL_EVER_LIVE_MAX_CHARS_ + ' in one setting. When it is full, codes added after ' +
+    'that are no longer protected. Ask whoever maintains the scripts to move the list (Script Property CODES_EVER_LIVE).');
 }
 
-/** One condition (and, through "all of these" / "any of these", the ones inside it). */
-function PP_mdlCheckCondition_(cond, site, where, ctx) {
-  if (!PP_mdlIsObject_(cond)) {
-    PP_mdlRuleError_(site, where, 'is not a condition the form can read. Build it again with the rule builder. ' +
-      '(Right now it is ' + PP_mdlShowJson_(cond) + '.)');
-    return;
-  }
-  if (PP_mdlHas_(cond, 'unreadable')) {
-    PP_mdlRuleError_(site, where, 'could not be read. Open this question in the control panel and build the rule ' +
-      'again. (In the Screens tab, show_if says ' + PP_mdlShowJson_(PP_mdlText_(cond.unreadable)) + ', but it must ' +
-      'be written like {"answer": "support_gate", "equals": "yes"}.)');
-    return;
-  }
-  const names = Object.keys(cond).filter(name => name.charAt(0) !== '_');
-  const combiners = names.filter(name => name === 'all' || name === 'any');
-  if (combiners.length) {
-    PP_mdlCheckCombined_(cond, names, combiners[0], site, where, ctx);
-    return;
-  }
-  if (names.indexOf('answer') === -1) {
-    PP_mdlRuleError_(site, where, 'does not say which earlier answer it tests. Pick one in the rule builder.');
-    return;
-  }
-  const tests = names.filter(name => name !== 'answer');
-  if (tests.length !== 1) {
-    PP_mdlRuleError_(site, where, 'must have exactly one test for its answer, such as "is" or "is at most"; it has ' +
-      tests.length + '. To combine tests, use "all of these" or "any of these".' +
-      (tests.length ? ' (The tests it has: ' + tests.join(', ') + '.)' : ''));
-    return;
-  }
-  const test = tests[0];
-  if (PP_MDL_SHOW_IF_TESTS_.indexOf(test) === -1) {
-    PP_mdlRuleError_(site, where, 'uses a test the form does not know. Use one of: ' + PP_mdlTestList_() + '. (It ' +
-      'uses "' + test + '".' + PP_mdlDidYouMean_(test, PP_MDL_SHOW_IF_TESTS_) + ' In the Screens tab the tests are ' +
-      'written ' + PP_mdlWordList_(PP_MDL_SHOW_IF_TESTS_, 'and') + '.)');
-    return;
-  }
-  const answer = PP_mdlFindAnswer_(cond.answer, site, where, ctx);
-  if (answer) PP_mdlCheckTestValue_(test, cond[test], answer, site, where);
-}
+// ---- The route: the one flow checker (Flow.gs), in the panel's words ------------------
 
-/** '"is", "is not", ... or "was answered"' (the rule builder's words). */
-function PP_mdlTestList_() {
-  return PP_mdlOrList_(PP_MDL_SHOW_IF_TESTS_.map(test => PP_MDL_TEST_NAMES_[test]));
-}
-
-function PP_mdlCheckCombined_(cond, names, combiner, site, where, ctx) {
-  const friendly = combiner === 'all' ? '"all of these"' : '"any of these"';
-  if (names.length !== 1) {
-    PP_mdlRuleError_(site, where, 'mixes ' + friendly + ' with other tests. Put the other tests inside its list, or ' +
-      'build the rule again with the rule builder. (In the Screens tab: {"' + combiner + '": [test, test]}.)');
+/**
+ * The questions' route (rules, jumps, order, endings, repeats, answer codes,
+ * sizes: docs/flow-engine.md section 6) is checked by the project's ONE flow
+ * checker, PP.flowCheck from Flow.gs, on the compiled questionnaire: the same
+ * code GitHub's settings check and "python3 scripts/flow.py check" run, so
+ * the panel, GitHub and the Mac can never disagree. Its findings are reported
+ * here in the panel's words, at their row ("screen N"). Left out on purpose:
+ * its text check (T1: PP_mdlCheckTexts_ checks every text, in the panel's
+ * words) and its notes ("info": the report has errors and warnings only).
+ * The codes lock (codes partners answered, CODES_EVER_LIVE) is not asked of
+ * the checker: its check C1 compares bare codes, so a problem code deleted
+ * from one area while another area has the same code would pass. Since 26
+ * Oct 2026 (review finding 2) PP_mdlCheckLiveCodes_ decides it on the
+ * qualified list instead ("chip:<area>/<code>", "option:<question>/<code>").
+ */
+function PP_mdlCheckRoute_(model, compiled, report) {
+  let route;
+  try {
+    route = PP_mdlRouteFindings_(model, compiled);
+  } catch (err) {
+    report.error('screens', '', 'The questions\' route could not be checked, so Publish waits until it can be. Ask ' +
+      'whoever maintains the scripts, and send them this: ' + PP_mdlErrorText_(err));
     return;
   }
-  const parts = cond[combiner];
-  if (!Array.isArray(parts) || !parts.length) {
-    PP_mdlRuleError_(site, where, 'has an empty ' + friendly + ' group. Add at least one condition to it, or remove ' +
-      'the rule.');
-    return;
-  }
-  parts.forEach((part, n) => PP_mdlCheckCondition_(part, site, 'condition ' + (n + 1) + ' of ' + where, ctx));
-}
-
-/** Which earlier answer a condition tests. Returns what that answer can be, or null after saying why it cannot work. */
-function PP_mdlFindAnswer_(ref, site, where, ctx) {
-  if (!PP_mdlIsFilled_(ref)) {
-    PP_mdlRuleError_(site, where, 'does not say which earlier answer it tests. Pick one in the rule builder.');
-    return null;
-  }
-  if (ref.indexOf('fn_rating:') === 0 || ref.indexOf('fn_deep_dive:') === 0) return PP_mdlAreaAnswer_(ref, site, where, ctx);
-  if (ref.indexOf('support:') === 0) return PP_mdlSupportAnswer_(ref, site, where, ctx);
-  if (ref === 'support_comment' && !PP_mdlHas_(ctx.byId, ref)) return PP_mdlSupportCommentAnswer_(site, where, ctx);
-  const model = ctx.model;
-  if (!PP_mdlHas_(ctx.byId, ref)) {
-    const earlier = model.screens.slice(0, site.index).filter(s => s.active && s.id).map(s => s.id);
-    PP_mdlRuleError_(site, where, 'tests an answer that does not exist: no question has that code. Pick an earlier ' +
-      'answer in the rule builder. (It tests "' + ref + '".' +
-      PP_mdlDidYouMean_(ref, earlier.length ? earlier : Object.keys(ctx.byId)) + ')');
-    return null;
-  }
-  const targetIndex = ctx.byId[ref];
-  const target = model.screens[targetIndex];
-  const targetName = PP_mdlQuestionName_(model, target, targetIndex);
-  if (targetIndex === site.index) {
-    PP_mdlRuleError_(site, where, 'tests the answer to this same question. A question cannot depend on its own ' +
-      'answer: test an earlier answer.');
-    return null;
-  }
-  if (targetIndex > site.index) {
-    PP_mdlRuleError_(site, where, 'tests the answer to ' + targetName + ', which comes later, so there is no answer ' +
-      'yet when this question is shown. Move that question above this one, or test an earlier answer.');
-    return null;
-  }
-  if (!target.active) {
-    PP_mdlRuleError_(site, where, 'tests the answer to ' + targetName + ', which is hidden, so it never has an ' +
-      'answer. Show that question again, or change the rule.');
-    return null;
-  }
-  return PP_mdlScreenAnswer_(model, target, targetIndex, site, where);
+  const main = PP_mdlMainThanks_(model);
+  const lost = [];
+  const answerWords = PP_mdlAnswerWords_();
+  route.findings.forEach(f => {
+    if (f.level === 'info' || f.code === 'T1' || f.added) return;
+    // While shown rows lack their own valid code or kind (PP_mdlCheckScreens_ says which), the
+    // screens can't be told apart: only what doesn't depend on that is reported until they are fixed.
+    if (!route.ready && ['D1', 'D2'].indexOf(f.code) === -1) return;
+    if (f.code === 'D1' || f.code === 'D2') {
+      PP_mdlReportDataColumn_(model, f, report);
+      return;
+    }
+    // a row after the main thank-you that nothing reaches: said the way the panel lays out other routes
+    if (f.code === 'G1' && f.level === 'error' && main >= 0 && f.row > main) {
+      if (lost.indexOf(f.row) === -1) lost.push(f.row);
+      return;
+    }
+    PP_mdlReportRouteFinding_(model, f, report, answerWords);
+  });
+  PP_mdlReportLostRows_(model, main, lost, report);
 }
 
 /**
- * What an answer can be: describe = how messages name it; values = the
- * answers as the form stores them (null = typed text or a voice note);
- * numeric = compared as numbers from low to high; words = values that are
- * plain words ("yes", "no") rather than codes.
+ * What the one flow checker (PP.flowCheck.check, Flow.gs) says about the
+ * compiled route, each finding with its row in the Screens tab:
+ *   { ready, findings: [{ level, code, node, message, row, added }] }
+ * row = the row's place (0 = first), or -1; added = the finding is about the
+ * thank-you screen the form adds at the end of a route (it has no row).
+ * The checker gets the panel's options: the codes of hidden items (hidden is
+ * not deleted) and the panel's names ("question 3 (...)"). ready = false while
+ * a shown row has no valid code of its own or no known kind, or a built-in
+ * kind is shown twice: PP_mdlCheckScreens_ reports those rows, and
+ * PP_mdlCheckRoute_ then reports only the findings that don't depend on
+ * telling the screens apart (D1, D2) until they are fixed. compiled
+ * (optional) = the compiled document, when the caller has it. The tests call
+ * this too.
  */
-function PP_mdlAnswer_(describe, values, numeric, low, high, words) {
-  return { describe: describe, values: values, numeric: numeric, low: low, high: high, words: Boolean(words) };
-}
-
-/** What a generic screen's answer can be. */
-function PP_mdlScreenAnswer_(model, target, index, site, where) {
-  const question = PP_mdlQuestionName_(model, target, index);
-  const describe = 'the answer to ' + question;
-  const numbers = [];
-  for (let n = 0; n <= 10; n++) numbers.push(String(n));
-  switch (target.type) {
-    case 'nps_0_10': return PP_mdlAnswer_(describe, numbers, true, 0, 10);
-    case 'rating_1_5': return PP_mdlAnswer_(describe, numbers.slice(1, 6), true, 1, 5);
-    case 'yes_no': return PP_mdlAnswer_(describe, ['yes', 'no'], false, 0, 0, true);
-    case 'single_choice':
-      return target.options.length ? PP_mdlAnswer_(describe, target.options.slice(), false, 0, 0) : null;
-    case 'free_text': return PP_mdlAnswer_(describe, null, false, 0, 0);
-    default: break;
-  }
-  const type = PP_mdlScreenType_(target.type);
-  if (!type) return null;   // already reported as an unknown type
-  const hints = {
-    function_ratings: ' To test how one area was rated, pick that area\'s rating in the rule builder. (In the ' +
-      'Screens tab: "fn_rating:<area code>", for example "fn_rating:payments".)',
-    function_deep_dives: ' To test the problem picked for one area, pick that area\'s problem in the rule ' +
-      'builder. (In the Screens tab: "fn_deep_dive:<area code>".)',
-    support_block: ' To test one support rating or the support comment, pick it in the rule builder. (In the ' +
-      'Screens tab: "support:<code>", for example "support:kept_updated", or "support_comment".)'
-  };
-  const kind = PP_mdlEnglishOf_(model, target.text) ? ' (it is a screen of the kind "' + type.label + '")' : '';
-  PP_mdlRuleError_(site, where, 'tests ' + question + kind + ', which does not record an answer a rule can test.' +
-    (PP_mdlHas_(hints, target.type) ? hints[target.type] : ''));
-  return null;
-}
-
-/** "fn_rating:<area>" (1-5 or "na") and "fn_deep_dive:<area>" (one of the area's problems, or "other"). */
-function PP_mdlAreaAnswer_(ref, site, where, ctx) {
-  const colon = ref.indexOf(':');
-  const prefix = ref.slice(0, colon);
-  const area = ref.slice(colon + 1);
-  const model = ctx.model;
-  if (!PP_mdlHas_(ctx.areaIds, area)) {
-    const ids = Object.keys(ctx.areaIds);
-    PP_mdlRuleError_(site, where, 'tests an area that does not exist. Pick the area again in the rule builder. (It ' +
-      'tests "' + ref + '"; the area codes are ' + (ids.join(', ') || 'none') + '.' + PP_mdlDidYouMean_(area, ids) + ')');
-    return null;
-  }
-  const areaName = PP_mdlAreaName_(model, area, -1);
-  const what = (prefix === 'fn_rating' ? 'the rating of ' : 'the problem picked for ') + areaName;
-  if (!PP_mdlHas_(ctx.activeAreas, area)) {
-    PP_mdlRuleError_(site, where, 'tests ' + what + ', but that area is hidden, so it is never rated. Switch the ' +
-      'area on, or change the rule.');
-    return null;
-  }
-  if (!PP_mdlComesBefore_(ctx, 'function_ratings', site, where, 'the rating of ' + areaName)) return null;
-  if (prefix === 'fn_rating') return PP_mdlAnswer_(what, ['1', '2', '3', '4', '5', 'na'], true, 1, 5);
-  // In "immediate" mode each problem screen follows its own rating; otherwise
-  // they all come at the problem-screens step, which must then be earlier.
-  if (model.settings['deep_dive.when'] !== 'immediate' &&
-    !PP_mdlComesBefore_(ctx, 'function_deep_dives', site, where, what)) {
-    return null;
-  }
-  return PP_mdlAnswer_(what, ctx.areaChips[area].concat(['other']), false, 0, 0);
-}
-
-/** Is the (first, switched-on) screen of this built-in type earlier than the screen with the rule? */
-function PP_mdlComesBefore_(ctx, type, site, where, what) {
-  const label = PP_mdlScreenType_(type).label;
-  if (!PP_mdlHas_(ctx.firstActive, type)) {
-    PP_mdlRuleError_(site, where, 'tests ' + what + ', but the "' + label + '" screen is missing or hidden, so there ' +
-      'is never an answer.');
-    return false;
-  }
-  const index = ctx.firstActive[type];
-  if (index >= site.index) {
-    PP_mdlRuleError_(site, where, 'tests ' + what + ', but the "' + label + '" screen comes later (question ' +
-      (index + 1) + '), so there is no answer yet when this question is shown. Move this question below question ' +
-      (index + 1) + '.');
-    return false;
-  }
-  return true;
-}
-
-function PP_mdlSupportAnswer_(ref, site, where, ctx) {
-  const model = ctx.model;
-  const item = ref.slice('support:'.length);
-  if (ctx.activeSupport.indexOf(item) === -1) {
-    PP_mdlRuleError_(site, where, 'tests a support question that does not exist or is switched off. Pick it again ' +
-      'in the rule builder, or switch that support question on. (It tests "' + ref + '".' +
-      PP_mdlDidYouMean_(item, ctx.activeSupport) + ')');
-    return null;
-  }
-  let index = -1;
-  model.support.forEach((entry, n) => { if (index < 0 && entry.code === item) index = n; });
-  const what = 'the rating of ' + PP_mdlSupportName_(model, model.support[index], index);
-  if (!PP_mdlComesBefore_(ctx, 'support_block', site, where, what)) return null;
-  const values = ['1', '2', '3', '4', '5'].concat(model.settings['support.allow_not_applicable'] === true ? ['na'] : []);
-  return PP_mdlAnswer_(what, values, true, 1, 5);
-}
-
-/** The comment box under the support ratings: like an open question, it can only be tested with "answered". */
-function PP_mdlSupportCommentAnswer_(site, where, ctx) {
-  if (ctx.model.settings['support.allow_comment'] !== true) {
-    PP_mdlRuleError_(site, where, 'tests the support comment, but the comment box is switched off (setting ' +
-      '"Comment box"), so there is never a comment.');
-    return null;
-  }
-  if (!PP_mdlComesBefore_(ctx, 'support_block', site, where, 'the support comment')) return null;
-  return PP_mdlAnswer_('the support comment', null, false, 0, 0);
-}
-
-function PP_mdlAllowedText_(answer) {
-  if (answer.numeric) {
-    return 'a whole number from ' + answer.low + ' to ' + answer.high +
-      (answer.values.indexOf('na') !== -1 ? ' or "na" (does not apply)' : '');
-  }
-  return PP_mdlOrList_(answer.values);
-}
-
-/** Can this test ever be true? The form compares answers as text (6 and "6" are the same); capitals matter. */
-function PP_mdlCheckTestValue_(test, value, answer, site, where) {
-  if (test === 'answered') {
-    if (typeof value !== 'boolean') {
-      PP_mdlRuleError_(site, where, 'uses "was answered" with ' + PP_mdlShowJson_(value) + '. It must be true or ' +
-        'false, without quotes ("false" in quotes would count as true).');
+function PP_mdlRouteFindings_(model, compiled) {
+  const tidy = PP_normalizeModel(model);
+  const doc = compiled || PP_compile(tidy, null);
+  const rowOf = {};
+  tidy.screens.forEach((screen, index) => {
+    if (screen.active && !PP_mdlHas_(rowOf, '#' + screen.id)) rowOf['#' + screen.id] = index;
+  });
+  const nodeRow = {};
+  let added = '';
+  const nodes = PP_mdlList_(doc.survey.flow.nodes);
+  nodes.forEach((node, i) => {
+    if (!PP_mdlIsObject_(node)) return;
+    if (node.type === 'group' && PP_mdlIsObject_(node.body)) {
+      // problem screens straight after each low rating: the group is the area ratings row
+      const at = PP_mdlHas_(rowOf, '#' + node.body.start) ? rowOf['#' + node.body.start] : -1;
+      nodeRow['#' + node.id] = at;
+      PP_mdlList_(node.body.nodes).forEach(inner => {
+        if (PP_mdlIsObject_(inner)) nodeRow['#' + inner.id] = PP_mdlHas_(rowOf, '#' + inner.id) ? rowOf['#' + inner.id] : at;
+      });
+    } else if (PP_mdlHas_(rowOf, '#' + node.id)) {
+      nodeRow['#' + node.id] = rowOf['#' + node.id];
+    } else if (i === nodes.length - 1 && node.type === 'thank_you') {
+      added = node.id;
     }
-    return;
-  }
-  if (answer.values === null) {
-    PP_mdlRuleError_(site, where, 'tests ' + answer.describe + ', which is a voice note or typed answer, so it can ' +
-      'only use "was answered".');
-    return;
-  }
-  if (test === 'at_most' || test === 'at_least') {
-    PP_mdlCheckNumberTest_(test, value, answer, site, where);
-    return;
-  }
-  if (test === 'in' && (!Array.isArray(value) || !value.length)) {
-    PP_mdlRuleError_(site, where, 'uses "is one of", which needs a list of possible answers. Pick them again in the ' +
-      'rule builder. (For example [' + PP_mdlShowJson_(answer.values[0] || 'yes') + '].)');
-    return;
-  }
-  const candidates = test === 'in' ? value : [value];
-  const impossible = candidates.filter(item => answer.values.indexOf(PP_mdlJsText_(item)) === -1);
-  if (!impossible.length) return;
-  const outcome = test === 'not_equals' ? 'is always true' : 'can never match';
-  const shown = impossible.map(PP_mdlShowJson_).join(', ');
-  const caseHint = impossible.some(item => typeof item === 'string' && answer.values.indexOf(item.toLowerCase()) !== -1) ?
-    ' Capital letters matter: write it exactly as shown.' : '';
-  if (answer.numeric || answer.words) {
-    PP_mdlRuleError_(site, where, 'tests ' + answer.describe + ', which can only be ' + PP_mdlAllowedText_(answer) +
-      ', so ' + shown + ' ' + outcome + '.' + caseHint);
-    return;
-  }
-  PP_mdlRuleError_(site, where, 'tests ' + answer.describe + ', but ' + shown + ' is not one of its answers, so the ' +
-    'rule ' + outcome + '. Pick the answer again in the rule builder.' + caseHint + ' (Its answers are ' +
-    PP_mdlOrList_(answer.values) + '.)');
+  });
+  const rowAt = id => (typeof id === 'string' && PP_mdlHas_(nodeRow, '#' + id) ? nodeRow['#' + id] : -1);
+  const nameOf = node => {
+    const id = PP_mdlIsObject_(node) ? node.id : node;
+    if (added && id === added) return 'the thank-you screen the form adds at the end';
+    const at = rowAt(id);
+    return at >= 0 ? PP_mdlQuestionName_(tidy, tidy.screens[at], at) : '';
+  };
+  const result = PP_mdlFlowLib_().flowCheck.check(doc.survey, doc.strings, { surface: 'panel',
+    hiddenCodes: PP_mdlHiddenCodes_(tidy), nameOf: nameOf });
+  return {
+    ready: PP_mdlRouteReady_(tidy),
+    findings: result.findings.map(f => ({ level: f.level, code: f.code, node: f.node, message: f.message,
+      row: rowAt(f.node), added: Boolean(added) && f.node === added }))
+  };
 }
 
-function PP_mdlCheckNumberTest_(test, value, answer, site, where) {
-  const name = '"' + PP_MDL_TEST_NAMES_[test] + '"';
-  if (!answer.numeric) {
-    PP_mdlRuleError_(site, where, 'uses ' + name + ', which compares numbers, but ' + answer.describe + ' is never a ' +
-      'number. Use "is", "is not" or "is one of" instead.');
+/**
+ * True when the route can be checked: every shown row has its own valid
+ * code and a known kind, and no built-in kind (thank-you screens aside) is
+ * shown twice. Otherwise the route's screens could not be told apart.
+ */
+function PP_mdlRouteReady_(model) {
+  const ids = {};
+  const kinds = {};
+  return model.screens.every(screen => {
+    if (!screen.active) return true;
+    const type = PP_mdlScreenType_(screen.type);
+    if (!type || !PP_MDL_CODE_RE_.test(screen.id) || PP_mdlHas_(ids, '#' + screen.id)) return false;
+    ids['#' + screen.id] = true;
+    if (!type.builtin || screen.type === 'thank_you') return true;
+    if (PP_mdlHas_(kinds, '#' + screen.type)) return false;
+    kinds['#' + screen.type] = true;
+    return true;
+  });
+}
+
+/**
+ * The codes of what the draft keeps but switched off, for the checker
+ * (hidden is not deleted): hidden questions with their answer codes and
+ * answers, hidden areas with their problems, hidden problems and support
+ * questions, and the support comment while its box is switched off.
+ */
+function PP_mdlHiddenCodes_(model) {
+  const out = [];
+  const add = code => { if (PP_mdlIsFilled_(code) && out.indexOf(code) === -1) out.push(code); };
+  model.screens.forEach(screen => {
+    if (screen.active) return;
+    add(screen.id);
+    if (PP_mdlHas_(PP_MDL_IMPLIED_PREFIX_, screen.type)) add(PP_MDL_IMPLIED_PREFIX_[screen.type]);
+    if (screen.type === 'support_block') {
+      add('support');
+      add('support_comment');
+    }
+    screen.options.forEach(add);
+  });
+  model.areas.forEach(area => {
+    if (area.active) return;
+    add(area.id);
+    model.chips.forEach(chip => { if (chip.area === area.id) add(chip.code); });
+  });
+  model.chips.forEach(chip => { if (!chip.active) add(chip.code); });
+  model.support.forEach(item => { if (!item.active) add(item.code); });
+  if (model.settings['support.allow_comment'] !== true) add('support_comment');
+  return out;
+}
+
+/**
+ * One finding of the checker in the panel's words, at its row ("screen N")
+ * among the questions. The checker already names questions the panel's way
+ * (nameOf). Here (26 Oct 2026, review finding 6):
+ *   - its technical words become the panel's (PP_mdlPanelWords_);
+ *   - a note in brackets right after the question's name that only repeats
+ *     its kind ("(the language buttons)", checks P1 and P2) goes: the name
+ *     already says it;
+ *   - the row's own code moves out of the sentence into the closing brackets
+ *     ("(Its code is "nps".)"), worded by what it stands for there
+ *     (PP_mdlThisQuestion_): the question itself becomes "this question", the
+ *     checker's name for its answer ('the 0-10 question "nps"') becomes "this
+ *     question's answer".
+ * answerWords (optional) = PP_mdlAnswerWords_(), when the caller has it.
+ */
+function PP_mdlReportRouteFinding_(model, finding, report, answerWords) {
+  let message = PP_mdlCapital_(PP_mdlPanelWords_(String(finding.message)));
+  let ref = '';
+  if (finding.row >= 0 && finding.row < model.screens.length) {
+    const screen = model.screens[finding.row];
+    ref = 'screen ' + (finding.row + 1);
+    const name = PP_mdlCapital_(PP_mdlQuestionName_(model, screen, finding.row));
+    const head = message.indexOf(name) === 0 ? name : '';
+    let body = message.slice(head.length);
+    if (head && (finding.code === 'P1' || finding.code === 'P2')) body = body.replace(/^ \([^()"]*\)/, '');
+    if (screen.id) {
+      const said = PP_mdlThisQuestion_(body, screen.id, answerWords || PP_mdlAnswerWords_());
+      if (said.changed) body = said.text + ' (Its code is "' + screen.id + '".)';
+    }
+    message = head + body;
+  }
+  if (finding.level === 'error') report.error('screens', ref, message);
+  else report.warn('screens', ref, message);
+}
+
+/**
+ * The checker's technical words, the panel's way: "strings.json" (the GitHub
+ * copy's file) is "Texts & translations", an "id" a "code", "next" the
+ * panel's "usually go to"; a jump is added under "After this question"; the
+ * start of the route is simply the first screen.
+ */
+function PP_mdlPanelWords_(text) {
+  return text.replace(/strings\.json/g, 'Texts & translations')
+    .replace(/, or use a jump \("next"\) on this screen\./g, ', or add a jump to this question instead (After this question > Add a jump).')
+    .replace(/ must be the first screen \("start"\)/g, ' must be the first screen')
+    .replace(/: the id is (\d+) characters long/g, ': its code is $1 characters long')
+    .replace(/, so use a shorter id or store_as\./g, ', so use a shorter code.')
+    .replace(/, or give one another id \(or store_as\)\./g, ', or give one of them another code.')
+    .replace(/"next"/g, '"usually go to"');
+}
+
+/**
+ * A checker message about a question without that question's own code in
+ * the sentence: { text, changed }. Each place the code is quoted is worded by
+ * what it stands for there:
+ *   - after the checker's name for an answer of its kind ('the 0-10 question
+ *     "nps" can only be a whole number...'): the whole phrase becomes "this
+ *     question's answer";
+ *   - after "the screen": "this question";
+ *   - a rule that tests the question's own answer: "its own answer";
+ *   - after "the answer" or "the answer code" it names an answer that other
+ *     screens could store too, so it stays as it is;
+ *   - anywhere else it names the question itself: "this question" ('Move
+ *     "support_gate" above this question').
+ * answerWords = PP_mdlAnswerWords_().
+ */
+function PP_mdlThisQuestion_(text, code, answerWords) {
+  const quoted = '"' + code + '"';
+  const own = text.split(quoted + ', which is this screen\'s own answer').join('its own answer');
+  let changed = own !== text;
+  const pieces = own.split(quoted);
+  let out = pieces[0];
+  for (let i = 1; i < pieces.length; i += 1) {
+    const lower = out.toLowerCase();
+    const words = answerWords.filter(w => lower.slice(-(w.length + 1)) === w.toLowerCase() + ' ')[0];
+    if (words) {
+      const start = out.length - words.length - 1;
+      const upper = out.charAt(start) === out.charAt(start).toUpperCase();
+      out = out.slice(0, start) + (upper ? 'This' : 'this') + ' question\'s answer';
+      changed = true;
+    } else if (/\b[Tt]he screen $/.test(out)) {
+      out = out.replace(/\b([Tt])he screen $/, (all, t) => (t === 'T' ? 'This' : 'this') + ' question');
+      changed = true;
+    } else if (/\banswer (code )?$/i.test(out)) {
+      out += quoted;
+    } else {
+      out += 'this question';
+      changed = true;
+    }
+    out += pieces[i];
+  }
+  return { text: out, changed: changed };
+}
+
+/**
+ * The checker's names for the answer of each kind of screen ("the 0-10
+ * question", "the yes/no question", ...: each kind's answer "what" in the
+ * catalogue of question types), longest first, plus its general "the answer
+ * to". Without the route code: only the general one.
+ */
+function PP_mdlAnswerWords_() {
+  const out = ['the answer to'];
+  const collect = value => {
+    if (!PP_mdlIsObject_(value)) return;
+    if (typeof value.what === 'string' && value.what && out.indexOf(value.what) === -1) out.push(value.what);
+    Object.keys(value).forEach(key => collect(value[key]));
+  };
+  try {
+    PP_mdlFlowLib_().flowCheck.catalogue().forEach(entry => collect(PP_mdlIsObject_(entry) ? entry.answer : null));
+  } catch (err) {
+    // only the general words
+  }
+  return out.sort((a, b) => b.length - a.length);
+}
+
+/**
+ * "nps" and "support_gate" fill their own columns of every round's answers
+ * sheet (PP_MDL_DATA_COLUMNS_), so the checker's D1 (no question stores the
+ * answer: an error when the question was deleted, a warning when it is
+ * hidden; decision 8) and D2 (it is of another kind) are told here with what
+ * the panel knows: the row, and the column.
+ */
+function PP_mdlReportDataColumn_(model, finding, report) {
+  const item = PP_MDL_DATA_COLUMNS_.filter(column => finding.message.indexOf('"' + column.id + '"') !== -1)[0];
+  const level = finding.level === 'error' ? report.error : report.warn;
+  if (!item) {
+    level('screens', '', finding.message);
     return;
   }
-  let number = PP_mdlIsNumber_(value) ? value : null;
-  if (typeof value === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(value)) number = Number(value);   // the form turns "6" into 6
-  if (number === null) {
-    PP_mdlRuleError_(site, where, 'uses ' + name + ' with ' + PP_mdlShowJson_(value) + ', but it needs a number ' +
-      '(without quotes).');
+  let at = -1;
+  model.screens.forEach((screen, index) => { if (at < 0 && screen.id === item.id) at = index; });
+  const sheet = 'the ' + item.column + ' column of every round\'s answers sheet' + item.reader;
+  if (at < 0) {
+    level('screens', '', 'The question with the code "' + item.id + '" is missing. Its answers fill ' + sheet + ', so ' +
+      'it can be hidden but never deleted or re-coded. Undo the change, or add the question back with exactly that ' +
+      'code.');
     return;
   }
-  const letsAll = test === 'at_most' ? number >= answer.high : number <= answer.low;
-  const letsNone = test === 'at_most' ? number < answer.low : number > answer.high;
-  if (letsAll || letsNone) {
-    PP_mdlRuleWarning_(site, where, 'tests ' + answer.describe + ', which is between ' + answer.low + ' and ' +
-      answer.high + ', so ' + name + ' ' + PP_mdlShowJson_(value) + ' lets ' + (letsAll ? 'every answer' : 'no answer') +
-      ' through. Check the number.');
+  const screen = model.screens[at];
+  const name = PP_mdlCapital_(PP_mdlQuestionName_(model, screen, at));
+  if (finding.code === 'D1' && !screen.active) {
+    level('screens', 'screen ' + (at + 1), name + ' is hidden, so ' + sheet + ' stays empty while it is. Show it ' +
+      'again, unless that is what you want. (Its code is "' + item.id + '".)');
+    return;
   }
+  const kind = PP_mdlScreenType_(item.type).label;
+  level('screens', 'screen ' + (at + 1), name + ' must stay of the kind "' + kind + '": its answers fill ' + sheet + '. ' +
+    'Change its kind back, or give it another code. (Its code is "' + item.id + '"; its kind is ' +
+    PP_mdlShow_(screen.type) + '.)');
+}
+
+/**
+ * Rows after the main thank-you screen are other routes and endings, which
+ * partners reach only through a jump (docs/flow-engine.md 9.1). lost = the
+ * shown rows there that the checker found no arrow reaches (its G1). When
+ * every shown row after it is lost, the thank-you screen itself is probably
+ * in the wrong place.
+ */
+function PP_mdlReportLostRows_(model, main, lost, report) {
+  if (!lost.length) return;
+  const shown = model.screens.filter((screen, index) => index > main && screen.active).length;
+  if (lost.length === shown) {
+    const after = lost.length;
+    report.error('screens', 'screen ' + (main + 1), 'The thank-you screen (question ' + (main + 1) + ') must be the ' +
+      'last one, but ' + (after === 1 ? '1 question comes' : after + ' questions come') + ' after it, and no jump ' +
+      'leads there, so partners never see ' + (after === 1 ? 'it' : 'them') + '. Move the thank-you screen to the ' +
+      'end, or move ' + (after === 1 ? 'that question' : 'those questions') + ' above it.');
+    return;
+  }
+  lost.sort((a, b) => a - b).forEach(index => {
+    report.error('screens', 'screen ' + (index + 1), PP_mdlCapital_(PP_mdlQuestionName_(model, model.screens[index], index)) +
+      ' comes after the thank-you screen (question ' + (main + 1) + '), but no jump leads to it, so partners never ' +
+      'see it. Add a jump to it, move it above the thank-you screen, or hide it.');
+  });
 }
 
 // ---- Texts -----------------------------------------------------------------------
@@ -3074,52 +3328,94 @@ function PP_mdlCheckRounds_(model, report) {
 }
 
 /**
- * Codes partners already answered (in the live version) must not disappear:
- * the dashboard compares rounds by them. Hidden items are fine. Things that
- * are gone from the draft are named by their texts in the live version.
+ * Codes partners already answered must not disappear: the dashboard compares
+ * rounds by them. That is every code of the live version, plus (everLive)
+ * every code of the versions live since the first real round, so hiding a
+ * question, publishing and then deleting it is noticed too. Hidden items are
+ * fine. Things that are gone from the draft are named by their texts in the
+ * live version.
+ * Since 26 Oct 2026 (review finding 2) the codes lock is decided here, on the
+ * QUALIFIED entries of CODES_EVER_LIVE ("screen:<code>", "area:<code>",
+ * "chip:<area>/<code>", "support:<code>", "option:<question>/<code>"): each
+ * kind is looked for where it belongs (a problem in its own area, an answer
+ * in its own question; a hidden one there counts as kept). A code partners
+ * answered in a real round that is gone is an ERROR, so Publish waits until
+ * it is back, even when another area or question has the same code. A code
+ * that is only live today (not yet in CODES_EVER_LIVE) is a warning, as in
+ * Phase 2. An answer of a pick-one question can't be hidden, so its message
+ * never suggests that.
  */
-function PP_mdlCheckLiveCodes_(model, liveDoc, report) {
-  if (!PP_mdlIsCompiledDoc_(liveDoc)) return;
-  const live = PP_liveIds(liveDoc);
-  const english = key => PP_mdlLiveEnglish_(liveDoc, key);
-  const why = ' Partners have already answered it, and the dashboard compares rounds by its code. To reword it, ' +
-    'rename its label (its text) and keep the code; to stop asking it, hide it instead of deleting it.';
-  const gone = (section, ref, subject, code) => {
-    report.warn(section, ref, subject + ' is live today but is no longer in the draft.' + why + ' (Its code is "' + code + '".)');
+function PP_mdlCheckLiveCodes_(model, liveDoc, report, everLive) {
+  const hasDoc = PP_mdlIsCompiledDoc_(liveDoc);
+  const earlier = Array.isArray(everLive) ? everLive : [];
+  if (!hasDoc && !earlier.length) return;
+  const doc = hasDoc ? liveDoc : null;
+  const today = PP_liveIds(doc);
+  const live = PP_liveIds(doc, earlier);
+  const answered = {};   // '#' + each qualified entry of CODES_EVER_LIVE ("chip:payments/invoice_gst", ...)
+  earlier.forEach(entry => { if (typeof entry === 'string' && entry) answered['#' + entry] = true; });
+  const english = key => (doc ? PP_mdlLiveEnglish_(doc, key) : '');
+  const gone = (section, ref, subject, entry, code, isToday, isOption) => {
+    const what = subject + (isToday ? ' is live today but is no longer in the draft.' :
+      ' was answered in an earlier published version but is no longer in the draft.');
+    const keep = isOption ? ' Put it back in the list of answers: an answer can\'t be hidden, so once partners have ' +
+      'picked it, it stays on its question. To reword it, rename its label (its text) and keep the code.' :
+      ' To reword it, rename its label (its text) and keep the code; to stop asking it, hide it instead of deleting it.';
+    if (PP_mdlHas_(answered, '#' + entry)) {
+      report.error(section, ref, what + ' Partners answered it in a real round, so it can never be deleted or re-coded, ' +
+        'and Publish waits until it is back.' + keep + ' (Its code is "' + code + '".)');
+      return;
+    }
+    report.warn(section, ref, what + ' Partners have already answered it, and the dashboard compares rounds by its code.' +
+      keep + ' (Its code is "' + code + '".)');
   };
   const screenAt = {};
+  const screenCodes = {};
   model.screens.forEach((screen, index) => {
     if (screen.id && PP_mdlSafeKey_(screen.id) && !PP_mdlHas_(screenAt, screen.id)) screenAt[screen.id] = index;
+    screenCodes['#' + screen.id] = true;
+    if (PP_mdlHas_(PP_MDL_IMPLIED_PREFIX_, screen.type)) screenCodes['#' + PP_MDL_IMPLIED_PREFIX_[screen.type]] = true;
   });
   live.screens.forEach(id => {
-    if (!PP_mdlHas_(screenAt, id)) gone('screens', id, PP_mdlCapital_(PP_mdlLiveScreenName_(liveDoc, id)), id);
+    if (PP_mdlHas_(screenCodes, '#' + id)) return;
+    const isToday = today.screens.indexOf(id) !== -1;
+    const name = PP_mdlLiveScreenName_(doc, id);
+    gone('screens', id, PP_mdlCapital_(!isToday && name === 'a screen' ? 'a question' : name), 'screen:' + id, id, isToday);
   });
   const areas = model.areas.map(area => area.id);
   const areaName = id => (english('fn.' + id + '.name') ? 'the area "' + english('fn.' + id + '.name') + '"' : 'an area');
   live.areas.forEach(id => {
-    if (areas.indexOf(id) === -1) gone('areas', id, PP_mdlCapital_(areaName(id)), id);
+    if (areas.indexOf(id) === -1) gone('areas', id, PP_mdlCapital_(areaName(id)), 'area:' + id, id, today.areas.indexOf(id) !== -1);
   });
   Object.keys(live.chips).forEach(area => {
     if (areas.indexOf(area) === -1) return;   // the whole area is reported above
     live.chips[area].forEach(code => {
       const label = english('issue.' + area + '.' + code);
-      const found = model.chips.some(chip => chip.area === area && chip.code === code);
-      if (!found) gone('chips', area + '/' + code, (label ? 'The problem "' + label + '"' : 'A problem') + ' of ' + areaName(area), code);
+      const found = model.chips.some(chip => chip.area === area && chip.code === code);   // hidden or not: kept
+      const isToday = PP_mdlHas_(today.chips, area) && today.chips[area].indexOf(code) !== -1;
+      if (!found) {
+        gone('chips', area + '/' + code, (label ? 'The problem "' + label + '"' : 'A problem') + ' of ' + areaName(area),
+          'chip:' + area + '/' + code, code, isToday);
+      }
     });
   });
   const support = model.support.map(item => item.code);
   live.support.forEach(code => {
     const label = english('support.' + code);
-    if (support.indexOf(code) === -1) gone('support', code, label ? 'The support question "' + label + '"' : 'A support question', code);
+    if (support.indexOf(code) === -1) {
+      gone('support', code, label ? 'The support question "' + label + '"' : 'A support question', 'support:' + code, code,
+        today.support.indexOf(code) !== -1);
+    }
   });
   Object.keys(live.options).forEach(screenId => {
     if (!PP_mdlHas_(screenAt, screenId)) return;   // the whole screen is reported above
     const options = model.screens[screenAt[screenId]].options;
     live.options[screenId].forEach(code => {
       const label = english('choice.' + screenId + '.' + code);
+      const isToday = PP_mdlHas_(today.options, screenId) && today.options[screenId].indexOf(code) !== -1;
       if (options.indexOf(code) === -1) {
         gone('screens', screenId + '/' + code, (label ? 'The answer "' + label + '"' : 'An answer') + ' of ' +
-          PP_mdlLiveScreenName_(liveDoc, screenId), code);
+          PP_mdlLiveScreenName_(doc, screenId), 'option:' + screenId + '/' + code, code, isToday, true);
       }
     });
   });
@@ -3131,13 +3427,49 @@ function PP_mdlLiveEnglish_(liveDoc, key) {
   return PP_mdlHas_(strings, key) && PP_mdlIsObject_(strings[key]) ? PP_mdlShorten_(strings[key].en) : '';
 }
 
-/** 'the question "..."' (its English text in the live version), or 'the "Thank-you screen" screen'. */
+/**
+ * 'the question "..."' (its English text in the live version), or 'the
+ * "Thank-you screen" screen'. The live version may be the old list or a
+ * graph (then the code may also be an answer key's start, like a store_as).
+ */
 function PP_mdlLiveScreenName_(liveDoc, id) {
-  const entry = PP_mdlList_(liveDoc.survey.flow).filter(screen => screen.id === id)[0] || {};
-  const text = PP_mdlLiveEnglish_(liveDoc, PP_mdlText_(entry.text));
+  const entry = (liveDoc ? PP_mdlLiveScreen_(liveDoc.survey.flow, id) : null) || {};
+  const text = liveDoc ? PP_mdlLiveEnglish_(liveDoc, PP_mdlText_(entry.text)) : '';
   if (text) return 'the question "' + text + '"';
-  const type = PP_mdlScreenType_(entry.type);
+  const type = PP_mdlScreenType_(PP_mdlHas_(PP_MDL_NODE_TYPES_, entry.type) ? PP_MDL_NODE_TYPES_[entry.type] : entry.type);
   return type ? 'the "' + type.label + '" screen' : 'a screen';
+}
+
+/** The screen (list entry or graph node, group bodies included) with this code or answer-key start, or null. */
+function PP_mdlLiveScreen_(flow, id) {
+  if (Array.isArray(flow)) return PP_mdlList_(flow).filter(screen => screen.id === id)[0] || null;
+  if (!PP_mdlIsGraph_(flow)) return null;
+  let found = null;
+  PP_mdlGraphNodes_(flow).forEach(node => {
+    if (!found && (node.id === id || PP_mdlStorePrefix_(node) === id)) found = node;
+  });
+  return found;
+}
+
+/** Every node of a graph that is a screen (group bodies included; the groups themselves are not). */
+function PP_mdlGraphNodes_(graph) {
+  const out = [];
+  PP_mdlList_(graph.nodes).forEach(node => {
+    if (node.type === 'group') {
+      if (PP_mdlIsObject_(node.body)) PP_mdlList_(node.body.nodes).forEach(inner => out.push(inner));
+    } else {
+      out.push(node);
+    }
+  });
+  return out;
+}
+
+/** The start of a node's answer key (store_as "fn_rating:{area}" gives "fn_rating"), or ''. */
+function PP_mdlStorePrefix_(node) {
+  if (!PP_mdlIsFilled_(node.store_as)) return '';
+  const key = node.store_as.trim();
+  const colon = key.indexOf(':');
+  return colon < 0 ? key : key.slice(0, colon);
 }
 
 function PP_mdlSummary_(model, ctx, compiledChars) {
@@ -3183,7 +3515,7 @@ function PP_importStatic(files) {
   });
   const support = PP_mdlIsObject_(survey.support) ? survey.support : {};
   model.support = (Array.isArray(support.items) ? support.items : []).map(code => ({ code: code, active: true }));
-  model.screens = PP_mdlList_(survey.flow).map(PP_mdlScreenFromFlow_);
+  model.screens = PP_mdlScreensFromFlow_(survey);
   model.texts = PP_mdlIsObject_(given.strings) ? given.strings : {};   // tidying drops the _help note
   Object.keys(news).forEach(roundId => {
     if (roundId.charAt(0) === '_') return;
@@ -3207,6 +3539,31 @@ function PP_mdlSettingsFromSurvey_(survey) {
   return settings;
 }
 
+/**
+ * The Screens rows of a survey's "flow": the old list one line per row, as
+ * always; a graph (pp-flow/1) through Flow.gs (PP.flowPanel.toRows, the
+ * inverse of compiling). A graph the control panel cannot show (its own
+ * groups, loops over other lists, settings the rows cannot hold) is refused,
+ * naming each screen, so nothing is half imported.
+ */
+function PP_mdlScreensFromFlow_(survey) {
+  const flow = survey.flow;
+  if (!PP_mdlIsObject_(flow)) return PP_mdlList_(flow).map(PP_mdlScreenFromFlow_);
+  if (!PP_mdlIsGraph_(flow)) {
+    throw new Error('The questions\' route ("flow" in survey.json) is neither a list of screens nor a route in the ' +
+      'pp-flow/1 format, so it cannot be read. Nothing was changed. (Its "format" is ' + PP_mdlShow_(flow.format) + '.)');
+  }
+  const result = PP_mdlFlowLib_().flowPanel.toRows(flow, survey);
+  if (result.unsupported.length) {
+    const list = result.unsupported.slice(0, 8).map(item => (item.node ? '"' + item.node + '": ' : '') + item.message);
+    throw new Error('The questions\' route has ' + PP_mdlPlural_(result.unsupported.length, 'part') + ' the control ' +
+      'panel cannot show, so nothing was changed. Fix ' + (result.unsupported.length === 1 ? 'it' : 'them') + ' in ' +
+      'web/config/survey.json (docs/flow-engine.md explains the format), then try again. ' + list.join(' ') +
+      (result.unsupported.length > 8 ? ' (and ' + (result.unsupported.length - 8) + ' more)' : ''));
+  }
+  return result.screens;
+}
+
 function PP_mdlScreenFromFlow_(entry) {
   return {
     id: entry.id, type: entry.type, text: entry.text,
@@ -3223,10 +3580,16 @@ function PP_mdlNewRound_(roundId) {
 }
 
 /**
- * The four files for the GitHub copy (the form's backup when Google is slow),
- * in exactly the layout of the files in the project: { "survey.json": text,
- * "strings.json": text, "whats_changed.json": text, "audio_clips.json": text }.
- * The content is what Publish would publish (hidden items left out).
+ * The files for the GitHub copy (the form's backup when Google is slow), in
+ * exactly the layout of the files in the project: { "survey.json": text,
+ * "strings.json": text, "whats_changed.json": text, "audio_clips.json": text,
+ * "flow.md": text }. The content is what Publish would publish (hidden items
+ * left out). "flow.md" is docs/flow.md, the map of the questionnaire's route
+ * (since 26 Oct 2026, review finding 10): made by the one flow checker
+ * (Flow.gs, PP.flowCheck.toMarkdown) from that survey.json and strings.json,
+ * so it is byte for byte what "node scripts/flow.js map" makes of those two
+ * files once they are in the project (and GitHub's settings check no longer
+ * warns that the map is out of date).
  * opts = { apps_script_url, config_version }: config_version is optional; it
  * defaults to the one remembered by an import or restore, else "draft".
  * Tip: pass the live version's config_version (for example "p7-2026-10-21")
@@ -3237,17 +3600,33 @@ function PP_exportStatic(model, opts) {
   const options = PP_mdlIsObject_(opts) ? opts : {};
   const doc = PP_compile(tidy, null);
   const configVersion = PP_mdlTrim_(options.config_version) || tidy.config_version || 'draft';
-  return {
+  const files = {
     'survey.json': PP_mdlSurveyFileText_(doc.survey, PP_mdlTrim_(options.apps_script_url), configVersion),
     'strings.json': PP_mdlStringsFileText_(doc.strings),
     'whats_changed.json': JSON.stringify({ _help: PP_REPO_FILE_HELP['whats_changed.json'], rounds: doc.whats_changed }, null, 2) + '\n',
     'audio_clips.json': JSON.stringify({ _help: PP_REPO_FILE_HELP['audio_clips.json'], clips: doc.clips }, null, 2) + '\n'
   };
+  files['flow.md'] = PP_mdlFlowMapText_(files['survey.json'], files['strings.json']);
+  return files;
 }
 
 /**
- * survey.json, laid out exactly like the hand-written file: groups separated
- * by an empty line, one line per language, area and screen, columns lined up.
+ * docs/flow.md for the GitHub copy: exactly what "node scripts/flow.js map"
+ * writes for web/config/survey.json and web/i18n/strings.json with these
+ * texts (the same checker, Flow.gs, reading the same two files).
+ */
+function PP_mdlFlowMapText_(surveyText, stringsText) {
+  return PP_mdlFlowLib_().flowCheck.toMarkdown(JSON.parse(surveyText), JSON.parse(stringsText),
+    { source: 'web/config/survey.json' });
+}
+
+/**
+ * survey.json, laid out exactly like the file in the project: groups
+ * separated by an empty line, one line per language and area, columns lined
+ * up. The route ("flow") is always the graph (PP_compile makes one), written
+ * by Flow.gs (PP.flowPanel.formatFlow, the same layout "python3
+ * scripts/flow.py migrate --write" gave web/config/survey.json on 26 Oct
+ * 2026), with its own note inside.
  */
 function PP_mdlSurveyFileText_(survey, appsScriptUrl, configVersion) {
   const help = PP_SURVEY_HELP;
@@ -3286,8 +3665,7 @@ function PP_mdlSurveyFileText_(survey, appsScriptUrl, configVersion) {
     [section('read_aloud')],
     [section('whats_changed')],
     [section('telemetry')],
-    [JSON.stringify('flow') + ': ' + PP_mdlLinesJson_(PP_mdlFlowLines_(survey.flow || []), 2),
-      line('_flow_help', help._flow_help)]
+    [JSON.stringify('flow') + ': ' + PP_mdlFlowLib_().flowPanel.formatFlow(survey.flow, 2)]
   ];
   return '{\n' + groups.map(group => group.map(member => '  ' + member).join(',\n')).join(',\n\n') + '\n}\n';
 }
@@ -3335,21 +3713,6 @@ function PP_mdlAreaLines_(functions) {
     const id = JSON.stringify(area.id);
     let text = '{ "id": ' + id + ',' + ' '.repeat(Math.max(0, 1 + width - id.length)) + '"issues": ' + PP_mdlInlineJson_(area.issues);
     if (PP_mdlHas_(area, 'threshold')) text += ', "threshold": ' + PP_mdlInlineJson_(area.threshold);
-    return text + ' }';
-  });
-}
-
-/** { "id": "nps",           "type": "nps_0_10",        "text": ... }  with "type" and what follows lined up. */
-function PP_mdlFlowLines_(flow) {
-  const restOf = entry => Object.keys(entry).filter(key => key !== 'id' && key !== 'type');
-  const idWidth = flow.reduce((most, entry) => Math.max(most, JSON.stringify(entry.id).length), 0);
-  const typeWidth = flow.reduce((most, entry) => (restOf(entry).length ? Math.max(most, JSON.stringify(entry.type).length) : most), 0);
-  return flow.map(entry => {
-    const id = JSON.stringify(entry.id);
-    const type = JSON.stringify(entry.type);
-    const rest = restOf(entry).map(key => JSON.stringify(key) + ': ' + PP_mdlInlineJson_(entry[key]));
-    let text = '{ "id": ' + id + ',' + ' '.repeat(Math.max(0, 1 + idWidth - id.length)) + '"type": ' + type;
-    if (rest.length) text += ',' + ' '.repeat(Math.max(0, 1 + typeWidth - type.length)) + rest.join(', ');
     return text + ' }';
   });
 }
@@ -3475,24 +3838,40 @@ function PP_mdlMergeHiddenChips_(restoredChips, currentChips, kept) {
     chip => chip.code, null, kept)), []);
 }
 
-/** Built-in kinds of screen appear only once: one the restored version already has is not kept twice. */
+/**
+ * Built-in kinds of screen appear only once: one the restored version
+ * already has is not kept twice. Thank-you screens are the exception: there
+ * may be several endings, so the draft's other endings are kept (hidden).
+ */
 function PP_mdlOnceOnly_(restoredScreens) {
   const taken = {};
   restoredScreens.forEach(screen => { if (PP_mdlIsBuiltin_(screen.type)) taken['#' + screen.type] = true; });
   return screen => {
-    if (!PP_mdlIsBuiltin_(screen.type)) return true;
+    if (!PP_mdlIsBuiltin_(screen.type) || screen.type === 'thank_you') return true;
     if (PP_mdlHas_(taken, '#' + screen.type)) return false;
     taken['#' + screen.type] = true;
     return true;
   };
 }
 
-/** A kept (switched-off) screen never ends up after the thank-you screen, which must stay last. */
+/**
+ * A kept (switched-off) screen does not end up after the main thank-you
+ * screen, so that switching it on later puts it on the usual route. Rows
+ * after the thank-you that belong to another route (an ending, or a row some
+ * jump or "next" goes to) stay where they are: that is where they were in
+ * the draft.
+ */
 function PP_mdlThanksLast_(screens) {
   let at = -1;
   screens.forEach((screen, index) => { if (at < 0 && screen.type === 'thank_you' && screen.active) at = index; });
   const after = at < 0 ? [] : screens.slice(at + 1);
   if (!after.length || after.some(screen => screen.active)) return screens;
+  const targets = {};
+  screens.forEach(screen => {
+    if (PP_mdlIsFilled_(screen.next)) targets['#' + screen.next.trim()] = true;
+    PP_mdlList_(screen.jumps).forEach(jump => { if (PP_mdlIsFilled_(jump.goto)) targets['#' + jump.goto.trim()] = true; });
+  });
+  if (after.some(screen => screen.type === 'thank_you' || PP_mdlHas_(targets, '#' + screen.id))) return screens;
   return screens.slice(0, at).concat(after, [screens[at]]);
 }
 
@@ -3569,24 +3948,112 @@ function PP_mdlKeepClips_(restored, current, codes, keptKeys) {
  * The codes partners answered in a published version:
  * { screens: [ids], areas: [ids], chips: { area: [codes] }, support: [codes],
  *   options: { screen: [codes] } }. Empty lists when doc is null.
+ * The route may be the old list or a graph: then "screens" holds every
+ * screen's code (group bodies included; a group itself is no code) and the
+ * start of every answer key (store_as "cb:{area}" gives "cb") that is not
+ * already its screen's code or a built-in key (fn_rating, fn_deep_dive).
+ * everLive (optional): every code partners answered since the first real
+ * round (Script Property CODES_EVER_LIVE, see PP_mdlCodesOfDoc_), added after
+ * the document's own codes.
  */
-function PP_liveIds(doc) {
+function PP_liveIds(doc, everLive) {
   const ids = { screens: [], areas: [], chips: {}, support: [], options: {} };
   const survey = PP_mdlIsObject_(doc) && PP_mdlIsObject_(doc.survey) ? doc.survey : null;
-  if (!survey) return ids;
-  PP_mdlList_(survey.flow).forEach(entry => {
-    if (!PP_mdlIsFilled_(entry.id) || !PP_mdlSafeKey_(entry.id)) return;
-    if (ids.screens.indexOf(entry.id) === -1) ids.screens.push(entry.id);
-    const options = Array.isArray(entry.options) ? entry.options.filter(PP_mdlIsFilled_) : [];
-    if (options.length) ids.options[entry.id] = options;
+  if (survey) {
+    const screen = (code, options) => {
+      if (!PP_mdlIsFilled_(code) || !PP_mdlSafeKey_(code)) return;
+      if (ids.screens.indexOf(code) === -1) ids.screens.push(code);
+      const list = (Array.isArray(options) ? options : [])
+        .map(option => (PP_mdlIsObject_(option) ? option.code : option)).filter(PP_mdlIsFilled_);
+      if (list.length) ids.options[code] = list;
+    };
+    if (PP_mdlIsGraph_(survey.flow)) {
+      PP_mdlGraphNodes_(survey.flow).forEach(node => {
+        screen(node.id, node.options);
+        const prefix = PP_mdlStorePrefix_(node);
+        const implied = PP_mdlHas_(PP_MDL_IMPLIED_PREFIX_, node.type) ? PP_MDL_IMPLIED_PREFIX_[node.type] : node.id;
+        if (prefix && prefix !== node.id && prefix !== implied) screen(prefix, null);
+      });
+    } else {
+      PP_mdlList_(survey.flow).forEach(entry => screen(entry.id, entry.options));
+    }
+    PP_mdlList_(survey.functions).forEach(area => {
+      if (!PP_mdlIsFilled_(area.id) || !PP_mdlSafeKey_(area.id)) return;
+      if (ids.areas.indexOf(area.id) === -1) ids.areas.push(area.id);
+      ids.chips[area.id] = (Array.isArray(area.issues) ? area.issues : []).filter(PP_mdlIsFilled_);
+    });
+    const support = PP_mdlIsObject_(survey.support) && Array.isArray(survey.support.items) ? survey.support.items : [];
+    ids.support = support.filter(PP_mdlIsFilled_);
+  }
+  if (Array.isArray(everLive)) PP_mdlAddIds_(ids, PP_mdlIdsOfCodes_(everLive));
+  return ids;
+}
+
+/**
+ * A published version's codes as one flat list, the form kept in the Script
+ * Property CODES_EVER_LIVE: "screen:<code>", "area:<code>",
+ * "chip:<area>/<code>", "support:<code>", "option:<screen>/<code>".
+ */
+function PP_mdlCodesOfDoc_(doc) {
+  const ids = PP_liveIds(doc);
+  const out = [];
+  ids.screens.forEach(code => out.push('screen:' + code));
+  ids.areas.forEach(code => out.push('area:' + code));
+  Object.keys(ids.chips).forEach(area => ids.chips[area].forEach(code => out.push('chip:' + area + '/' + code)));
+  ids.support.forEach(code => out.push('support:' + code));
+  Object.keys(ids.options).forEach(screen => ids.options[screen].forEach(code => out.push('option:' + screen + '/' + code)));
+  return out;
+}
+
+/** Two flat code lists together: the first one's order, then what only the second has. */
+function PP_mdlMergeCodes_(first, second) {
+  const out = [];
+  const seen = {};
+  (Array.isArray(first) ? first : []).concat(Array.isArray(second) ? second : []).forEach(code => {
+    if (typeof code !== 'string' || !code || PP_mdlHas_(seen, '#' + code)) return;
+    seen['#' + code] = true;
+    out.push(code);
   });
-  PP_mdlList_(survey.functions).forEach(area => {
-    if (!PP_mdlIsFilled_(area.id) || !PP_mdlSafeKey_(area.id)) return;
-    if (ids.areas.indexOf(area.id) === -1) ids.areas.push(area.id);
-    ids.chips[area.id] = (Array.isArray(area.issues) ? area.issues : []).filter(PP_mdlIsFilled_);
+  return out;
+}
+
+/** A flat code list (PP_mdlCodesOfDoc_) back in the shape of PP_liveIds. Unknown entries are skipped. */
+function PP_mdlIdsOfCodes_(codes) {
+  const ids = { screens: [], areas: [], chips: {}, support: [], options: {} };
+  (Array.isArray(codes) ? codes : []).forEach(entry => {
+    const text = typeof entry === 'string' ? entry : '';
+    const colon = text.indexOf(':');
+    const kind = text.slice(0, colon);
+    const rest = text.slice(colon + 1);
+    const slash = rest.indexOf('/');
+    if (colon < 1 || !rest || !PP_mdlSafeKey_(rest)) return;
+    if (kind === 'screen') ids.screens.push(rest);
+    else if (kind === 'area') ids.areas.push(rest);
+    else if (kind === 'support') ids.support.push(rest);
+    else if ((kind === 'chip' || kind === 'option') && slash > 0) {
+      const owner = rest.slice(0, slash);
+      const code = rest.slice(slash + 1);
+      const group = kind === 'chip' ? ids.chips : ids.options;
+      if (!code || !PP_mdlSafeKey_(owner)) return;
+      if (!PP_mdlHas_(group, owner)) group[owner] = [];
+      group[owner].push(code);
+    }
   });
-  const support = PP_mdlIsObject_(survey.support) && Array.isArray(survey.support.items) ? survey.support.items : [];
-  ids.support = support.filter(PP_mdlIsFilled_);
+  return ids;
+}
+
+/** Adds the codes of "more" to ids (both in the shape of PP_liveIds), without repeats. */
+function PP_mdlAddIds_(ids, more) {
+  const add = (list, code) => { if (list.indexOf(code) === -1) list.push(code); };
+  more.screens.forEach(code => add(ids.screens, code));
+  more.areas.forEach(code => add(ids.areas, code));
+  more.support.forEach(code => add(ids.support, code));
+  ['chips', 'options'].forEach(group => {
+    Object.keys(more[group]).forEach(owner => {
+      if (!PP_mdlHas_(ids[group], owner)) ids[group][owner] = [];
+      more[group][owner].forEach(code => add(ids[group][owner], code));
+    });
+  });
   return ids;
 }
 

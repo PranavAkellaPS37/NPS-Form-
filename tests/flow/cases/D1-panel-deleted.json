@@ -1,0 +1,30 @@
+{
+ "_about": "In the control panel, deleting \"support_gate\" (not hiding it) is an error (decision 8).",
+ "base": "graph",
+ "opts": {
+  "surface": "panel"
+ },
+ "patch": [
+  {
+   "op": "remove",
+   "node": "support_gate"
+  },
+  {
+   "op": "set",
+   "node": "fn_deep_dives",
+   "field": "next",
+   "value": "support"
+  },
+  {
+   "op": "remove_field",
+   "node": "support",
+   "field": "show_if"
+  }
+ ],
+ "expect": [
+  {
+   "code": "D1",
+   "level": "error"
+  }
+ ]
+}

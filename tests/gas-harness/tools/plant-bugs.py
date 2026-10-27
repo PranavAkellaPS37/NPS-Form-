@@ -22,9 +22,16 @@ WHAT THIS FILE IS
 HOW TO RUN IT (Terminal, in the tests/gas-harness folder of the project)
   python3 tools/plant-bugs.py
 
-  It takes about 10 seconds (no browser). The last line says how many
-  mistakes were caught. Exit code 0 = every mistake was planted and caught
-  and the baseline had no failure; 1 = anything else.
+  It takes about 30 seconds (no browser). The last line says how many
+  mistakes were caught (83 since 26 Oct 2026: 63 when the panel's route
+  checks became the one flow checker's, then 7 for config_version, the last
+  column of the pings tab, then 8 for the reviewers' fixes: hidden and
+  deleted endings, the codes lock per area and per question, Publish during
+  a Drive hiccup, set-up's notes and docs/flow.md in the GitHub copy; then 5
+  for Panel.html's one exception, the Map's drawing library: its integrity
+  hash, its pinned version, its frame's sandbox, and no second library).
+  Exit code 0 = every mistake was planted and caught and the baseline had no
+  failure; 1 = anything else.
 
 WHAT IT READS / WRITES
   Reads the project's apps-script/ folder. Writes only temporary copies
@@ -132,8 +139,9 @@ MUTANTS = [
    "const PP_MSG_AUTHORIZATION_ = 'Google says Partner Pulse needs authorization. Usually Google is using another ' +",
    "const PP_MSG_AUTHORIZATION_ = 'Google says Partner Pulse needs authorization. Most likely Google is using another ' +",
    'G7', 'the "Authorization is required" advice differs between the server and the panel'),
-  ('nps-warning-removed', 'Model.gs', "    if (model.screens.some(screen => screen.id === item.id)) return;", "    return;", 'G8',
-   'no warning when the nps or support_gate question goes missing'),
+  # refreshed 26 Oct 2026: the nps / support_gate check is the flow checker's D1/D2, told by Model.gs PP_mdlReportDataColumn_
+  ('nps-warning-removed', 'Model.gs', "      PP_mdlReportDataColumn_(model, f, report);\n      return;", "      return;", 'G8',
+   'nothing said when the nps or support_gate question is deleted, hidden or re-typed'),
   ('empty-round-is-a-change', 'Model.gs',
    "      if (!PP_mdlIsObject_(news) || !Array.isArray(news.items) || !news.items.length) delete doc.whats_changed[roundId];",
    "      if (!PP_mdlIsObject_(news)) delete doc.whats_changed[roundId];", 'G8',
@@ -142,6 +150,118 @@ MUTANTS = [
    "    const typedWrong = false;", 'B6', 'DC ids that Sheets turned into numbers get links again'),
   ('unknown-round-says-unknown', 'Code.gs', "    round: { id: roundId, status: status === 'unknown' ? 'draft' : status },",
    "    round: { id: roundId, status: status },", 'C', 'a round never seen before is not reported as "draft"'),
+  # ---- stage 4 of the flow-graph work (23 Oct 2026): the route as a graph ----
+  ('publish-guard-gone', 'Code.gs',
+   "    if (!guard.ok) return { ok: false, errors: [{ section: 'settings', ref: 'Settings > form_url', message: guard.message }] };\n",
+   "", 'G11', 'a graph is published although the form on GitHub is too old to read it'),
+  ('guard-needs-no-engine', 'Code.gs', "  const needed = Math.max(PP_SRV.FLOW_ENGINE_NEEDED, PP_flowEngine_() || 0);",
+   "  const needed = 0;", 'G11', 'the publish guard accepts a form without ENGINE = 2'),
+  ('guard-refuses-unreachable', 'Code.gs', "    return unreachable('Google said: ' + PP_rawErrorText_(err));",
+   "    return { ok: false, message: 'The form on GitHub is older than this control panel: upload the new form code first, wait for the green tick, then publish.' };",
+   'G11', 'Publish is refused whenever GitHub cannot be reached'),
+  ('health-without-route-code', 'Code.gs', ", flow_engine: PP_flowEngine_(), flow_fingerprint: PP_flowFingerprint_() };", " };", 'C,G11',
+   'the health answer no longer says which route code the web app runs'),
+  ('codes-ever-live-not-recorded', 'Code.gs', "  const kept = PP_recordCodesEverLive_(live, doc);", "  const kept = '';", 'G11',
+   'Publish no longer remembers the codes partners answered (the hide-and-publish hole is back)'),
+  ('codes-ever-live-misses-previous', 'Code.gs',
+   "  const codes = PP_mdlMergeCodes_(PP_mdlMergeCodes_(before, PP_mdlCodesOfDoc_(previousLive)), PP_mdlCodesOfDoc_(doc));",
+   "  const codes = PP_mdlMergeCodes_(before, PP_mdlCodesOfDoc_(doc));", 'G11',
+   'the codes of the version live until a Publish are not remembered (a question hidden in that Publish loses its lock)'),
+  ('union-not-in-panel-lock', 'PanelServer.gs', "      live_ids: PP_liveIdsOf_(locked ? live : null, locked ? PP_codesEverLive_() : null),",
+   "      live_ids: PP_liveIdsOf_(locked ? live : null, null),", 'G11', 'the panel unlocks a code that was hidden and published'),
+  ('union-not-in-checks', 'PanelServer.gs',
+   "    return PP_plain_(PP_validate(PP_normalizedCopy_(model), PP_liveDocForChecks_(), PP_codesEverLiveForChecks_()));",
+   "    return PP_plain_(PP_validate(PP_normalizedCopy_(model), PP_liveDocForChecks_()));", 'G11',
+   'deleting a question that was hidden and published no longer stops Publish'),
+  ('route-columns-not-saved', 'Model.gs',
+   "    screen.high_label, screen.scale_hint, screen.body, screen.active, screen.next, PP_mdlJumpsText_(screen.jumps),\n    screen.repeat];",
+   "    screen.high_label, screen.scale_hint, screen.body, screen.active, '', '', ''];", 'G11',
+   'next, jumps and repeat are lost when the draft is saved'),
+  ('flow-still-a-list', 'Model.gs', "  if (Array.isArray(flowNotes)) result.warnings.forEach(note => flowNotes.push(note));\n  return result.graph;",
+   "  return PP_mdlList_(model.screens).filter(screen => screen.active).map(screen => ({ id: screen.id, type: screen.type }));",
+   'B4,C,G11', 'Publish sends the route as a bare list again (jumps and repeats lost)'),
+  ('several-endings-refused', 'Model.gs', "    if (type.builtin && screen.type !== 'thank_you' && PP_mdlHas_(builtins, screen.type)) {",
+   "    if (type.builtin && PP_mdlHas_(builtins, screen.type)) {", 'G11', 'a second ending (thank-you screen) is refused again'),
+  # refreshed 26 Oct 2026: the unreached rows come from the flow checker's G1, told by Model.gs PP_mdlReportLostRows_
+  ('rows-after-ending-unchecked', 'Model.gs', "  PP_mdlReportLostRows_(model, main, lost, report);\n}", "}", 'B2',
+   'a question after the thank-you screen that no jump reaches is no longer reported'),
+  ('graph-import-refused', 'Model.gs', "  const result = PP_mdlFlowLib_().flowPanel.toRows(flow, survey);",
+   "  const result = { screens: [], unsupported: [{ node: '', message: 'Refused.' }] };", 'G11',
+   'a GitHub copy or a published version in the graph format can no longer be imported or restored'),
+  ('stale-panel-wipes-route', 'PanelServer.gs', "  const draft = PP_normalizedCopy_(PP_carryFlowColumns_(model, previous));",
+   "  const draft = PP_normalizedCopy_(model);", 'G11', 'a save from a panel opened before an update wipes next, jumps and repeat'),
+  ('flow-gs-edited', 'Flow.gs', "        node.next = list.length ? list.concat([{ 'default': dflt }]) : dflt;\n      }",
+   "        node.next = dflt;\n      }", 'S,G11', 'Flow.gs edited by hand (jumps dropped): it no longer matches the form\'s own code'),
+  # ---- 26 Oct 2026: the panel's route checks are the one flow checker's (Model.gs PP_mdlCheckRoute_ and Flow.gs) ----
+  ('route-checker-not-run', 'Model.gs', "  PP_mdlCheckRoute_(tidy, compiled, report);\n", "",
+   'B2', 'the panel no longer checks the route (a rule on a later answer, a free-text answer tested with "equals" pass)'),
+  ('hidden-codes-not-passed', 'Model.gs', "hiddenCodes: PP_mdlHiddenCodes_(tidy)", "hiddenCodes: []", 'G8',
+   'a hidden nps question counts as deleted: an error instead of a warning'),
+  # refreshed 26 Oct 2026 (review finding 2): the codes lock is decided by Model.gs PP_mdlCheckLiveCodes_ on the qualified list
+  ('codes-ever-live-not-checked', 'Model.gs', "  earlier.forEach(entry => { if (typeof entry === 'string' && entry) answered['#' + entry] = true; });", "",
+   'G11', 'deleting a code partners answered in an earlier version no longer stops Publish'),
+  ('route-checked-before-rows-fixed', 'Model.gs', "    if (!route.ready && ['D1', 'D2'].indexOf(f.code) === -1) return;\n", "",
+   'B2', 'follow-on route errors while two shown rows share a built-in kind'),
+  ('checker-text-check-leaks', 'Model.gs', "    if (f.level === 'info' || f.code === 'T1' || f.added) return;",
+   "    if (f.level === 'info' || f.added) return;", 'B2', 'a missing English text is reported twice (also among the questions)'),
+  ('deleted-live-code-only-warned', 'Model.gs', "    if (PP_mdlHas_(answered, '#' + entry)) {", "    if (false) {", 'G11',
+   'a deleted code partners answered in a real round is only a warning again, and Publish goes on'),
+  ('flow-gs-d1-never-error', 'Flow.gs', "        var deleted = c.panel && !isHidden(c, d[0]);\n        c.add(deleted ? 'error' : 'warning', 'D1', null,",
+   "        var deleted = false;\n        c.add(deleted ? 'error' : 'warning', 'D1', null,", 'S,G8',
+   'Flow.gs edited by hand: a deleted nps question is only a warning'),
+  # ---- 26 Oct 2026, flow-graph stage 6: config_version, the last column of the pings tab (Code.gs PP_pingsTab_) ----
+  ('ping-version-not-stored', 'Code.gs', ",\n    config_version: message.config_version\n  };", "\n  };", 'D1,D12',
+   'a ping\'s questionnaire version is not stored'),
+  ('ping-version-not-last', 'Code.gs', "'client_net', 'events_json', 'config_version']", "'client_net', 'config_version', 'events_json']",
+   'B5,D12', 'config_version is not the last column of the pings tab (columns of older spreadsheets would shift)'),
+  ('old-pings-tab-not-upgraded', 'Code.gs', "  if (PP_cacheGetOrNull_(key) === String(all)) return { sheet: sheet, width: all };",
+   "  return { sheet: sheet, width: all };", 'D12', 'a pings tab made before 26 Oct 2026 never gets its config_version header'),
+  ('ping-header-over-own-column', 'Code.gs', "  sheet.insertColumnsAfter(after, column - after);\n", "", 'D12',
+   'the config_version header is written over whatever is there (an admin\'s own column) instead of a new column'),
+  ('ping-column-added-twice', 'Code.gs', "      () => PP_hasPingVersionColumn_(sheet) || PP_addPingVersionColumn_(sheet)) === true;",
+   "      () => PP_addPingVersionColumn_(sheet)) === true;", 'D12',
+   'two pings arriving together both add a config_version column (no second look inside the lock)'),
+  ('ping-written-past-events-json', 'Code.gs', "  pings.sheet.appendRow(PP_pingRow_(message).slice(0, pings.width));",
+   "  pings.sheet.appendRow(PP_pingRow_(message));", 'D12',
+   'while the column cannot be added, a ping writes a cell without a header after events_json'),
+  ('ping-columns-checked-every-time', 'Code.gs', "  PP_cachePutSafely_(key, String(all), PP_SRV.LONG_CACHE_SECONDS);\n", "", 'D12',
+   'every ping reads the pings tab\'s header again (the cache never remembers the column)'),
+  # ---- 26 Oct 2026: the reviewers' fixes on the Google side (scenario G12) ----
+  ('hidden-ending-runs-on', 'Flow.gs', "        if (hiddenEnding(k) && mainEnd) return { node: mainEnd.node, at: mainEnd.at, ending: k };\n", "", 'G12',
+   'a question above a hidden ending runs on into the next route (promoters into the detractors\' questions)'),
+  ('jump-to-hidden-ending-runs-on', 'Flow.gs', "      if (hiddenEnding(j) && mainEnd) return { id: mainEnd.node.id, at: mainEnd.at, via: passed, ending: j };\n", "", 'G12',
+   'a jump to a hidden ending goes on into the next route instead of ending at the main thank-you screen'),
+  ('run-on-not-checked', 'Model.gs', "  PP_mdlCheckRunIntoRoutes_(tidy, report);\n", "", 'G12',
+   'after an ending is deleted, a route that runs on into another one is published without a word'),
+  ('codes-lock-bare-chip-codes', 'Model.gs', "      const found = model.chips.some(chip => chip.area === area && chip.code === code);   // hidden or not: kept",
+   "      const found = model.chips.some(chip => chip.code === code);", 'G12',
+   'the codes lock looks for a problem code in every area: one deleted from Payments passes when Line haul has the same code'),
+  ('codes-lock-bare-option-codes', 'Model.gs', "    const options = model.screens[screenAt[screenId]].options;",
+   "    const options = [].concat.apply([], model.screens.map(screen => screen.options));", 'G12',
+   'the codes lock looks for an answer code in every question: one removed from a question passes when another question has it'),
+  ('publish-during-drive-hiccup', 'Code.gs', "  PP_requireLiveWhileLocked_(live);\n", "", 'G12',
+   'Publish goes on while Google Drive cannot read the live version, so its codes escape the lock for good'),
+  ('setup-hides-publish-warnings', 'Code.gs',
+   "      (Array.isArray(result.warnings) ? result.warnings : []).forEach(warning => notes.push('Please check: ' + warning));\n", "", 'G12',
+   'set-up\'s closing notes no longer say what Publish wants checked (it is only in the log)'),
+  ('export-without-flow-map', 'Model.gs', "  files['flow.md'] = PP_mdlFlowMapText_(files['survey.json'], files['strings.json']);\n", "", 'B8,G12',
+   'the GitHub copy no longer brings docs/flow.md, so the map in GitHub goes out of date'),
+  # ---- 26 Oct 2026: Panel.html's one exception, the Map's drawing library (lib/static-checks.js mapException) ----
+  ('map-without-sri', 'Panel.html',
+   "'s.src = ' + scriptString(MERMAID_URL) + '; s.integrity = ' + scriptString(MERMAID_SRI) + '; s.crossOrigin = \"anonymous\";'",
+   "'s.src = ' + scriptString(MERMAID_URL) + '; s.crossOrigin = \"anonymous\";'", 'S',
+   'the Map loads Mermaid without its integrity hash (any bytes the address serves would run)'),
+  ('map-frame-same-origin', 'Panel.html', "sandbox: 'allow-scripts', title: 'Map of the route: '",
+   "sandbox: 'allow-scripts allow-same-origin', title: 'Map of the route: '", 'S',
+   'the Map\'s frame gets "allow-same-origin" (Mermaid\'s code could reach the panel, google.script.run and the Sheet)'),
+  ('map-frame-not-sandboxed', 'Panel.html', "sandbox: 'allow-scripts', title: 'Map of the route: '", "title: 'Map of the route: '", 'S',
+   'the Map\'s frame is not sandboxed at all'),
+  ('map-library-not-pinned', 'Panel.html', "var MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js';",
+   "var MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';", 'S',
+   'the Map\'s library is not pinned to one exact version (its integrity hash can\'t fit)'),
+  ('map-second-library', 'Panel.html', "'document.head.appendChild(s);' +",
+   "'document.head.appendChild(s); var t = document.createElement(\"script\"); t.src = \"https://cdn.example.com/extra.js\"; document.head.appendChild(t);' +", 'S',
+   'the page loads a second library from the internet, without a pinned version or a hash'),
 ]
 
 LINE = re.compile(r'^(PASS|WARN|FAIL|SKIP)\s+(\S+)\s')

@@ -102,7 +102,7 @@ No ping is sent from a [preview link](#8-preview-links-preview1), nor after the 
 
 - `client` is only included on `opened`.
 - `events` is only included on `progress`. It has the same shape as in `submit` (below).
-- A `progress` ping whose `screen` is `thanks` means: the partner finished, but their answers were not confirmed yet when they left the page. The form sends them again the next time the link is opened on that phone.
+- A `progress` ping whose `screen` is an ending (`thanks`, or the id of another thank-you screen: [several endings](#several-endings-and-questions-asked-for-each-area)) means: the partner finished, but their answers were not confirmed yet when they left the page. The form sends them again the next time the link is opened on that phone.
 - `config_version` is the version of the questionnaire the partner actually saw (see the field reference in section 3).
 
 **Response to `opened`:**
@@ -227,10 +227,10 @@ The form sends this once the partner finishes the last question.
 | `client.voice_supported` | Whether this phone can record voice in the browser. |
 | `client.voice_denied` | Whether the partner blocked the microphone. |
 | `client.tts_voice` | Whether the phone had a read-aloud voice for the chosen language. |
-| `answers` | One value per *generic* screen that was answered, keyed by the screen `id` from `flow` (see the table below). Screens that were skipped or never shown are left out. |
+| `answers` | One value per *generic* screen that was answered, keyed by the screen `id` from `flow` (see the table below), or by its `store_as` code: a question asked once for each area sends one value per area, keyed `<id>:<area>` ([below](#several-endings-and-questions-asked-for-each-area)). Screens that were skipped or never shown are left out. |
 | `ratings` | Area and support ratings (see the table below). |
 | `free_text` | One item per voice note and/or typed answer. An item is only included if it has text or audio (see the table below). |
-| `events` | One entry per screen *view*, in order. Going **Back** creates a new view with the next `seq`. The `thanks` view is the last entry. The form keeps the latest 300 views. |
+| `events` | One entry per screen *view*, in order. Going **Back** creates a new view with the next `seq`. The view of the ending the partner reached is the last entry: `thanks`, or the id of another thank-you screen. The form keeps the latest 300 views. |
 
 **Values in `answers`, by screen type:**
 
@@ -241,12 +241,14 @@ The form sends this once the partner finishes the last question.
 | `rating_1_5` | 1–5 |
 | `single_choice` | The option code |
 
+A kind of question added as a plug-in (`web/js/types/`) sends what its description's `records` say ([flow-engine.md](flow-engine.md) §10): usually just its value in `answers`. A ratings row is only ever sent for a value from 1 to 5.
+
 **Fields in each `ratings` item:**
 
 | Field | Meaning |
 |---|---|
 | `block` | `"function"` for the area ratings, `"support"` for the support block, `"question"` for generic `rating_1_5` screens (those also appear in `answers`). |
-| `item` | The area id or support item id. |
+| `item` | The area id or support item id; for a generic `rating_1_5` screen, its id (`<id>:<area>` when it is asked for each area). |
 | `rating` | 1–5, or `null` when `not_applicable` is true. |
 | `threshold` | For areas, the threshold that applied. `null` for support. |
 | `below_threshold` | For areas, true when the rating was at or below the threshold. `null` for support. |
@@ -256,7 +258,7 @@ The form sends this once the partner finishes the last question.
 
 | Field | Meaning |
 |---|---|
-| `item_id` | `fn_deep_dive:<area>`, `support_comment`, `one_fix`, or the `id` of a generic `free_text` screen. |
+| `item_id` | `fn_deep_dive:<area>`, `support_comment`, `one_fix`, or the `id` of a generic `free_text` screen (`<id>:<area>` when it is asked for each area). |
 | `block` | `function` / `support` / `one_fix` / `question`. |
 | `function` | The area id for `fn_deep_dive` items, otherwise `null`. |
 | `issue_code` | The chip picked on that screen, if any. |
@@ -266,7 +268,16 @@ The form sends this once the partner finishes the last question.
 
 ### Only answers on the final path are sent
 
-If a partner rates Payments 2, answers its problem screen, then goes **Back** and changes the rating to 5, the Payments problem answer is **dropped**. The same applies to the support ratings when the support answer changes to **No**. The submission always matches the screens the partner finally saw.
+If a partner rates Payments 2, answers its problem screen, then goes **Back** and changes the rating to 5, the Payments problem answer is **dropped**. The same applies to the support ratings when the support answer changes to **No**. The submission always matches the screens the partner finally saw. Since 23 Oct 2026 the same is true for the rules themselves: a rule ("show only if", a jump) only ever sees answers on the partner's current route, never one left behind by going Back.
+
+### Several endings and questions asked for each area
+
+Since 23–26 Oct 2026 the questionnaire's route can branch ([flow-engine.md](flow-engine.md)). The message format is unchanged (`schema_version` is still `1`); two things can now look different:
+
+- **Several endings.** A route can end on its own thank-you screen (for example a short route for promoters). Reaching any ending sends the answers. The `events` then end at **that ending's id** (for example `promoter_end` instead of `thanks`), and a `progress` ping sent from it carries that id as its `screen`. To know which route a partner took, read the last `events` row of their submission.
+- **A question asked once for each area** (or each area rated low) stores one answer per area under `<id>:<area>`, the way the built-in area screens use `fn_rating:<area>` and `fn_deep_dive:<area>`. For example a yes/no question `long_running` asked for Payments and App / Tech sends `"long_running:payments": "yes"` and `"long_running:app": "no"` in `answers`. A faces question asked this way also sends a `question` ratings row per area with that `item`; a voice/typing one, a `free_text` item per area with that `item_id` (`block` `question`, `function` `null`).
+
+Both are listed screen by screen by `python3 scripts/flow.py screens --published <file>` ([section 9](#reading-the-data-correctly-for-the-pipeline-and-the-dashboard), item 5): each `screen` there is exactly what `events` and pings say, with `end: true` on the endings.
 
 ### Server responses to `submit`
 
@@ -448,6 +459,9 @@ The full description is in [control-panel-design.md, section 11](control-panel-d
 - **Each data tab is exactly as wide as its columns.** Google counts every cell of a tab, even an empty one, against a spreadsheet's 10 million cell limit, so no spare columns are kept: a round of 10,000 partners stays near 3.5 million cells. The script writes each column in a fixed place, so never insert, delete or move columns in these tabs (an extra column of your own on the far right is fine).
 - **One `responses` row per stored submission**, and at most 10 per DC per round ([section 10](#10-limits-how-big-a-message-may-be)). Like the mock server, it adds `received_at`, `token_valid` (always `TRUE` here, because wrong tokens are refused), `late` and `dc_round_seen_before`, and keeps the whole `answers` object as `answers_json`. The answers to `nps` and `support_gate` also get their own columns, `nps` and `support_contacted`.
 - **`function_ratings`** has one row per `ratings` item, **`free_text`** one row per `free_text` item, and **`events`** one row per screen view. Each of these rows carries the submission's `submission_id` and `received_at`.
+- **`pings`** has one row per stored ping ([section 2](#2-message-ping-progress-telemetry-never-contains-answers)), with `received_at` and `token_valid` added, the `client.net` of an `opened` ping as `client_net`, and the `events` of a `progress` ping as JSON text in `events_json`. Its **last** column, since 26 Oct 2026, is **`config_version`**: the version of the questionnaire the phone showed, the same stamp as in `responses` (Pranav's decision 11 of the flow-graph work). The message did not change (`schema_version` is still `1`): the form always sent it, but until then the live backend did not keep it. The cell is empty when a ping has no `config_version`.
+  - **A data spreadsheet made before 26 Oct 2026** has a `pings` tab that ends with `events_json`. The first ping that arrives after the update adds the `config_version` column, header included, as a new column right after `events_json`: a column of your own there moves one place to the right, and nothing is overwritten. The rows already stored keep an empty cell. Two pings arriving together never add it twice (the script lock), and a ping is never refused or lost for this: if the column cannot be added at that moment, the ping is stored without its version.
+  - The test server keeps each whole ping, `config_version` included, in `local_data/events.jsonl` ([section 6](#6-what-the-mock-server-stores-on-this-mac-only-git-ignored)).
 - **Voice notes** are files in `rounds/<round_id>/audio/`, named `<dc>__<submission_id>__<item_id with ":" turned into "-">.<webm|ogg|m4a|bin>` (a second note with the same name in one submission gets `-2`, `-3`, ...), with private sharing. The `free_text` tab holds each file's Drive link (`audio_url`) and id (`audio_file_id`). The `transcript` and `cls_*` columns stay empty until the Phase 3 pipeline fills them.
 - **Text is written as text**, so answers such as `=1+1`, `007` or `2026-10-21` never become formulas, numbers or dates. A cell holds at most 49,000 characters: longer text is cut and ends with ` [cut: too long]`.
 - Rejected messages (`bad_token`, `round_not_open`, `bad_request`) are never stored. Pings above 60 per DC and round in 10 minutes are answered `ok` but not stored.
@@ -471,8 +485,13 @@ If anything fails before the `responses` row is written, the phone gets `server_
 2. **One submission per DC per round counts on the dashboard: the latest one**, by `received_at` (the server's clock; `submitted_at` comes from the phone's clock, which can be wrong). Up to 10 are stored per DC per round; `dc_round_seen_before` is `TRUE` on every one after the first.
 3. **Unused voice-note files can exist** in `rounds/<round_id>/audio/`: files that no counted `free_text` row points to. They come from a send that failed after its recordings were saved (answered "busy" or `server_error`; the resend saves its recordings again, under the same names, which Drive allows), or from a copy that turned out to be a repeat (or over the DC's limit of 10) only once it got its turn. Find a recording by `audio_file_id` from a counted `free_text` row, never by its file name, and ignore the other files. They stay private like every recording, and nothing removes them automatically.
 4. **`late` = `TRUE`** marks answers that arrived after the round was closed, from partners who had already started on their phone (or finished, but their answers had not been sent yet).
-5. **Pings** (the `pings` tab) are not tied to a submission. Some may be missing: patchy data, the rate limit above, or `started` and `progress` pings switched off in the settings (`telemetry.enabled`; `opened` is always sent, because it also checks the link).
+5. **Pings** (the `pings` tab) are not tied to a submission. Some may be missing: patchy data, the rate limit above, or `started` and `progress` pings switched off in the settings (`telemetry.enabled`; `opened` is always sent, because it also checks the link). Read each ping's `screen` against the screens of the questionnaire in its `config_version`, so drop-off is counted on the screens that partner really saw:
+   - `p<N>-<date>` (for example `p7-2026-10-21`) is published version N: `python3 scripts/flow.py screens --published p7.json` lists its screens, from `published/p7.json` in the Drive folder.
+   - Any other value (for example `2026-10-19.1`) is the form's own copy, `web/config/survey.json` with that `config_version`: `python3 scripts/flow.py screens --published <that survey.json>`.
+   - Each entry's `screen` is exactly what a ping's `screen` (and an `events` row's `screen`) says, for example `fn_rating:payments`.
+   - An empty `config_version` is a ping stored before 26 Oct 2026, or one stored while the column could not be added (above). The nearest ping in time with the same `session_id` (or that session's submission) usually has the version; a version can change between two visits when a new one is published in between.
 6. **Test data is not partner data.** Leave out rounds whose id starts with `SMOKE`, `DEMO` or `TEST` (in capitals or not: the same rule as `PP_isTestRound_` in Code.gs) and DCs whose id starts with `DC-SMOKE-` (the smoke test makes a new one on every run).
+7. **Routes and endings** ([section 3](#several-endings-and-questions-asked-for-each-area)). A submission's route is the screens in its counted `events` rows; its last row is the ending the partner reached. Answers keyed `<id>:<area>` belong to a question asked once per area: split the key at the first `:` to get the question and the area.
 
 ## 10. Limits: how big a message may be
 

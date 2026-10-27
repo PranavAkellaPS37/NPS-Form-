@@ -1,0 +1,24 @@
+{
+ "_about": "Graph format: survey.json's support > allow_not_applicable is true, but the support screen says \"allow_not_applicable\": false.",
+ "base": "graph",
+ "survey": {
+  "support": {
+   "items": [
+    "agent_behaviour",
+    "understood_problem",
+    "time_to_resolve",
+    "kept_updated"
+   ],
+   "allow_not_applicable": true,
+   "allow_comment": true,
+   "comment_text": "q.support_comment"
+  }
+ },
+ "expect": [
+  {
+   "code": "S1",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

@@ -23,6 +23,11 @@ HOW TO RUN
 
 WHAT IT READS (it never changes any file)
     web/config/survey.json          screens, areas, chips, colours, backend
+                                    (the flow itself, meaning the screens, their
+                                    order, rules, jumps, loops and endings, is
+                                    checked by the project's one flow checker,
+                                    web/js/flow-check.js, which this script runs
+                                    with Node.js through scripts/flow.js)
     web/i18n/strings.json           every on-screen text, in every language
     web/config/whats_changed.json   content of the "What changed" screen
     web/config/audio_clips.json     optional pre-recorded read-aloud clips
@@ -31,7 +36,36 @@ WHAT IT READS (it never changes any file)
     web/index.html, web/css/, web/js/
                                     the form itself, to measure the page
                                     weight and to see which texts its code
-                                    asks for (calls written like t('ui.next'))
+                                    asks for (calls written like t('ui.next')).
+                                    Only the files index.html loads count: a
+                                    file phones never load (web/js/flow-check.js)
+                                    costs partners nothing.
+    docs/flow.md                    the map of the flow, to warn when it no
+                                    longer matches the questionnaire
+    web/config/types.json           the catalogue of the kinds of screen
+                                    ("question types": what each is called,
+                                    its settings, what a rule can test, what
+                                    it sends). It is made from the form's own
+                                    code by  node scripts/flow.js types --write ;
+                                    a copy that no longer matches the code, or
+                                    a missing one, is an error. The same
+                                    command checks the control panel's copy,
+                                    PP_SCREEN_TYPES in apps-script/Model.gs
+                                    (a warning when it is out of date).
+    ES5 check                       every script web/index.html loads, every
+                                    web/js/types/*.js and scripts/dev/*.js must
+                                    be plain ES5, the JavaScript old Android
+                                    phones (Chrome 61) run: a file with newer
+                                    syntax (let, const, =>, ?., ??, template
+                                    strings ...) is skipped whole by such a
+                                    phone. It is an error. Checked by
+                                    node scripts/flow.js es5  with the "acorn"
+                                    parser from tests/node_modules (run
+                                    cd tests && npm install  once); without it
+                                    the check is skipped with a warning. GitHub
+                                    installs acorn 8.14.0 and passes its folder
+                                    as ACORN_PATH, and then a broken install is
+                                    an error, so GitHub always runs the check.
 
 WHAT IT WRITES
     Nothing. It only prints a report on the screen.
@@ -43,13 +77,21 @@ HOW TO READ THE REPORT
     SUMMARY    Survey size, where answers go, translation progress for each
                language, and the page weight (what a phone downloads).
     The last line says "All good" or "Please fix the errors above".
+    Messages that end with [flow check R1] (or another code) come from the
+    flow checker; docs/flow-engine.md section 6 lists every code, and
+    python3 scripts/flow.py check  shows only those, with extra notes.
     For automation: the exit code is 0 when there are no errors, and 1 when
     there are errors.
 
 SAFETY NOTES
     - Read-only: safe to run as often as you like.
     - Needs no internet and installs nothing. Python 3.11 or newer, standard
-      library only.
+      library only, plus Node.js 16 or newer for the flow check (free, from
+      https://nodejs.org). If Node.js is missing, the report says so as an
+      error and explains how to install it. GitHub installs it by itself
+      (.github/workflows/deploy-pages.yml). The ES5 check also uses acorn,
+      which  cd tests && npm install  puts in tests/node_modules (GitHub
+      installs it by itself too).
     - It never prints partner data. The settings files must not contain any
       either: test ids must look fake, like DC-DEMO-001.
 """
@@ -59,10 +101,12 @@ from __future__ import annotations  # lets the type hints below work on older Py
 import argparse
 import difflib
 import gzip
+import importlib.util
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import textwrap
 import traceback
@@ -80,8 +124,17 @@ WHATS_CHANGED_FILE = "web/config/whats_changed.json"
 AUDIO_FILE = "web/config/audio_clips.json"
 FORM_CODE = "The form itself (web/index.html, web/css, web/js)"
 PAGE_WEIGHT = "Page weight"
+FLOW_MAP_FILE = "docs/flow.md"
+TYPES_FILE = "web/config/types.json"
 # Problems are printed under these headings, in this order.
-GROUP_ORDER = [SURVEY_FILE, STRINGS_FILE, WHATS_CHANGED_FILE, AUDIO_FILE, FORM_CODE, PAGE_WEIGHT]
+GROUP_ORDER = [SURVEY_FILE, STRINGS_FILE, WHATS_CHANGED_FILE, AUDIO_FILE, FLOW_MAP_FILE, TYPES_FILE, FORM_CODE, PAGE_WEIGHT]
+
+# The flow (screens, order, rules, jumps, loops, endings) is checked by the
+# project's ONE flow checker, web/js/flow-check.js, through this command
+# (Node.js); scripts/flow.py finds Node.js and explains how to install it.
+FLOW_TOOL = Path(__file__).resolve().parent / "flow.js"
+FLOW_WRAPPER = Path(__file__).resolve().parent / "flow.py"
+FLOW_TIMEOUT_SECONDS = 300
 
 # The six languages the project was planned for. If one is missing that is
 # only a warning: the survey still works with fewer languages.
@@ -121,23 +174,7 @@ VOICE_GESTURES = ["hold", "tap"]
 REQUIRED_SECTIONS = ["branding", "backend", "rating", "deep_dive", "support", "voice", "text"]
 OPTIONAL_SECTIONS = ["links", "navigation", "read_aloud", "whats_changed", "telemetry"]
 
-FLOW_TYPES = [
-    "language_picker", "whats_changed", "nps_0_10", "function_ratings",
-    "function_deep_dives", "yes_no", "support_block", "free_text",
-    "rating_1_5", "single_choice", "info_card", "thank_you",
-]
-TYPES_NEEDING_TEXT = ["nps_0_10", "yes_no", "free_text", "rating_1_5", "single_choice", "info_card"]
-# Built-in screens that make sense only once (their answers would collide).
-ONCE_ONLY_TYPES = ["language_picker", "whats_changed", "function_ratings",
-                   "function_deep_dives", "support_block"]
-# The only skip_if value each screen type accepts.
-SKIP_IF_RULES = {"language_picker": "lang_in_url", "whats_changed": "empty"}
-# Fields of a flow step that hold the NAME of a text in strings.json.
-STRING_KEY_FIELDS = ["text", "low_label", "high_label", "scale_hint", "body"]
-KNOWN_STEP_FIELDS = ["id", "type", "required", "show_if", "skip_if", "options"] + STRING_KEY_FIELDS
 KNOWN_AREA_FIELDS = ["id", "issues", "threshold"]
-
-SHOW_IF_TESTS = ["equals", "not_equals", "at_most", "at_least", "in", "answered"]
 
 # Texts the form's code uses directly (not derived from survey.json).
 FIXED_STRING_KEYS = """
@@ -183,6 +220,12 @@ ALWAYS_USED_PREFIXES = ("rating.",)
 
 PAGE_BUDGET_BYTES = 300 * 1024   # from the project spec
 CLIP_WARN_BYTES = 150 * 1024
+# Which files web/index.html loads (only those reach a partner's phone).
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+SCRIPT_SRC_RE = re.compile(r"""<script\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+LINK_TAG_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
+STYLESHEET_RE = re.compile(r"""\brel\s*=\s*["']?stylesheet\b""", re.IGNORECASE)
+HREF_RE = re.compile(r"""\bhref\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 
 MISSING = object()   # marks "this field is not in the file at all"
 
@@ -243,14 +286,6 @@ def quoted_list(items, limit: int = 8) -> str:
     return shown + (f" and {rest} more" if rest > 0 else "")
 
 
-def or_list(items) -> str:
-    """'"yes" or "no"'."""
-    quoted = [f'"{item}"' for item in items]
-    if len(quoted) < 2:
-        return "".join(quoted)
-    return ", ".join(quoted[:-1]) + " or " + quoted[-1]
-
-
 def did_you_mean(word, choices) -> str:
     """' Did you mean "payments"?' when a close spelling exists, otherwise ''."""
     if not isinstance(word, str):
@@ -271,22 +306,6 @@ def kb(size: int) -> str:
 def needs_translation(text) -> bool:
     """The form's own rule: missing, empty, or still starting with [TRANSLATE]."""
     return not is_text(text) or text.lstrip().startswith(TRANSLATE_TAG)
-
-
-def as_js_text(value):
-    """How the form's code (JavaScript String()) writes a value, so show_if
-    values are compared exactly the way the form compares them."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        return str(int(value)) if value.is_integer() else repr(value)
-    if isinstance(value, str):
-        return value
-    if value is None:
-        return "null"
-    return None   # lists and groups never match anything
 
 
 def list_files(folder: Path, pattern: str) -> list:
@@ -376,16 +395,6 @@ class Report:
 
 
 @dataclass
-class FlowStep:
-    """One screen from survey.json > flow."""
-    pos: int          # 1 = the first screen
-    id: object        # the id as written (None when missing or not usable)
-    type: object      # the type as written (may be wrong)
-    data: dict        # everything written for this screen
-    label: str        # 'flow step 7 ("support")', used in messages
-
-
-@dataclass
 class SurveyInfo:
     """What the other checks need to know from survey.json."""
     loaded: bool = False
@@ -394,10 +403,14 @@ class SurveyInfo:
     fallback: str = "en"
     functions: dict = field(default_factory=dict)      # area id -> its chip codes
     support_items: list = field(default_factory=list)
-    support_allows_na: bool = False
-    support_has_comment: bool = True
-    steps: list = field(default_factory=list)          # FlowStep objects
-    deep_dive_when: str = "after_all_ratings"
+    flow_screens: int = 0                              # screens (lines or nodes) the flow lists
+    flow_checked: bool = False                         # the flow checker ran (Node.js found)
+    flow_text_keys: dict = field(default_factory=dict) # text key -> why: what the flow shows
+    flow_stats: dict = field(default_factory=dict)     # longest route, most answers ... (flow checker)
+    flow_notes: int = 0                                # the flow checker's notes (not repeated here)
+    type_kinds: list = field(default_factory=list)     # the kinds of screen of the catalogue (built in)
+    type_added: list = field(default_factory=list)     # ... and the ones added in web/js/types/
+    es5_summary: str = ""                              # what the ES5 check did, for the summary
     backend_mode: str = ""
     apps_script_url: str = ""
     required_keys: dict = field(default_factory=dict)  # text key -> why it is needed
@@ -631,7 +644,7 @@ def check_survey(survey, root: Path, r: Report) -> SurveyInfo:
     check_support(survey.get("support"), info, r)
     check_voice(survey.get("voice"), r)
     check_text_box(survey.get("text"), r)
-    check_flow(survey.get("flow", MISSING), info, r)
+    check_flow(survey, root, info, r)
     info.required_keys = keys_needed_by_settings(survey, info)
     return info
 
@@ -886,9 +899,7 @@ def check_deep_dive(deep_dive, info: SurveyInfo, r: Report) -> None:
         return
     check_threshold(deep_dive.get("threshold", MISSING), "deep_dive > threshold", r)
     when = deep_dive.get("when", MISSING)
-    if when in DEEP_DIVE_WHEN:
-        info.deep_dive_when = when
-    else:
+    if when not in DEEP_DIVE_WHEN:
         r.error(SURVEY_FILE, f'deep_dive > when is {show(when)}. It must be "after_all_ratings" (problem '
                              'screens after all area ratings, recommended) or "immediate" (right after '
                              "each low rating)." + did_you_mean(when, DEEP_DIVE_WHEN))
@@ -973,8 +984,6 @@ def check_support(support, info: SurveyInfo, r: Report) -> None:
             info.support_items.append(item)
     for name in ("allow_not_applicable", "allow_comment"):
         check_bool(support, "support", name, r)
-    info.support_allows_na = support.get("allow_not_applicable") is True
-    info.support_has_comment = support.get("allow_comment") is not False   # the form shows it unless false
     comment_text = support.get("comment_text", MISSING)
     if support.get("allow_comment") is True and not is_text(comment_text):
         r.error(SURVEY_FILE, "support > allow_comment is true, so support > comment_text must be the name "
@@ -1010,383 +1019,208 @@ def check_text_box(text, r: Report) -> None:
         check_range(text, "text", "max_chars", 50, 10000, r, whole=True, unit=" characters")
 
 
-# ---- The flow: which screens, in which order --------------------------------
+# ---- The flow: which screens, in which order ----------------------------------------
+# Checked by the project's ONE flow checker (web/js/flow-check.js, run with
+# Node.js through scripts/flow.js), never by a second copy of its rules here.
+# The checks this file had until 23 Oct 2026 (step fields, order, show_if) are
+# all in that checker now (docs/flow-engine.md section 6), so the control
+# panel, the command line and this check can never disagree.
 
-def check_flow(flow, info: SurveyInfo, r: Report) -> None:
-    if not isinstance(flow, list) or not flow:
-        r.error(SURVEY_FILE, '"flow" (the list of screens) is missing or empty. The form has nothing to show.')
+def check_flow(survey: dict, root: Path, info: SurveyInfo, r: Report) -> None:
+    """Runs the flow checker on web/config/survey.json and adds its errors and
+    warnings to this report. It also says which texts the flow shows (for the
+    text checks below) and how big one submission can get (for the summary)."""
+    info.flow_screens = count_flow_screens(survey.get("flow", MISSING))
+    outcome = run_flow_tool(["check", "--root", str(root / "web"), "--json"])
+    if isinstance(outcome, str):
+        r.error(SURVEY_FILE, "The flow (the screens, their order and their rules) could not be checked. " + outcome)
         return
-    info.steps = read_flow_steps(flow, r)
-    for step in info.steps:
-        check_step_fields(step, r)
-    check_flow_order(info.steps, len(flow), r)
-    flow_map = FlowMap(info.steps, info)
-    for step in info.steps:
-        if "show_if" in step.data:
-            check_condition(step.data["show_if"], step, f"{step.label} > show_if", flow_map, r)
-
-
-def read_flow_steps(flow: list, r: Report) -> list:
-    """Turn each entry of "flow" into a FlowStep, checking ids on the way."""
-    steps, seen = [], {}
-    for pos, raw in enumerate(flow, start=1):
-        if not isinstance(raw, dict):
-            r.error(SURVEY_FILE, f"flow step {pos} must be a group {{ ... }} with an id and a type, but "
-                                 f"it is {kind_of(raw)}.")
-            continue
-        step_id = raw.get("id", MISSING)
-        label = f'flow step {pos} ("{step_id}")' if isinstance(step_id, str) else f"flow step {pos}"
-        if not isinstance(step_id, str) or not CODE_RE.match(step_id):
-            r.error(SURVEY_FILE, f"{label}: the id {show(step_id)} is not allowed. Use {CODE_RULE}, "
-                                 'for example "one_fix".')
-        elif step_id in seen:
-            r.error(SURVEY_FILE, f'{label}: the id "{step_id}" is already used by flow step {seen[step_id]}. '
-                                 "Every screen needs its own id (it is used in the data).")
+    code, out, err = outcome
+    try:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    if code not in (0, 1) or not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+        said = " ".join((err or out or "").split())[:500]
+        r.error(SURVEY_FILE, "The flow check (node scripts/flow.js check) could not run, so the screens, their order "
+                             "and their rules were not checked." + (f" It said: {said}" if said else ""))
+        return
+    info.flow_checked = True
+    for finding in data["findings"]:
+        if not isinstance(finding, dict) or finding.get("code") == "T1":
+            continue   # texts (T1): the text checks below cover every text, these included
+        message = f'{finding.get("message")} [flow check {finding.get("code")}]'
+        if finding.get("level") == "error":
+            r.error(SURVEY_FILE, message)
+        elif finding.get("level") == "warning":
+            r.warn(SURVEY_FILE, message)
         else:
-            seen[step_id] = pos
-        usable_id = step_id if isinstance(step_id, str) else None
-        steps.append(FlowStep(pos, usable_id, raw.get("type", MISSING), raw, label))
-    return steps
+            info.flow_notes += 1   # notes ("info"): shown by  python3 scripts/flow.py check
+    if isinstance(data.get("text_keys"), dict):
+        info.flow_text_keys = data["text_keys"]
+    if isinstance(data.get("stats"), dict):
+        info.flow_stats = data["stats"]
 
 
-def check_step_fields(step: FlowStep, r: Report) -> None:
-    if step.type not in FLOW_TYPES:
-        problem = ('has no "type"' if step.type is MISSING else
-                   f"has the type {show(step.type)}, which is not a screen type the form knows")
-        r.error(SURVEY_FILE, f"{step.label} {problem}.{did_you_mean(step.type, FLOW_TYPES)} "
-                             f"Use one of: {', '.join(FLOW_TYPES)}.")
+def count_flow_screens(flow) -> int:
+    """How many screens the flow lists (lines of the list, or nodes of a graph), for the summary."""
+    if isinstance(flow, list):
+        return len(flow)
+    if not isinstance(flow, dict):
+        return 0
+    count, todo = 0, list(flow.get("nodes") or []) if isinstance(flow.get("nodes"), list) else []
+    while todo:
+        node = todo.pop()
+        if isinstance(node, dict) and node.get("type") == "group":
+            body = node.get("body") if isinstance(node.get("body"), dict) else {}
+            todo.extend(body.get("nodes") if isinstance(body.get("nodes"), list) else [])
+        elif isinstance(node, dict):
+            count += 1
+    return count
+
+
+def load_flow_wrapper():
+    """scripts/flow.py: it finds Node.js on this Mac and explains how to install it."""
+    try:
+        spec = importlib.util.spec_from_file_location("pp_flow_wrapper", FLOW_WRAPPER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module if hasattr(module, "find_node") and hasattr(module, "node_problem") else None
+    except Exception:   # missing or broken: fall back to "node" on the PATH
+        return None
+
+
+def run_flow_tool(args: list):
+    """Runs  node scripts/flow.js <args>. Returns (exit code, output, error output),
+    or a plain-English explanation when Node.js or the tool cannot be used."""
+    if not FLOW_TOOL.is_file():
+        return "scripts/flow.js is missing next to this script. Put it back from git."
+    wrapper = load_flow_wrapper()
+    if wrapper is not None:
+        node = wrapper.find_node()
+        problem = wrapper.node_problem(node)
+    else:
+        node = shutil.which("node")
+        problem = None if node else ("It needs Node.js (free), which was not found on this Mac. Install the LTS "
+                                     "version from https://nodejs.org, open a new Terminal window and run this check again.")
+    if problem:
+        return problem
+    try:
+        done = subprocess.run([node, str(FLOW_TOOL)] + list(args), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=FLOW_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError) as problem:
+        return f"Node.js could not run scripts/flow.js ({problem})."
+    return done.returncode, done.stdout, done.stderr
+
+
+def check_flow_map(root: Path, info: SurveyInfo, r: Report) -> None:
+    """docs/flow.md is the map of the flow, made by  python3 scripts/flow.py map --write.
+    Warns when it no longer matches the questionnaire. Only in a project folder
+    (one with docs/), and only when the flow itself could be checked."""
+    if not info.flow_checked or not (root / "docs").is_dir():
         return
-    if step.type in TYPES_NEEDING_TEXT and "text" not in step.data:
-        r.error(SURVEY_FILE, f'{step.label}: a {step.type} screen needs "text": the name of its question '
-                             'in strings.json, for example "text": "q.one_fix".')
-    for name in STRING_KEY_FIELDS:
-        if name in step.data and not is_text(step.data[name]):
-            r.error(SURVEY_FILE, f'{step.label}: "{name}" is {show(step.data[name])}, but it must be the '
-                                 "name of a text in strings.json, in double quotes.")
-    if step.type == "single_choice":
-        check_options(step, r)
-    check_skip_if(step, r)
-    if "required" in step.data and not isinstance(step.data["required"], bool):
-        r.error(SURVEY_FILE, f"{step.label}: required is {show(step.data['required'])}, but it must be "
-                             "true or false (lowercase, without quotes).")
-    if step.type == "thank_you" and "show_if" in step.data:
-        r.warn(SURVEY_FILE, f"{step.label}: show_if has no use on the thank-you screen. The form always "
-                            "ends with a thank-you screen anyway, so remove it.")
-    warn_unknown_fields(step.data, KNOWN_STEP_FIELDS, step.label, r)
-
-
-def check_options(step: FlowStep, r: Report) -> None:
-    options = step.data.get("options", MISSING)
-    if not isinstance(options, list) or not options:
-        r.error(SURVEY_FILE, f'{step.label}: a single_choice screen needs "options": a list of answer codes, '
-                             f'like ["daily", "weekly"]. Their labels go in strings.json as '
-                             f"choice.{step.id}.<code>.")
+    target = root / FLOW_MAP_FILE
+    outcome = run_flow_tool(["map", "--root", str(root / "web"), "--check", str(target)])
+    if isinstance(outcome, str):
         return
-    seen = []
-    for option in options:
-        if not isinstance(option, str) or not CODE_RE.match(option):
-            r.error(SURVEY_FILE, f"{step.label}: the option {show(option)} is not allowed. Use {CODE_RULE}.")
-        elif option in seen:
-            r.error(SURVEY_FILE, f'{step.label}: the option "{option}" is listed twice.')
+    code, out, err = outcome
+    if code == 1:
+        state = "missing" if not target.is_file() else "out of date: it no longer matches web/config/survey.json"
+        r.warn(FLOW_MAP_FILE, f"The map of the questionnaire (docs/flow.md) is {state}. Make it again with  "
+                              "python3 scripts/flow.py map --write  and commit it together with your change.")
+    elif code != 0:
+        r.warn(FLOW_MAP_FILE, "docs/flow.md could not be compared with the questionnaire: "
+                              + " ".join((err or out or "").split())[:300])
+
+
+# ---- The catalogue of the kinds of screen (web/config/types.json) ----------------------
+# Made from the form's own code (web/js/flow.js, web/js/types/) by  node scripts/flow.js types --write ,
+# never by hand: the flow checker, this script and the control panel read it, so a copy that no longer
+# matches the code would make them disagree with the phones. How to add a kind of question:
+# docs/config-guide.md, "How to add a question type".
+
+def check_types_catalogue(root: Path, info: SurveyInfo, r: Report) -> None:
+    """web/config/types.json must be exactly what the form's code describes (an error otherwise);
+    the control panel's copy in apps-script/Model.gs (PP_SCREEN_TYPES) too (a warning)."""
+    outcome = run_flow_tool(["types", "--check", "--json", "--root", str(root / "web")])
+    if isinstance(outcome, str):
+        r.error(TYPES_FILE, "The catalogue of the kinds of screen could not be checked. " + outcome)
+        return
+    code, out, err = outcome
+    try:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    if code not in (0, 1) or not isinstance(data, dict):
+        said = " ".join((err or out or "").split())[:500]
+        r.error(TYPES_FILE, "The catalogue of the kinds of screen (node scripts/flow.js types --check) could not run."
+                            + (f" It said: {said}" if said else ""))
+        return
+    remake = "Make it again with  node scripts/flow.js types --write  and commit it together with your change."
+    state = data.get("types_json")
+    if state == "missing":
+        r.error(TYPES_FILE, "The catalogue of the kinds of screen (web/config/types.json) is missing, so the checks and "
+                            "the control panel do not know the form's kinds of question. " + remake)
+    elif state == "stale":
+        r.error(TYPES_FILE, "The catalogue of the kinds of screen (web/config/types.json) no longer matches the form's "
+                            "code (web/js/flow.js, web/js/types/), so the checks and the control panel would disagree "
+                            "with the phones. " + remake)
+    for problem in data.get("problems") or []:
+        r.error(TYPES_FILE, f"{problem} [types]")
+    for note in data.get("warnings") or []:
+        r.warn(TYPES_FILE, f"{note} [types]")
+    model = data.get("model_gs")
+    if model == "stale":
+        r.warn(TYPES_FILE, "The control panel's list of kinds of screen (PP_SCREEN_TYPES in apps-script/Model.gs) is "
+                           "out of date. Run  node scripts/flow.js types --write , then paste Model.gs into the Apps "
+                           "Script project.")
+    elif model == "no_markers":
+        r.warn(TYPES_FILE, "apps-script/Model.gs has lost the GENERATED marks around PP_SCREEN_TYPES, so its list of "
+                           "kinds of screen cannot be checked or refreshed. Put them back from git.")
+    info.type_kinds = [t for t in data.get("builtin") or [] if isinstance(t, str)]
+    info.type_added = [t for t in data.get("added") or [] if isinstance(t, str)]
+
+
+# ---- Every script phones load is ES5 (old Android phones, Chrome 61) -------------------
+# Checked by  node scripts/flow.js es5  with the "acorn" parser the tests pin (tests/node_modules, after
+# cd tests && npm install ; GitHub's deployment installs acorn 8.14.0 and passes ACORN_PATH). A file
+# with newer syntax (let, const, =>, ?., ??, template strings ...) is skipped whole by such a phone, so
+# what it does (for example a new kind of question in web/js/types/) would silently not work.
+
+def check_es5(root: Path, info: SurveyInfo, r: Report) -> None:
+    """A script that is not ES5 is an error. Without acorn the check is skipped with a warning, except
+    when ACORN_PATH was given (as on GitHub): then a broken install is an error, so the gate never
+    silently goes missing there."""
+    outcome = run_flow_tool(["es5", "--json", "--root", str(root / "web")])
+    if isinstance(outcome, str):   # Node.js missing: the flow check above already explains it, as an error
+        r.warn(FORM_CODE, "ES5 check skipped: it needs Node.js and scripts/flow.js, which could not be used (the error "
+                          "about the flow above says why and what to do).")
+        return
+    code, out, err = outcome
+    try:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("acorn"), dict):
+        said = " ".join((err or out or "").split())[:500]
+        r.error(FORM_CODE, "The ES5 check (node scripts/flow.js es5) could not run, so it is not known whether old Android "
+                           "phones can run every script." + (f" It said: {said}" if said else ""))
+        return
+    acorn = data["acorn"]
+    if not acorn.get("found"):
+        message = data.get("message") or "ES5 check skipped: acorn is not installed. Run  cd tests && npm install  once."
+        if acorn.get("given"):
+            r.error(FORM_CODE, message + " [ES5 check]")
         else:
-            seen.append(option)
-
-
-def check_skip_if(step: FlowStep, r: Report) -> None:
-    if "skip_if" not in step.data:
+            r.warn(FORM_CODE, message + " [ES5 check]")
+        info.es5_summary = "skipped (acorn is not installed: cd tests && npm install)" if not acorn.get("given") else "could not run (ACORN_PATH)"
         return
-    value = step.data["skip_if"]
-    allowed = SKIP_IF_RULES.get(step.type)
-    if allowed is None:
-        r.error(SURVEY_FILE, f"{step.label}: skip_if only works on the language screen (\"lang_in_url\") "
-                             "and the what-changed screen (\"empty\"). Remove it here, or use show_if.")
-    elif value != allowed:
-        r.error(SURVEY_FILE, f'{step.label}: skip_if is {show(value)}, but on a {step.type} screen it can '
-                             f'only be "{allowed}".')
-
-
-def check_flow_order(steps: list, flow_length: int, r: Report) -> None:
-    endings = [step for step in steps if step.type == "thank_you"]
-    if not endings:
-        r.error(SURVEY_FILE, 'The flow has no thank_you screen. Add {"id": "thanks", "type": "thank_you"} '
-                             "as the very last screen.")
-    elif len(endings) > 1:
-        r.error(SURVEY_FILE, f"The flow has {len(endings)} thank_you screens "
-                             f"({', '.join(step.label for step in endings)}). Keep exactly one, as the last screen.")
-    elif endings[0].pos != flow_length:
-        r.error(SURVEY_FILE, f"{endings[0].label} is a thank_you screen, so it must be the last screen of "
-                             "the flow. Move it to the end.")
-    for kind in ONCE_ONLY_TYPES:
-        same = [step for step in steps if step.type == kind]
-        if len(same) > 1:
-            r.error(SURVEY_FILE, f"The flow has {len(same)} {kind} screens "
-                                 f"({', '.join(step.label for step in same)}). Only one is allowed.")
-    ratings = first_of_type(steps, "function_ratings")
-    dives = first_of_type(steps, "function_deep_dives")
-    if dives and not ratings:
-        r.error(SURVEY_FILE, f"{dives.label} shows problem screens for low-rated areas, but the flow has "
-                             "no function_ratings screen, so nothing is ever rated.")
-    elif dives and ratings and dives.pos < ratings.pos:
-        r.error(SURVEY_FILE, f"{dives.label} (problem screens) must come after {ratings.label} (area "
-                             "ratings): the problem screens depend on those ratings.")
-
-
-def first_of_type(steps: list, kind: str):
-    return next((step for step in steps if step.type == kind), None)
-
-
-# ---- show_if: "only show this screen when an earlier answer matches" ------------
-
-class FlowMap:
-    """Lets show_if checks find screens by id and by type."""
-
-    def __init__(self, steps: list, info: SurveyInfo) -> None:
-        self.steps = steps
-        self.info = info
-        self.by_id = {}
-        for step in steps:
-            if step.id is not None:
-                self.by_id.setdefault(step.id, step)
-
-    def first_of_type(self, kind: str):
-        return first_of_type(self.steps, kind)
-
-
-@dataclass
-class Answer:
-    """The possible answers of an earlier screen, so show_if values can be checked."""
-    describe: str                  # e.g. 'the yes/no question "support_gate"'
-    values: object = None          # every possible answer, as text; None = free text
-    numeric: bool = False          # True when at_most / at_least make sense
-    low: int = 0
-    high: int = 0
-
-    def allowed(self) -> str:
-        if self.numeric:
-            extra = ' or "na" (I don\'t handle this)' if "na" in self.values else ""
-            return f"a whole number from {self.low} to {self.high}{extra}"
-        return or_list(self.values)
-
-
-def check_condition(cond, step: FlowStep, where: str, flow_map: FlowMap, r: Report) -> None:
-    """Check one show_if condition (and, through all/any, the ones inside it)."""
-    if not isinstance(cond, dict):
-        r.error(SURVEY_FILE, f'{where} must be a group like {{"answer": "support_gate", "equals": "yes"}}, '
-                             f"but it is {kind_of(cond)}.")
-        return
-    names = [name for name, _ in visible_items(cond)]
-    combiners = [name for name in names if name in ("all", "any")]
-    if combiners:
-        check_combined_condition(cond, names, combiners[0], step, where, flow_map, r)
-        return
-    if "answer" not in names:
-        r.error(SURVEY_FILE, f'{where} must say which earlier answer to test, for example '
-                             '{"answer": "support_gate", "equals": "yes"}.')
-        return
-    tests = [name for name in names if name != "answer"]
-    if len(tests) != 1:
-        found = f" It has {len(tests)}: {', '.join(tests)}." if tests else ""
-        r.error(SURVEY_FILE, f"{where} must have exactly one test next to \"answer\" (one of: "
-                             f"{', '.join(SHOW_IF_TESTS)}).{found} To combine tests, use "
-                             '{"all": [...]} or {"any": [...]}.')
-        return
-    test = tests[0]
-    if test not in SHOW_IF_TESTS:
-        r.error(SURVEY_FILE, f'{where}: "{test}" is not a test the form knows.{did_you_mean(test, SHOW_IF_TESTS)} '
-                             f"Use one of: {', '.join(SHOW_IF_TESTS)}.")
-        return
-    answer = find_answer(cond["answer"], step, where, flow_map, r)
-    if answer is not None:
-        check_test_value(test, cond[test], answer, where, r)
-
-
-def check_combined_condition(cond: dict, names: list, combiner: str, step: FlowStep,
-                             where: str, flow_map: FlowMap, r: Report) -> None:
-    if len(names) != 1:
-        r.error(SURVEY_FILE, f'{where}: "{combiner}" must be alone inside its {{ }}. Put the other tests '
-                             f"inside its list, like {{\"{combiner}\": [test, test]}}.")
-        return
-    parts = cond[combiner]
-    if not isinstance(parts, list) or not parts:
-        r.error(SURVEY_FILE, f'{where} > {combiner} must be a list [ ... ] with at least one test inside.')
-        return
-    for number, part in enumerate(parts, start=1):
-        check_condition(part, step, f"{where} > {combiner} > test {number}", flow_map, r)
-
-
-def find_answer(ref, step: FlowStep, where: str, flow_map: FlowMap, r: Report):
-    """Which earlier answer does show_if test? Returns an Answer, or None (after
-    reporting why the reference cannot work)."""
-    if not is_text(ref):
-        r.error(SURVEY_FILE, f'{where}: "answer" must be the id of an earlier screen in double quotes, '
-                             'for example "support_gate".')
-        return None
-    if ref.startswith(("fn_rating:", "fn_deep_dive:")):
-        return find_area_answer(ref, step, where, flow_map, r)
-    if ref.startswith("support:"):
-        return find_support_answer(ref, step, where, flow_map, r)
-    if ref == "support_comment" and ref not in flow_map.by_id:
-        return find_support_comment(step, where, flow_map, r)
-    target = flow_map.by_id.get(ref)
-    if target is None:
-        r.error(SURVEY_FILE, f'{where}: there is no screen with the id "{ref}".'
-                             f"{did_you_mean(ref, list(flow_map.by_id))} Use the id of an earlier screen, "
-                             'or "fn_rating:<area id>" for an area rating.')
-        return None
-    if target.pos == step.pos:
-        r.error(SURVEY_FILE, f"{where}: a screen cannot depend on its own answer.")
-        return None
-    if target.pos > step.pos:
-        r.error(SURVEY_FILE, f'{where}: it tests the answer to "{ref}", but that screen comes later '
-                             f"(flow step {target.pos}), so there is no answer yet when this screen "
-                             f'(flow step {step.pos}) is shown. Move "{ref}" above this screen, or test '
-                             "an earlier answer.")
-        return None
-    return answer_of_screen(target, where, flow_map, r)
-
-
-def answer_of_screen(target: FlowStep, where: str, flow_map: FlowMap, r: Report):
-    numbers = [str(n) for n in range(11)]
-    kind, name = target.type, target.id
-    if kind == "nps_0_10":
-        return Answer(f'the 0-10 question "{name}"', numbers, True, 0, 10)
-    if kind == "rating_1_5":
-        return Answer(f'the 1-5 rating "{name}"', numbers[1:6], True, 1, 5)
-    if kind == "yes_no":
-        return Answer(f'the yes/no question "{name}"', ["yes", "no"])
-    if kind == "single_choice":
-        options = target.data.get("options")
-        usable = [o for o in options if isinstance(o, str)] if isinstance(options, list) else []
-        return Answer(f'the choice question "{name}"', usable) if usable else None
-    if kind == "free_text":
-        return Answer(f'the free-text question "{name}"', None)
-    if kind not in FLOW_TYPES:
-        return None   # already reported as an unknown type
-    hint = {
-        "function_ratings": ' To test one area\'s rating, use "fn_rating:<area id>", for example '
-                            '"fn_rating:payments".',
-        "function_deep_dives": ' To test the problem picked for one area, use "fn_deep_dive:<area id>".',
-        "support_block": ' To test one support rating, use "support:<item>", for example '
-                         '"support:kept_updated".',
-    }.get(kind, "")
-    r.error(SURVEY_FILE, f'{where}: the screen "{name}" ({kind}) does not record an answer that '
-                         f"show_if can test.{hint}")
-    return None
-
-
-def comes_before(target, step: FlowStep, what: str, where: str, r: Report) -> bool:
-    """Is the screen that provides an answer earlier in the flow than step?"""
-    if target is None:
-        r.error(SURVEY_FILE, f"{where}: this tests {what}, but there is no such screen in the flow, so "
-                             "there is never an answer.")
-        return False
-    if target.pos >= step.pos:
-        r.error(SURVEY_FILE, f"{where}: this tests {what}, which come later (flow step {target.pos}), so "
-                             f"there is no answer yet when this screen (flow step {step.pos}) is shown. "
-                             f"Move this screen below flow step {target.pos}.")
-        return False
-    return True
-
-
-def find_area_answer(ref: str, step: FlowStep, where: str, flow_map: FlowMap, r: Report):
-    prefix, area = ref.split(":", 1)
-    functions = flow_map.info.functions
-    if area not in functions:
-        r.error(SURVEY_FILE, f'{where}: "{ref}" refers to an area called "{area}", but there is no such '
-                             f"area in \"functions\" (areas: {', '.join(functions) or 'none'})."
-                             f"{did_you_mean(area, list(functions))}")
-        return None
-    ratings = flow_map.first_of_type("function_ratings")
-    if not comes_before(ratings, step, "the area ratings (function_ratings)", where, r):
-        return None
-    if prefix == "fn_rating":
-        values = [str(n) for n in range(1, 6)] + ["na"]
-        return Answer(f'the rating of the area "{area}"', values, True, 1, 5)
-    # In "immediate" mode each problem screen follows its rating straight away;
-    # otherwise they all come at the function_deep_dives screen.
-    if flow_map.info.deep_dive_when != "immediate":
-        dives = flow_map.first_of_type("function_deep_dives")
-        if not comes_before(dives, step, "the problem screens (function_deep_dives)", where, r):
-            return None
-    return Answer(f'the problem picked for the area "{area}"', functions[area] + ["other"])
-
-
-def find_support_answer(ref: str, step: FlowStep, where: str, flow_map: FlowMap, r: Report):
-    item = ref.split(":", 1)[1]
-    items = flow_map.info.support_items
-    if item not in items:
-        r.error(SURVEY_FILE, f'{where}: "{ref}" refers to a support item "{item}", but support > items '
-                             f"has no such item.{did_you_mean(item, items)}")
-        return None
-    block = flow_map.first_of_type("support_block")
-    if not comes_before(block, step, "the support ratings (support_block)", where, r):
-        return None
-    values = [str(n) for n in range(1, 6)] + (["na"] if flow_map.info.support_allows_na else [])
-    return Answer(f'the support rating "{item}"', values, True, 1, 5)
-
-
-def find_support_comment(step: FlowStep, where: str, flow_map: FlowMap, r: Report):
-    """The optional comment under the support ratings: like a free-text screen,
-    it can only be tested with "answered"."""
-    if not flow_map.info.support_has_comment:
-        r.error(SURVEY_FILE, f'{where}: "support_comment" is the comment box under the support ratings, '
-                             "but support > allow_comment is false, so there is never a comment.")
-        return None
-    block = flow_map.first_of_type("support_block")
-    if not comes_before(block, step, "the support comment (support_block)", where, r):
-        return None
-    return Answer("the support comment", None)
-
-
-def check_test_value(test: str, value, answer: Answer, where: str, r: Report) -> None:
-    """Can this test ever be true? The form compares answers as text (so 6 and
-    "6" are the same), and capital letters matter."""
-    if test == "answered":
-        if not isinstance(value, bool):
-            r.error(SURVEY_FILE, f'{where}: "answered" must be true or false, without quotes. Written as '
-                                 '"false" in quotes, the form would treat it as true.')
-        return
-    if answer.values is None:
-        r.error(SURVEY_FILE, f'{where}: {answer.describe} is a free-text answer, so it can only be tested '
-                             'with "answered": true or false.')
-        return
-    if test in ("at_most", "at_least"):
-        check_number_test(test, value, answer, where, r)
-        return
-    if test == "in" and (not isinstance(value, list) or not value):
-        example = show(answer.values[0]) if answer.values else '"yes"'
-        r.error(SURVEY_FILE, f'{where}: "in" needs a list of possible answers in square brackets, for '
-                             f"example [{example}].")
-        return
-    candidates = value if test == "in" else [value]
-    impossible = [item for item in candidates if as_js_text(item) not in answer.values]
-    if not impossible:
-        return
-    outcome = "is always true" if test == "not_equals" else "can never match"
-    case_hint = ""
-    if any(isinstance(item, str) and item.lower() in answer.values for item in impossible):
-        case_hint = " Capital letters matter: write it exactly as shown."
-    r.error(SURVEY_FILE, f"{where}: {answer.describe} can only be {answer.allowed()}, so "
-                         f"{', '.join(show(item) for item in impossible)} {outcome}.{case_hint}")
-
-
-def check_number_test(test: str, value, answer: Answer, where: str, r: Report) -> None:
-    if not answer.numeric:
-        r.error(SURVEY_FILE, f'{where}: "{test}" compares numbers, but {answer.describe} is never a number. '
-                             'Use "equals", "not_equals" or "in" instead.')
-        return
-    number = value if is_number(value) else None
-    if isinstance(value, str) and re.fullmatch(r"\s*-?\d+(\.\d+)?\s*", value):
-        number = float(value)   # the form turns "6" into 6, so this works
-    if number is None:
-        r.error(SURVEY_FILE, f'{where}: "{test}" needs a number (without quotes), but it is {show(value)}.')
-        return
-    lets_all = number >= answer.high if test == "at_most" else number <= answer.low
-    lets_none = number < answer.low if test == "at_most" else number > answer.high
-    if lets_all or lets_none:
-        result = "every answer passes" if lets_all else "no answer passes"
-        r.warn(SURVEY_FILE, f"{where}: {answer.describe} is between {answer.low} and {answer.high}, so with "
-                            f'"{test}": {show(value)} {result}. Check the number.')
+    problems = [p for p in data.get("problems") or [] if isinstance(p, dict)]
+    for problem in problems:
+        r.error(FORM_CODE, f"{problem.get('message')} [ES5 check]")
+    files = data.get("files") or []
+    info.es5_summary = (f"{plural(len(files), 'file')} (the scripts phones load, web/js/types/ and scripts/dev/) parsed by acorn "
+                        f"{acorn.get('version')}: " + (f"{plural(len(problems), 'file')} not ES5." if problems else "all ES5."))
 
 
 # ---- Which texts the settings need -----------------------------------------------
@@ -1408,15 +1242,11 @@ def keys_needed_by_settings(survey: dict, info: SurveyInfo) -> dict:
         comment = support.get("comment_text")
         need[comment if is_text(comment) else "q.support_comment"] = \
             "the support comment question (support > comment_text)"
-    for step in info.steps:
-        for name in STRING_KEY_FIELDS:
-            if is_text(step.data.get(name)):
-                need.setdefault(step.data[name], f'the {name} of the screen "{step.id}"')
-        options = step.data.get("options")
-        if step.type == "single_choice" and step.id and isinstance(options, list):
-            for option in options:
-                if isinstance(option, str):
-                    need[f"choice.{step.id}.{option}"] = f'the option "{option}" of the screen "{step.id}"'
+    # Every text the flow shows (questions, labels, options, chips, ...), as the
+    # flow checker lists them (the "text_keys" of  node scripts/flow.js check --json).
+    for key, why in info.flow_text_keys.items():
+        if isinstance(key, str) and key:
+            need.setdefault(key, why if isinstance(why, str) else "shown by the flow")
     for key in FIXED_STRING_KEYS:
         need.setdefault(key, "used by the form's code")
     return need
@@ -1426,9 +1256,39 @@ def keys_needed_by_settings(survey: dict, info: SurveyInfo) -> dict:
 # 6. The form's own code: which texts does it ask for?
 # =============================================================================
 
+def files_the_page_loads(root: Path):
+    """The scripts and stylesheets web/index.html loads, as (scripts, stylesheets),
+    each a sorted list of paths inside web/; None when there is no index.html.
+    Only these reach a partner's phone: a file the page never loads, such as
+    web/js/flow-check.js (used only by the checks), costs partners nothing and
+    is not the form's code."""
+    index = root / "web" / "index.html"
+    if not index.is_file():
+        return None
+    html = HTML_COMMENT_RE.sub("", index.read_text(encoding="utf-8", errors="replace"))
+
+    def inside_web(ref: str):
+        ref = ref.split("#", 1)[0].split("?", 1)[0].strip()
+        if not ref or ref.startswith("//") or OTHER_ADDRESS_RE.match(ref) or ".." in PurePosixPath(ref).parts:
+            return None   # another website, or outside web/: not counted here
+        return root / "web" / PurePosixPath(ref.lstrip("/"))
+
+    scripts = [inside_web(m.group(1)) for m in SCRIPT_SRC_RE.finditer(html)]
+    styles = []
+    for tag in LINK_TAG_RE.findall(html):
+        href = HREF_RE.search(tag)
+        if STYLESHEET_RE.search(tag) and href:
+            styles.append(inside_web(href.group(1)))
+    return (sorted({p for p in scripts if p is not None}), sorted({p for p in styles if p is not None}))
+
+
 def scan_form_code(root: Path, r: Report) -> FormCode:
     code = FormCode()
-    js_files = list_files(root / "web" / "js", "*.js")
+    loaded = files_the_page_loads(root)
+    if loaded is None:
+        js_files = list_files(root / "web" / "js", "*.js")
+    else:
+        js_files = [path for path in loaded[0] if path.is_file()]
     code.found = bool(js_files)
     if not js_files:
         r.warn(FORM_CODE, "The form's code (web/js) was not found, so the check of which texts the code "
@@ -1604,7 +1464,8 @@ def check_required_texts(strings: dict, info: SurveyInfo, code: FormCode, r: Rep
     needed = dict(info.required_keys) if info.loaded else {k: "used by the form's code" for k in FIXED_STRING_KEYS}
     for key, why in code.keys.items():
         needed.setdefault(key, why)
-    unused = find_unused_texts(present, needed, code) if info.loaded else []
+    # Without the flow checker the texts the flow uses are unknown: no "unused" guesses then.
+    unused = find_unused_texts(present, needed, code) if info.loaded and info.flow_checked else []
     for key, why in needed.items():
         if key not in strings:
             hint = rename_hint(key, unused)
@@ -1783,10 +1644,21 @@ def check_clip_file(path, where: str, root: Path, r: Report) -> None:
 def measure_page_weight(root: Path, r: Report) -> list:
     """Returns rows of (file, size, compressed size). Audio clips are not counted."""
     web = root / "web"
+    loaded = files_the_page_loads(root)
+    if loaded is None:   # no index.html yet: count every file
+        scripts, styles = list_files(web / "js", "*.js"), list_files(web / "css", "*.css")
+    else:                # only what index.html loads (web/js/flow-check.js is not)
+        scripts, styles = loaded
+        for path in scripts + styles:
+            if not path.is_file():
+                r.warn(PAGE_WEIGHT, f"web/index.html loads {path.relative_to(web).as_posix()}, which does not exist "
+                                    "in the web folder, so the form would miss it. Add the file or correct index.html.")
+        scripts = [path for path in scripts if path.is_file()]
+        styles = [path for path in styles if path.is_file()]
     parts = {
         "web/index.html": [web / "index.html"] if (web / "index.html").is_file() else [],
-        "web/css (.css files)": list_files(web / "css", "*.css"),
-        "web/js (.js files)": list_files(web / "js", "*.js"),
+        "web/css (.css files)": styles,
+        "web/js (.js files)": scripts,
     }
     not_found = [name for name, files in parts.items() if not files]
     if not_found:
@@ -1865,11 +1737,26 @@ def print_summary(info: SurveyInfo, strings, untranslated, round_lines: list,
     print(RULE)
     if info.loaded:
         chips = sum(len(c) for c in info.functions.values())
-        print_line(f"Survey: {plural(len(info.steps), 'screen')} in the flow, "
+        print_line(f"Survey: {plural(info.flow_screens, 'screen')} in the flow, "
                    f"{plural(len(info.functions), 'area')} with {plural(chips, 'problem chip')} (plus Other), "
                    f"{plural(len(info.support_items), 'support item')}, "
                    f"{plural(len(info.language_codes), 'language')}.", width)
         print_line(f"Answers go to: {backend_text(info)}", width)
+        if info.type_kinds or info.type_added:
+            added = (f"{len(info.type_added)} added in web/js/types/ ({', '.join(info.type_added)})" if info.type_added
+                     else "none added")
+            print_line(f"Kinds of screen: {len(info.type_kinds) + len(info.type_added)} in web/config/types.json "
+                       f"({len(info.type_kinds)} built in, {added}).", width)
+        if info.es5_summary:
+            print_line(f"ES5 check: {info.es5_summary}", width)
+        if info.flow_stats:
+            stats = info.flow_stats
+            notes = (f" The flow check also has {plural(info.flow_notes, 'note')}: python3 scripts/flow.py check "
+                     "shows them." if info.flow_notes else "")
+            print_line(f"Flow: the longest route has {plural(stats.get('longest_path', 0), 'screen')}; one submission "
+                       f"holds at most {plural(stats.get('answers', 0), 'answer')}, {plural(stats.get('ratings', 0), 'rating')} "
+                       f"and {plural(stats.get('free_text', 0), 'voice or typed answer')} (the server accepts 100, 64 "
+                       f"and 64).{notes}", width)
     else:
         print_line("survey.json could not be read, so the checks that depend on it were skipped.", width)
     for line in round_lines:
@@ -1937,6 +1824,10 @@ def run_checks(root: Path) -> int:
     audio = load_json(root, AUDIO_FILE, report)
 
     info = check_survey(survey, root, report)
+    if strings is not None:   # the map shows the texts: compare it only when they could be read
+        check_flow_map(root, info, report)
+    check_types_catalogue(root, info, report)
+    check_es5(root, info, report)
     code = scan_form_code(root, report)
     untranslated = check_strings(strings, info, code, report) if strings is not None else None
     round_lines = check_whats_changed(whats_changed, info, report) if whats_changed is not None else []

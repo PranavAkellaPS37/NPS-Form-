@@ -1,0 +1,868 @@
+{
+ "_help": "Frozen base for tests/flow/check_test.js (23 Oct 2026): an obviously fake questionnaire (TEST-1) with today's screens, areas and support items, today's flow in both formats (flow_list = the list format, flow_graph = the graph of docs/flow-graph-proposal.md section 5), and a fake text table with every text they show in all six languages. Frozen so the cases do not change when the real settings do.",
+ "survey": {
+  "survey_id": "test-survey",
+  "config_version": "TEST-1",
+  "languages": [
+   {
+    "code": "en",
+    "bcp47": "en-IN",
+    "native_name": "EN"
+   },
+   {
+    "code": "hi",
+    "bcp47": "hi-IN",
+    "native_name": "HI"
+   },
+   {
+    "code": "ta",
+    "bcp47": "ta-IN",
+    "native_name": "TA"
+   },
+   {
+    "code": "te",
+    "bcp47": "te-IN",
+    "native_name": "TE"
+   },
+   {
+    "code": "kn",
+    "bcp47": "kn-IN",
+    "native_name": "KN"
+   },
+   {
+    "code": "ml",
+    "bcp47": "ml-IN",
+    "native_name": "ML"
+   }
+  ],
+  "default_language": "en",
+  "fallback_language": "en",
+  "rating": {
+   "faces": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "allow_not_applicable": true
+  },
+  "deep_dive": {
+   "threshold": 3,
+   "when": "after_all_ratings",
+   "require_chip": true,
+   "require_detail_if_other": true
+  },
+  "functions": [
+   {
+    "id": "losses",
+    "issues": [
+     "wrong_debit",
+     "no_proof",
+     "dispute_slow",
+     "dispute_rejected",
+     "amount_too_high"
+    ]
+   },
+   {
+    "id": "payments",
+    "issues": [
+     "payout_delayed",
+     "short_payment",
+     "unclear_breakup",
+     "invoice_gst",
+     "incentive_missing"
+    ]
+   },
+   {
+    "id": "linehaul",
+    "issues": [
+     "late_arrival",
+     "trip_missed",
+     "damaged_on_arrival",
+     "short_receipt",
+     "rto_pickup_delay"
+    ]
+   },
+   {
+    "id": "consumables",
+    "issues": [
+     "short_supply",
+     "late_supply",
+     "poor_quality",
+     "wrong_charge",
+     "hard_to_request"
+    ]
+   },
+   {
+    "id": "orders",
+    "issues": [
+     "volume_low",
+     "volume_spike",
+     "forecast_wrong",
+     "pincode_mapping",
+     "capacity_mismatch"
+    ]
+   },
+   {
+    "id": "app",
+    "issues": [
+     "app_slow_crash",
+     "scan_issue",
+     "wrong_data",
+     "login_otp",
+     "missing_feature"
+    ]
+   }
+  ],
+  "support": {
+   "items": [
+    "agent_behaviour",
+    "understood_problem",
+    "time_to_resolve",
+    "kept_updated"
+   ],
+   "allow_not_applicable": false,
+   "allow_comment": true,
+   "comment_text": "q.support_comment"
+  }
+ },
+ "flow_list": [
+  {
+   "id": "language",
+   "type": "language_picker",
+   "skip_if": "lang_in_url"
+  },
+  {
+   "id": "whats_changed",
+   "type": "whats_changed",
+   "skip_if": "empty"
+  },
+  {
+   "id": "nps",
+   "type": "nps_0_10",
+   "text": "q.nps",
+   "low_label": "nps.low",
+   "high_label": "nps.high",
+   "scale_hint": "nps.scale_hint",
+   "required": true
+  },
+  {
+   "id": "fn_ratings",
+   "type": "function_ratings"
+  },
+  {
+   "id": "fn_deep_dives",
+   "type": "function_deep_dives"
+  },
+  {
+   "id": "support_gate",
+   "type": "yes_no",
+   "text": "q.support_gate",
+   "required": true
+  },
+  {
+   "id": "support",
+   "type": "support_block",
+   "text": "q.support_block",
+   "show_if": {
+    "answer": "support_gate",
+    "equals": "yes"
+   }
+  },
+  {
+   "id": "one_fix",
+   "type": "free_text",
+   "text": "q.one_fix",
+   "required": false
+  },
+  {
+   "id": "thanks",
+   "type": "thank_you"
+  }
+ ],
+ "flow_graph": {
+  "_help": "The route through the questionnaire. Live, edited in the control panel (Questions). Codes (id, store_as) are permanent once partners have answered. After any edit: python3 scripts/flow.py check",
+  "format": "pp-flow/1",
+  "start": "language",
+  "collections": {
+   "areas": {
+    "list": "functions",
+    "defaults": {
+     "threshold": 3
+    }
+   },
+   "support_items": {
+    "list": "support.items"
+   }
+  },
+  "nodes": [
+   {
+    "id": "language",
+    "type": "language_picker",
+    "show_if": {
+     "fact": "lang_in_url",
+     "equals": false
+    },
+    "next": "whats_changed"
+   },
+   {
+    "id": "whats_changed",
+    "type": "whats_changed",
+    "show_if": {
+     "fact": "whats_changed_count",
+     "at_least": 1
+    },
+    "next": "nps"
+   },
+   {
+    "id": "nps",
+    "type": "nps_0_10",
+    "text": "q.nps",
+    "low_label": "nps.low",
+    "high_label": "nps.high",
+    "scale_hint": "nps.scale_hint",
+    "required": true,
+    "next": "fn_ratings"
+   },
+   {
+    "id": "fn_ratings",
+    "type": "function_rating",
+    "repeat_for": {
+     "each": "area",
+     "in": "areas"
+    },
+    "store_as": "fn_rating:{area}",
+    "text": "q.fn_rating",
+    "label": "fn.{area}.name",
+    "help": "fn.{area}.help",
+    "allow_not_applicable": true,
+    "issue_code_from": "fn_deep_dive:{area}",
+    "next": "fn_deep_dives"
+   },
+   {
+    "id": "fn_deep_dives",
+    "type": "function_deep_dive",
+    "repeat_for": {
+     "each": "area",
+     "in": "areas",
+     "where": {
+      "answer": "fn_rating:{area}",
+      "at_most": {
+       "var": "area.threshold"
+      }
+     }
+    },
+    "store_as": "fn_deep_dive:{area}",
+    "text": "q.deep_dive",
+    "label": "fn.{area}.name",
+    "rating_from": "fn_rating:{area}",
+    "options": {
+     "from": "area.issues",
+     "text": "issue.{area}.{code}",
+     "other": "issue.other"
+    },
+    "detail_text": "q.tell_more",
+    "detail_text_required": "q.tell_more_required",
+    "require_choice": true,
+    "require_detail_if_other": true,
+    "next": "support_gate"
+   },
+   {
+    "id": "support_gate",
+    "type": "yes_no",
+    "text": "q.support_gate",
+    "required": true,
+    "next": "support"
+   },
+   {
+    "id": "support",
+    "type": "support_block",
+    "show_if": {
+     "answer": "support_gate",
+     "equals": "yes"
+    },
+    "text": "q.support_block",
+    "rows": {
+     "each": "item",
+     "in": "support_items",
+     "store_as": "support:{item}",
+     "text": "support.{item}"
+    },
+    "allow_not_applicable": false,
+    "comment": {
+     "store_as": "support_comment",
+     "text": "q.support_comment"
+    },
+    "next": "one_fix"
+   },
+   {
+    "id": "one_fix",
+    "type": "free_text",
+    "text": "q.one_fix",
+    "required": false,
+    "block": "one_fix",
+    "next": "thanks"
+   },
+   {
+    "id": "thanks",
+    "type": "thank_you"
+   }
+  ]
+ },
+ "strings": {
+  "_help": "FAKE texts for the flow-check test cases only (not shown to anyone).",
+  "lang.title": {
+   "en": "[test] lang.title",
+   "hi": "[test-hi] lang.title",
+   "ta": "[TRANSLATE] [test] lang.title",
+   "te": "[TRANSLATE] [test] lang.title",
+   "kn": "[TRANSLATE] [test] lang.title",
+   "ml": "[TRANSLATE] [test] lang.title"
+  },
+  "wc.title": {
+   "en": "[test] wc.title",
+   "hi": "[test-hi] wc.title",
+   "ta": "[TRANSLATE] [test] wc.title",
+   "te": "[TRANSLATE] [test] wc.title",
+   "kn": "[TRANSLATE] [test] wc.title",
+   "ml": "[TRANSLATE] [test] wc.title"
+  },
+  "q.nps": {
+   "en": "[test] q.nps",
+   "hi": "[test-hi] q.nps",
+   "ta": "[TRANSLATE] [test] q.nps",
+   "te": "[TRANSLATE] [test] q.nps",
+   "kn": "[TRANSLATE] [test] q.nps",
+   "ml": "[TRANSLATE] [test] q.nps"
+  },
+  "nps.low": {
+   "en": "[test] nps.low",
+   "hi": "[test-hi] nps.low",
+   "ta": "[TRANSLATE] [test] nps.low",
+   "te": "[TRANSLATE] [test] nps.low",
+   "kn": "[TRANSLATE] [test] nps.low",
+   "ml": "[TRANSLATE] [test] nps.low"
+  },
+  "nps.high": {
+   "en": "[test] nps.high",
+   "hi": "[test-hi] nps.high",
+   "ta": "[TRANSLATE] [test] nps.high",
+   "te": "[TRANSLATE] [test] nps.high",
+   "kn": "[TRANSLATE] [test] nps.high",
+   "ml": "[TRANSLATE] [test] nps.high"
+  },
+  "nps.scale_hint": {
+   "en": "[test] nps.scale_hint",
+   "hi": "[test-hi] nps.scale_hint",
+   "ta": "[TRANSLATE] [test] nps.scale_hint",
+   "te": "[TRANSLATE] [test] nps.scale_hint",
+   "kn": "[TRANSLATE] [test] nps.scale_hint",
+   "ml": "[TRANSLATE] [test] nps.scale_hint"
+  },
+  "q.fn_rating": {
+   "en": "[test] q.fn_rating",
+   "hi": "[test-hi] q.fn_rating",
+   "ta": "[TRANSLATE] [test] q.fn_rating",
+   "te": "[TRANSLATE] [test] q.fn_rating",
+   "kn": "[TRANSLATE] [test] q.fn_rating",
+   "ml": "[TRANSLATE] [test] q.fn_rating"
+  },
+  "q.deep_dive": {
+   "en": "[test] q.deep_dive",
+   "hi": "[test-hi] q.deep_dive",
+   "ta": "[TRANSLATE] [test] q.deep_dive",
+   "te": "[TRANSLATE] [test] q.deep_dive",
+   "kn": "[TRANSLATE] [test] q.deep_dive",
+   "ml": "[TRANSLATE] [test] q.deep_dive"
+  },
+  "q.tell_more": {
+   "en": "[test] q.tell_more",
+   "hi": "[test-hi] q.tell_more",
+   "ta": "[TRANSLATE] [test] q.tell_more",
+   "te": "[TRANSLATE] [test] q.tell_more",
+   "kn": "[TRANSLATE] [test] q.tell_more",
+   "ml": "[TRANSLATE] [test] q.tell_more"
+  },
+  "q.tell_more_required": {
+   "en": "[test] q.tell_more_required",
+   "hi": "[test-hi] q.tell_more_required",
+   "ta": "[TRANSLATE] [test] q.tell_more_required",
+   "te": "[TRANSLATE] [test] q.tell_more_required",
+   "kn": "[TRANSLATE] [test] q.tell_more_required",
+   "ml": "[TRANSLATE] [test] q.tell_more_required"
+  },
+  "issue.other": {
+   "en": "[test] issue.other",
+   "hi": "[test-hi] issue.other",
+   "ta": "[TRANSLATE] [test] issue.other",
+   "te": "[TRANSLATE] [test] issue.other",
+   "kn": "[TRANSLATE] [test] issue.other",
+   "ml": "[TRANSLATE] [test] issue.other"
+  },
+  "q.support_gate": {
+   "en": "[test] q.support_gate",
+   "hi": "[test-hi] q.support_gate",
+   "ta": "[TRANSLATE] [test] q.support_gate",
+   "te": "[TRANSLATE] [test] q.support_gate",
+   "kn": "[TRANSLATE] [test] q.support_gate",
+   "ml": "[TRANSLATE] [test] q.support_gate"
+  },
+  "q.support_block": {
+   "en": "[test] q.support_block",
+   "hi": "[test-hi] q.support_block",
+   "ta": "[TRANSLATE] [test] q.support_block",
+   "te": "[TRANSLATE] [test] q.support_block",
+   "kn": "[TRANSLATE] [test] q.support_block",
+   "ml": "[TRANSLATE] [test] q.support_block"
+  },
+  "q.support_comment": {
+   "en": "[test] q.support_comment",
+   "hi": "[test-hi] q.support_comment",
+   "ta": "[TRANSLATE] [test] q.support_comment",
+   "te": "[TRANSLATE] [test] q.support_comment",
+   "kn": "[TRANSLATE] [test] q.support_comment",
+   "ml": "[TRANSLATE] [test] q.support_comment"
+  },
+  "q.one_fix": {
+   "en": "[test] q.one_fix",
+   "hi": "[test-hi] q.one_fix",
+   "ta": "[TRANSLATE] [test] q.one_fix",
+   "te": "[TRANSLATE] [test] q.one_fix",
+   "kn": "[TRANSLATE] [test] q.one_fix",
+   "ml": "[TRANSLATE] [test] q.one_fix"
+  },
+  "thanks.title": {
+   "en": "[test] thanks.title",
+   "hi": "[test-hi] thanks.title",
+   "ta": "[TRANSLATE] [test] thanks.title",
+   "te": "[TRANSLATE] [test] thanks.title",
+   "kn": "[TRANSLATE] [test] thanks.title",
+   "ml": "[TRANSLATE] [test] thanks.title"
+  },
+  "thanks.body": {
+   "en": "[test] thanks.body",
+   "hi": "[test-hi] thanks.body",
+   "ta": "[TRANSLATE] [test] thanks.body",
+   "te": "[TRANSLATE] [test] thanks.body",
+   "kn": "[TRANSLATE] [test] thanks.body",
+   "ml": "[TRANSLATE] [test] thanks.body"
+  },
+  "q.callback": {
+   "en": "[test] q.callback",
+   "hi": "[test-hi] q.callback",
+   "ta": "[TRANSLATE] [test] q.callback",
+   "te": "[TRANSLATE] [test] q.callback",
+   "kn": "[TRANSLATE] [test] q.callback",
+   "ml": "[TRANSLATE] [test] q.callback"
+  },
+  "q.tamil_note": {
+   "en": "[test] q.tamil_note",
+   "hi": "[test-hi] q.tamil_note",
+   "ta": "[TRANSLATE] [test] q.tamil_note",
+   "te": "[TRANSLATE] [test] q.tamil_note",
+   "kn": "[TRANSLATE] [test] q.tamil_note",
+   "ml": "[TRANSLATE] [test] q.tamil_note"
+  },
+  "q.quick_thanks": {
+   "en": "[test] q.quick_thanks",
+   "hi": "[test-hi] q.quick_thanks",
+   "ta": "[TRANSLATE] [test] q.quick_thanks",
+   "te": "[TRANSLATE] [test] q.quick_thanks",
+   "kn": "[TRANSLATE] [test] q.quick_thanks",
+   "ml": "[TRANSLATE] [test] q.quick_thanks"
+  },
+  "q.role": {
+   "en": "[test] q.role",
+   "hi": "[test-hi] q.role",
+   "ta": "[TRANSLATE] [test] q.role",
+   "te": "[TRANSLATE] [test] q.role",
+   "kn": "[TRANSLATE] [test] q.role",
+   "ml": "[TRANSLATE] [test] q.role"
+  },
+  "choice.role.owner": {
+   "en": "[test] choice.role.owner",
+   "hi": "[test-hi] choice.role.owner",
+   "ta": "[TRANSLATE] [test] choice.role.owner",
+   "te": "[TRANSLATE] [test] choice.role.owner",
+   "kn": "[TRANSLATE] [test] choice.role.owner",
+   "ml": "[TRANSLATE] [test] choice.role.owner"
+  },
+  "choice.role.manager": {
+   "en": "[test] choice.role.manager",
+   "hi": "[test-hi] choice.role.manager",
+   "ta": "[TRANSLATE] [test] choice.role.manager",
+   "te": "[TRANSLATE] [test] choice.role.manager",
+   "kn": "[TRANSLATE] [test] choice.role.manager",
+   "ml": "[TRANSLATE] [test] choice.role.manager"
+  },
+  "fn.losses.name": {
+   "en": "[test] fn.losses.name",
+   "hi": "[test-hi] fn.losses.name",
+   "ta": "[TRANSLATE] [test] fn.losses.name",
+   "te": "[TRANSLATE] [test] fn.losses.name",
+   "kn": "[TRANSLATE] [test] fn.losses.name",
+   "ml": "[TRANSLATE] [test] fn.losses.name"
+  },
+  "fn.losses.help": {
+   "en": "[test] fn.losses.help",
+   "hi": "[test-hi] fn.losses.help",
+   "ta": "[TRANSLATE] [test] fn.losses.help",
+   "te": "[TRANSLATE] [test] fn.losses.help",
+   "kn": "[TRANSLATE] [test] fn.losses.help",
+   "ml": "[TRANSLATE] [test] fn.losses.help"
+  },
+  "issue.losses.wrong_debit": {
+   "en": "[test] issue.losses.wrong_debit",
+   "hi": "[test-hi] issue.losses.wrong_debit",
+   "ta": "[TRANSLATE] [test] issue.losses.wrong_debit",
+   "te": "[TRANSLATE] [test] issue.losses.wrong_debit",
+   "kn": "[TRANSLATE] [test] issue.losses.wrong_debit",
+   "ml": "[TRANSLATE] [test] issue.losses.wrong_debit"
+  },
+  "issue.losses.no_proof": {
+   "en": "[test] issue.losses.no_proof",
+   "hi": "[test-hi] issue.losses.no_proof",
+   "ta": "[TRANSLATE] [test] issue.losses.no_proof",
+   "te": "[TRANSLATE] [test] issue.losses.no_proof",
+   "kn": "[TRANSLATE] [test] issue.losses.no_proof",
+   "ml": "[TRANSLATE] [test] issue.losses.no_proof"
+  },
+  "issue.losses.dispute_slow": {
+   "en": "[test] issue.losses.dispute_slow",
+   "hi": "[test-hi] issue.losses.dispute_slow",
+   "ta": "[TRANSLATE] [test] issue.losses.dispute_slow",
+   "te": "[TRANSLATE] [test] issue.losses.dispute_slow",
+   "kn": "[TRANSLATE] [test] issue.losses.dispute_slow",
+   "ml": "[TRANSLATE] [test] issue.losses.dispute_slow"
+  },
+  "issue.losses.dispute_rejected": {
+   "en": "[test] issue.losses.dispute_rejected",
+   "hi": "[test-hi] issue.losses.dispute_rejected",
+   "ta": "[TRANSLATE] [test] issue.losses.dispute_rejected",
+   "te": "[TRANSLATE] [test] issue.losses.dispute_rejected",
+   "kn": "[TRANSLATE] [test] issue.losses.dispute_rejected",
+   "ml": "[TRANSLATE] [test] issue.losses.dispute_rejected"
+  },
+  "issue.losses.amount_too_high": {
+   "en": "[test] issue.losses.amount_too_high",
+   "hi": "[test-hi] issue.losses.amount_too_high",
+   "ta": "[TRANSLATE] [test] issue.losses.amount_too_high",
+   "te": "[TRANSLATE] [test] issue.losses.amount_too_high",
+   "kn": "[TRANSLATE] [test] issue.losses.amount_too_high",
+   "ml": "[TRANSLATE] [test] issue.losses.amount_too_high"
+  },
+  "fn.payments.name": {
+   "en": "[test] fn.payments.name",
+   "hi": "[test-hi] fn.payments.name",
+   "ta": "[TRANSLATE] [test] fn.payments.name",
+   "te": "[TRANSLATE] [test] fn.payments.name",
+   "kn": "[TRANSLATE] [test] fn.payments.name",
+   "ml": "[TRANSLATE] [test] fn.payments.name"
+  },
+  "fn.payments.help": {
+   "en": "[test] fn.payments.help",
+   "hi": "[test-hi] fn.payments.help",
+   "ta": "[TRANSLATE] [test] fn.payments.help",
+   "te": "[TRANSLATE] [test] fn.payments.help",
+   "kn": "[TRANSLATE] [test] fn.payments.help",
+   "ml": "[TRANSLATE] [test] fn.payments.help"
+  },
+  "issue.payments.payout_delayed": {
+   "en": "[test] issue.payments.payout_delayed",
+   "hi": "[test-hi] issue.payments.payout_delayed",
+   "ta": "[TRANSLATE] [test] issue.payments.payout_delayed",
+   "te": "[TRANSLATE] [test] issue.payments.payout_delayed",
+   "kn": "[TRANSLATE] [test] issue.payments.payout_delayed",
+   "ml": "[TRANSLATE] [test] issue.payments.payout_delayed"
+  },
+  "issue.payments.short_payment": {
+   "en": "[test] issue.payments.short_payment",
+   "hi": "[test-hi] issue.payments.short_payment",
+   "ta": "[TRANSLATE] [test] issue.payments.short_payment",
+   "te": "[TRANSLATE] [test] issue.payments.short_payment",
+   "kn": "[TRANSLATE] [test] issue.payments.short_payment",
+   "ml": "[TRANSLATE] [test] issue.payments.short_payment"
+  },
+  "issue.payments.unclear_breakup": {
+   "en": "[test] issue.payments.unclear_breakup",
+   "hi": "[test-hi] issue.payments.unclear_breakup",
+   "ta": "[TRANSLATE] [test] issue.payments.unclear_breakup",
+   "te": "[TRANSLATE] [test] issue.payments.unclear_breakup",
+   "kn": "[TRANSLATE] [test] issue.payments.unclear_breakup",
+   "ml": "[TRANSLATE] [test] issue.payments.unclear_breakup"
+  },
+  "issue.payments.invoice_gst": {
+   "en": "[test] issue.payments.invoice_gst",
+   "hi": "[test-hi] issue.payments.invoice_gst",
+   "ta": "[TRANSLATE] [test] issue.payments.invoice_gst",
+   "te": "[TRANSLATE] [test] issue.payments.invoice_gst",
+   "kn": "[TRANSLATE] [test] issue.payments.invoice_gst",
+   "ml": "[TRANSLATE] [test] issue.payments.invoice_gst"
+  },
+  "issue.payments.incentive_missing": {
+   "en": "[test] issue.payments.incentive_missing",
+   "hi": "[test-hi] issue.payments.incentive_missing",
+   "ta": "[TRANSLATE] [test] issue.payments.incentive_missing",
+   "te": "[TRANSLATE] [test] issue.payments.incentive_missing",
+   "kn": "[TRANSLATE] [test] issue.payments.incentive_missing",
+   "ml": "[TRANSLATE] [test] issue.payments.incentive_missing"
+  },
+  "fn.linehaul.name": {
+   "en": "[test] fn.linehaul.name",
+   "hi": "[test-hi] fn.linehaul.name",
+   "ta": "[TRANSLATE] [test] fn.linehaul.name",
+   "te": "[TRANSLATE] [test] fn.linehaul.name",
+   "kn": "[TRANSLATE] [test] fn.linehaul.name",
+   "ml": "[TRANSLATE] [test] fn.linehaul.name"
+  },
+  "fn.linehaul.help": {
+   "en": "[test] fn.linehaul.help",
+   "hi": "[test-hi] fn.linehaul.help",
+   "ta": "[TRANSLATE] [test] fn.linehaul.help",
+   "te": "[TRANSLATE] [test] fn.linehaul.help",
+   "kn": "[TRANSLATE] [test] fn.linehaul.help",
+   "ml": "[TRANSLATE] [test] fn.linehaul.help"
+  },
+  "issue.linehaul.late_arrival": {
+   "en": "[test] issue.linehaul.late_arrival",
+   "hi": "[test-hi] issue.linehaul.late_arrival",
+   "ta": "[TRANSLATE] [test] issue.linehaul.late_arrival",
+   "te": "[TRANSLATE] [test] issue.linehaul.late_arrival",
+   "kn": "[TRANSLATE] [test] issue.linehaul.late_arrival",
+   "ml": "[TRANSLATE] [test] issue.linehaul.late_arrival"
+  },
+  "issue.linehaul.trip_missed": {
+   "en": "[test] issue.linehaul.trip_missed",
+   "hi": "[test-hi] issue.linehaul.trip_missed",
+   "ta": "[TRANSLATE] [test] issue.linehaul.trip_missed",
+   "te": "[TRANSLATE] [test] issue.linehaul.trip_missed",
+   "kn": "[TRANSLATE] [test] issue.linehaul.trip_missed",
+   "ml": "[TRANSLATE] [test] issue.linehaul.trip_missed"
+  },
+  "issue.linehaul.damaged_on_arrival": {
+   "en": "[test] issue.linehaul.damaged_on_arrival",
+   "hi": "[test-hi] issue.linehaul.damaged_on_arrival",
+   "ta": "[TRANSLATE] [test] issue.linehaul.damaged_on_arrival",
+   "te": "[TRANSLATE] [test] issue.linehaul.damaged_on_arrival",
+   "kn": "[TRANSLATE] [test] issue.linehaul.damaged_on_arrival",
+   "ml": "[TRANSLATE] [test] issue.linehaul.damaged_on_arrival"
+  },
+  "issue.linehaul.short_receipt": {
+   "en": "[test] issue.linehaul.short_receipt",
+   "hi": "[test-hi] issue.linehaul.short_receipt",
+   "ta": "[TRANSLATE] [test] issue.linehaul.short_receipt",
+   "te": "[TRANSLATE] [test] issue.linehaul.short_receipt",
+   "kn": "[TRANSLATE] [test] issue.linehaul.short_receipt",
+   "ml": "[TRANSLATE] [test] issue.linehaul.short_receipt"
+  },
+  "issue.linehaul.rto_pickup_delay": {
+   "en": "[test] issue.linehaul.rto_pickup_delay",
+   "hi": "[test-hi] issue.linehaul.rto_pickup_delay",
+   "ta": "[TRANSLATE] [test] issue.linehaul.rto_pickup_delay",
+   "te": "[TRANSLATE] [test] issue.linehaul.rto_pickup_delay",
+   "kn": "[TRANSLATE] [test] issue.linehaul.rto_pickup_delay",
+   "ml": "[TRANSLATE] [test] issue.linehaul.rto_pickup_delay"
+  },
+  "fn.consumables.name": {
+   "en": "[test] fn.consumables.name",
+   "hi": "[test-hi] fn.consumables.name",
+   "ta": "[TRANSLATE] [test] fn.consumables.name",
+   "te": "[TRANSLATE] [test] fn.consumables.name",
+   "kn": "[TRANSLATE] [test] fn.consumables.name",
+   "ml": "[TRANSLATE] [test] fn.consumables.name"
+  },
+  "fn.consumables.help": {
+   "en": "[test] fn.consumables.help",
+   "hi": "[test-hi] fn.consumables.help",
+   "ta": "[TRANSLATE] [test] fn.consumables.help",
+   "te": "[TRANSLATE] [test] fn.consumables.help",
+   "kn": "[TRANSLATE] [test] fn.consumables.help",
+   "ml": "[TRANSLATE] [test] fn.consumables.help"
+  },
+  "issue.consumables.short_supply": {
+   "en": "[test] issue.consumables.short_supply",
+   "hi": "[test-hi] issue.consumables.short_supply",
+   "ta": "[TRANSLATE] [test] issue.consumables.short_supply",
+   "te": "[TRANSLATE] [test] issue.consumables.short_supply",
+   "kn": "[TRANSLATE] [test] issue.consumables.short_supply",
+   "ml": "[TRANSLATE] [test] issue.consumables.short_supply"
+  },
+  "issue.consumables.late_supply": {
+   "en": "[test] issue.consumables.late_supply",
+   "hi": "[test-hi] issue.consumables.late_supply",
+   "ta": "[TRANSLATE] [test] issue.consumables.late_supply",
+   "te": "[TRANSLATE] [test] issue.consumables.late_supply",
+   "kn": "[TRANSLATE] [test] issue.consumables.late_supply",
+   "ml": "[TRANSLATE] [test] issue.consumables.late_supply"
+  },
+  "issue.consumables.poor_quality": {
+   "en": "[test] issue.consumables.poor_quality",
+   "hi": "[test-hi] issue.consumables.poor_quality",
+   "ta": "[TRANSLATE] [test] issue.consumables.poor_quality",
+   "te": "[TRANSLATE] [test] issue.consumables.poor_quality",
+   "kn": "[TRANSLATE] [test] issue.consumables.poor_quality",
+   "ml": "[TRANSLATE] [test] issue.consumables.poor_quality"
+  },
+  "issue.consumables.wrong_charge": {
+   "en": "[test] issue.consumables.wrong_charge",
+   "hi": "[test-hi] issue.consumables.wrong_charge",
+   "ta": "[TRANSLATE] [test] issue.consumables.wrong_charge",
+   "te": "[TRANSLATE] [test] issue.consumables.wrong_charge",
+   "kn": "[TRANSLATE] [test] issue.consumables.wrong_charge",
+   "ml": "[TRANSLATE] [test] issue.consumables.wrong_charge"
+  },
+  "issue.consumables.hard_to_request": {
+   "en": "[test] issue.consumables.hard_to_request",
+   "hi": "[test-hi] issue.consumables.hard_to_request",
+   "ta": "[TRANSLATE] [test] issue.consumables.hard_to_request",
+   "te": "[TRANSLATE] [test] issue.consumables.hard_to_request",
+   "kn": "[TRANSLATE] [test] issue.consumables.hard_to_request",
+   "ml": "[TRANSLATE] [test] issue.consumables.hard_to_request"
+  },
+  "fn.orders.name": {
+   "en": "[test] fn.orders.name",
+   "hi": "[test-hi] fn.orders.name",
+   "ta": "[TRANSLATE] [test] fn.orders.name",
+   "te": "[TRANSLATE] [test] fn.orders.name",
+   "kn": "[TRANSLATE] [test] fn.orders.name",
+   "ml": "[TRANSLATE] [test] fn.orders.name"
+  },
+  "fn.orders.help": {
+   "en": "[test] fn.orders.help",
+   "hi": "[test-hi] fn.orders.help",
+   "ta": "[TRANSLATE] [test] fn.orders.help",
+   "te": "[TRANSLATE] [test] fn.orders.help",
+   "kn": "[TRANSLATE] [test] fn.orders.help",
+   "ml": "[TRANSLATE] [test] fn.orders.help"
+  },
+  "issue.orders.volume_low": {
+   "en": "[test] issue.orders.volume_low",
+   "hi": "[test-hi] issue.orders.volume_low",
+   "ta": "[TRANSLATE] [test] issue.orders.volume_low",
+   "te": "[TRANSLATE] [test] issue.orders.volume_low",
+   "kn": "[TRANSLATE] [test] issue.orders.volume_low",
+   "ml": "[TRANSLATE] [test] issue.orders.volume_low"
+  },
+  "issue.orders.volume_spike": {
+   "en": "[test] issue.orders.volume_spike",
+   "hi": "[test-hi] issue.orders.volume_spike",
+   "ta": "[TRANSLATE] [test] issue.orders.volume_spike",
+   "te": "[TRANSLATE] [test] issue.orders.volume_spike",
+   "kn": "[TRANSLATE] [test] issue.orders.volume_spike",
+   "ml": "[TRANSLATE] [test] issue.orders.volume_spike"
+  },
+  "issue.orders.forecast_wrong": {
+   "en": "[test] issue.orders.forecast_wrong",
+   "hi": "[test-hi] issue.orders.forecast_wrong",
+   "ta": "[TRANSLATE] [test] issue.orders.forecast_wrong",
+   "te": "[TRANSLATE] [test] issue.orders.forecast_wrong",
+   "kn": "[TRANSLATE] [test] issue.orders.forecast_wrong",
+   "ml": "[TRANSLATE] [test] issue.orders.forecast_wrong"
+  },
+  "issue.orders.pincode_mapping": {
+   "en": "[test] issue.orders.pincode_mapping",
+   "hi": "[test-hi] issue.orders.pincode_mapping",
+   "ta": "[TRANSLATE] [test] issue.orders.pincode_mapping",
+   "te": "[TRANSLATE] [test] issue.orders.pincode_mapping",
+   "kn": "[TRANSLATE] [test] issue.orders.pincode_mapping",
+   "ml": "[TRANSLATE] [test] issue.orders.pincode_mapping"
+  },
+  "issue.orders.capacity_mismatch": {
+   "en": "[test] issue.orders.capacity_mismatch",
+   "hi": "[test-hi] issue.orders.capacity_mismatch",
+   "ta": "[TRANSLATE] [test] issue.orders.capacity_mismatch",
+   "te": "[TRANSLATE] [test] issue.orders.capacity_mismatch",
+   "kn": "[TRANSLATE] [test] issue.orders.capacity_mismatch",
+   "ml": "[TRANSLATE] [test] issue.orders.capacity_mismatch"
+  },
+  "fn.app.name": {
+   "en": "[test] fn.app.name",
+   "hi": "[test-hi] fn.app.name",
+   "ta": "[TRANSLATE] [test] fn.app.name",
+   "te": "[TRANSLATE] [test] fn.app.name",
+   "kn": "[TRANSLATE] [test] fn.app.name",
+   "ml": "[TRANSLATE] [test] fn.app.name"
+  },
+  "fn.app.help": {
+   "en": "[test] fn.app.help",
+   "hi": "[test-hi] fn.app.help",
+   "ta": "[TRANSLATE] [test] fn.app.help",
+   "te": "[TRANSLATE] [test] fn.app.help",
+   "kn": "[TRANSLATE] [test] fn.app.help",
+   "ml": "[TRANSLATE] [test] fn.app.help"
+  },
+  "issue.app.app_slow_crash": {
+   "en": "[test] issue.app.app_slow_crash",
+   "hi": "[test-hi] issue.app.app_slow_crash",
+   "ta": "[TRANSLATE] [test] issue.app.app_slow_crash",
+   "te": "[TRANSLATE] [test] issue.app.app_slow_crash",
+   "kn": "[TRANSLATE] [test] issue.app.app_slow_crash",
+   "ml": "[TRANSLATE] [test] issue.app.app_slow_crash"
+  },
+  "issue.app.scan_issue": {
+   "en": "[test] issue.app.scan_issue",
+   "hi": "[test-hi] issue.app.scan_issue",
+   "ta": "[TRANSLATE] [test] issue.app.scan_issue",
+   "te": "[TRANSLATE] [test] issue.app.scan_issue",
+   "kn": "[TRANSLATE] [test] issue.app.scan_issue",
+   "ml": "[TRANSLATE] [test] issue.app.scan_issue"
+  },
+  "issue.app.wrong_data": {
+   "en": "[test] issue.app.wrong_data",
+   "hi": "[test-hi] issue.app.wrong_data",
+   "ta": "[TRANSLATE] [test] issue.app.wrong_data",
+   "te": "[TRANSLATE] [test] issue.app.wrong_data",
+   "kn": "[TRANSLATE] [test] issue.app.wrong_data",
+   "ml": "[TRANSLATE] [test] issue.app.wrong_data"
+  },
+  "issue.app.login_otp": {
+   "en": "[test] issue.app.login_otp",
+   "hi": "[test-hi] issue.app.login_otp",
+   "ta": "[TRANSLATE] [test] issue.app.login_otp",
+   "te": "[TRANSLATE] [test] issue.app.login_otp",
+   "kn": "[TRANSLATE] [test] issue.app.login_otp",
+   "ml": "[TRANSLATE] [test] issue.app.login_otp"
+  },
+  "issue.app.missing_feature": {
+   "en": "[test] issue.app.missing_feature",
+   "hi": "[test-hi] issue.app.missing_feature",
+   "ta": "[TRANSLATE] [test] issue.app.missing_feature",
+   "te": "[TRANSLATE] [test] issue.app.missing_feature",
+   "kn": "[TRANSLATE] [test] issue.app.missing_feature",
+   "ml": "[TRANSLATE] [test] issue.app.missing_feature"
+  },
+  "support.agent_behaviour": {
+   "en": "[test] support.agent_behaviour",
+   "hi": "[test-hi] support.agent_behaviour",
+   "ta": "[TRANSLATE] [test] support.agent_behaviour",
+   "te": "[TRANSLATE] [test] support.agent_behaviour",
+   "kn": "[TRANSLATE] [test] support.agent_behaviour",
+   "ml": "[TRANSLATE] [test] support.agent_behaviour"
+  },
+  "support.understood_problem": {
+   "en": "[test] support.understood_problem",
+   "hi": "[test-hi] support.understood_problem",
+   "ta": "[TRANSLATE] [test] support.understood_problem",
+   "te": "[TRANSLATE] [test] support.understood_problem",
+   "kn": "[TRANSLATE] [test] support.understood_problem",
+   "ml": "[TRANSLATE] [test] support.understood_problem"
+  },
+  "support.time_to_resolve": {
+   "en": "[test] support.time_to_resolve",
+   "hi": "[test-hi] support.time_to_resolve",
+   "ta": "[TRANSLATE] [test] support.time_to_resolve",
+   "te": "[TRANSLATE] [test] support.time_to_resolve",
+   "kn": "[TRANSLATE] [test] support.time_to_resolve",
+   "ml": "[TRANSLATE] [test] support.time_to_resolve"
+  },
+  "support.kept_updated": {
+   "en": "[test] support.kept_updated",
+   "hi": "[test-hi] support.kept_updated",
+   "ta": "[TRANSLATE] [test] support.kept_updated",
+   "te": "[TRANSLATE] [test] support.kept_updated",
+   "kn": "[TRANSLATE] [test] support.kept_updated",
+   "ml": "[TRANSLATE] [test] support.kept_updated"
+  }
+ }
+}

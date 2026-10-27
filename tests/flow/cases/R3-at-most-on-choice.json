@@ -1,0 +1,22 @@
+{
+ "_about": "\"at_most\" on a yes/no answer.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "support",
+   "field": "show_if",
+   "value": {
+    "answer": "support_gate",
+    "at_most": 1
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R3",
+   "level": "error",
+   "node": "support"
+  }
+ ]
+}

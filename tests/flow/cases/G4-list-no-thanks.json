@@ -1,0 +1,16 @@
+{
+ "_about": "List format: no thank-you screen.",
+ "base": "list",
+ "patch": [
+  {
+   "op": "remove",
+   "node": "thanks"
+  }
+ ],
+ "expect": [
+  {
+   "code": "G4",
+   "level": "error"
+  }
+ ]
+}

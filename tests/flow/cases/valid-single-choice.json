@@ -1,0 +1,37 @@
+{
+ "_about": "A pick-one question with its options as codes (labels choice.<id>.<code>), and a rule on one option.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "support_gate",
+   "field": "next",
+   "value": "role"
+  },
+  {
+   "op": "add",
+   "after": "support_gate",
+   "value": {
+    "id": "role",
+    "type": "single_choice",
+    "text": "q.role",
+    "options": [
+     "owner",
+     "manager"
+    ],
+    "required": false,
+    "next": "support"
+   }
+  },
+  {
+   "op": "set",
+   "node": "one_fix",
+   "field": "show_if",
+   "value": {
+    "answer": "role",
+    "not_equals": "manager"
+   }
+  }
+ ],
+ "expect_clean": true
+}

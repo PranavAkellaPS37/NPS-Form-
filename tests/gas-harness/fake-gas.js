@@ -238,8 +238,10 @@ function createFakeGas(userOptions) {
     users: { active: opts.adminEmail, effective: opts.adminEmail },
     // busy = another execution holds the SCRIPT lock (partners' answers);
     // documentBusy = another execution holds the Sheet's DOCUMENT lock (an admin);
-    // noDocument = Google gives no document lock at all (getDocumentLock() is null)
-    lock: { busy: false, documentBusy: false, noDocument: false },
+    // noDocument = Google gives no document lock at all (getDocumentLock() is null);
+    // beforeTryLock = a test's (kind, ms) => {...}, run at the start of every tryLock,
+    // to imitate another request finishing something while this one waits (26 Oct 2026)
+    lock: { busy: false, documentBusy: false, noDocument: false, beforeTryLock: null },
     clockOffsetMs: 0,
     ui: { queue: [], policy: 'accept' },
     fetchRoutes: [],          // [{ prefix, response }] checked before the url map
@@ -1546,6 +1548,7 @@ function createFakeGas(userOptions) {
     const lockImpl = {
       tryLock: (ms) => {
         if (typeof ms !== 'number') throw paramsError('Lock.tryLock', [ms]);
+        if (typeof control.lock.beforeTryLock === 'function') control.lock.beforeTryLock(kind, ms);
         const run = state.current;
         const refused = busy() && !(run && run.held[kind]);
         if (run) {
@@ -2022,6 +2025,9 @@ function createFakeGas(userOptions) {
     setDocumentLockBusy(busy) { control.lock.documentBusy = !!busy; },
     /* false: Google gives no document lock (getDocumentLock() returns null). */
     setDocumentLockAvailable(available) { control.lock.noDocument = !available; },
+    /* fn(kind, ms) runs at the start of every tryLock, as if another request did
+       something while this one waited for the lock; null = nothing (the default). */
+    onTryLock(fn) { control.lock.beforeTryLock = typeof fn === 'function' ? fn : null; },
     /* requireAllScopes: { missing: true } or { error: 'text' }; null = every permission granted. */
     setConsent(o) {
       control.consent.missing = !!(o && o.missing);

@@ -1,0 +1,36 @@
+{
+ "_about": "\"equals\" on a typed answer.",
+ "base": "graph",
+ "patch": [
+  {
+   "op": "set",
+   "node": "thanks",
+   "field": "show_if",
+   "value": {
+    "answer": "one_fix",
+    "equals": "hello"
+   }
+  },
+  {
+   "op": "set",
+   "node": "thanks",
+   "field": "next",
+   "value": "thanks2"
+  },
+  {
+   "op": "add",
+   "after": "thanks",
+   "value": {
+    "id": "thanks2",
+    "type": "thank_you"
+   }
+  }
+ ],
+ "expect": [
+  {
+   "code": "R3",
+   "level": "error",
+   "node": "thanks"
+  }
+ ]
+}

@@ -7,13 +7,99 @@
                                      once in tests/)
    Out:  PASS / FAIL lines, screenshots in ./shots, downloads in ./downloads.
    It starts its own bench server (server.js) on a free port and stops it.
+   Since stage 4 of the flow-graph work (26 Oct 2026) it also checks the route
+   tools: the form's own route code running in the panel window, jumps,
+   "usually go to", "ask for each area", endings, the badges, the settings
+   shown in the built-in screens' editors, the Map (with the drawing library
+   blocked, so the text outline and the mermaid.live link must appear), Try a
+   path and the Home banner about the form's route code; and, without a
+   browser, PanelServer.gs's own fingerprint check (loaded into Node).
+   The reviewers' fixes of 26 Oct 2026 are checked too: hiding or deleting an
+   ending below the thank-you screen says what happens and a route never runs
+   into another one (the check stops it, "Go there" opens "After this
+   question"); a live answer of a pick-one question can't be removed; the
+   problem-screens row's own arrows are not offered in "straight after each
+   low rating" mode (leftovers can be cleared); the Map shows the outline at
+   once and swaps in the drawing (waiting up to 20 s); Publish's warnings are
+   shown; the GitHub copy brings docs/flow.md; and "Show this question only
+   if" offers the partner's language and the round.
+   Also since 26 Oct 2026: the panel reads no checker message any more. A
+   broken jump is marked on that jump only, even when two jumps go to the
+   same screen (the finding says which: site, target, index), the rule and
+   jump builders offer what PP.flowCheck.answersAt says, and with an older
+   route code (no answersAt; the bench sends one) they fall back to the
+   earlier rows. A kind of question added in web/js/types/ (the guide's
+   example, tests/flow/fixtures/types/stars_1_10.js, installed in a copy by
+   "node scripts/flow.js types --write") reaches the window with the list of
+   kinds, so the jump builder and Try a path know its answer.
    ============================================================================= */
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const vm = require('vm');
+const crypto = require('crypto');
+const { spawnSync } = require('child_process');
 const puppeteer = require('puppeteer-core');   // from tests/node_modules
 const { start } = require('./server');
 const backend = require('./fake_backend');
+
+const REPO = path.resolve(__dirname, '..', '..');
+const REAL = backend.REAL;   // the real Model.gs + Flow.gs (null in stand-in mode)
+/* The form's own route code, for the checks made here in Node. */
+const FLOW = require(path.join(REPO, 'web', 'js', 'flow.js'));
+const FLOW_PANEL = require(path.join(REPO, 'web', 'js', 'flow-panel.js'));
+/* The form's checker (it writes docs/flow.md: "node scripts/flow.js map"). */
+const FLOW_CHECK = require(path.join(REPO, 'web', 'js', 'flow-check.js'));
+/* survey.json as the repo has it once converted to the graph: the repo file
+   itself, or (while it still holds the old list) that file with its flow
+   converted in memory, the way "python3 scripts/flow.py migrate" writes it. */
+function repoSurveyAsGraph() {
+  const raw = fs.readFileSync(path.join(REPO, 'web', 'config', 'survey.json'), 'utf8');
+  const survey = JSON.parse(raw);
+  return Array.isArray(survey.flow) ? FLOW_PANEL.surveyTextWithFlow(raw, JSON.parse(JSON.stringify(FLOW.fromLegacy(survey)))) : raw;
+}
+const withoutVersion = (t) => String(t).replace(/"config_version": "[^"]*"/, '"config_version": "…"');
+function firstDiff(a, b) {
+  const x = String(a).split('\n'), y = String(b).split('\n');
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if (x[i] !== y[i]) return 'line ' + (i + 1) + ': got ' + JSON.stringify(x[i]) + ' | expected ' + JSON.stringify(y[i]);
+  return 'identical';
+}
+/* JSON with sorted keys and without notes (_...), to compare two routes. */
+function canon(v) {
+  if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+  if (v && typeof v === 'object') return '{' + Object.keys(v).filter((k) => v[k] !== undefined && k.charAt(0) !== '_' && k !== 'byId' && k !== 'legacy').sort().map((k) => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+  return JSON.stringify(v === undefined ? null : v);
+}
+const nodeOf = (graph, id) => (graph && Array.isArray(graph.nodes) ? graph.nodes.find((n) => n && n.id === id) : null);
+/* The questionnaire the server would publish from the bench's saved draft. */
+function serverSurvey(model) { return REAL ? REAL.compile(model, null).survey : null; }
+
+/* The guide's example of a new kind of question (docs/config-guide.md, "How to add a question type"). */
+const STARS = path.join(REPO, 'tests', 'flow', 'fixtures', 'types', 'stars_1_10.js');
+/* The control panel's list of kinds (Model.gs PP_SCREEN_TYPES) once that kind is installed: in a
+   throw-away copy of web/ and Model.gs, the file goes to web/js/types/ with its line in index.html, and
+   "node scripts/flow.js types --write" remakes the list, as the guide says. */
+function screenTypesWithStars() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-panel-kind-'));
+  try {
+    fs.cpSync(path.join(REPO, 'web'), path.join(tmp, 'web'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'apps-script'));
+    fs.copyFileSync(path.join(REPO, 'apps-script', 'Model.gs'), path.join(tmp, 'apps-script', 'Model.gs'));
+    fs.mkdirSync(path.join(tmp, 'web', 'js', 'types'), { recursive: true });
+    fs.copyFileSync(STARS, path.join(tmp, 'web', 'js', 'types', 'stars_1_10.js'));
+    const index = path.join(tmp, 'web', 'index.html');
+    fs.writeFileSync(index, fs.readFileSync(index, 'utf8').replace('  <script defer src="js/app.js"></script>',
+      '  <script defer src="js/types/stars_1_10.js"></script>\n  <script defer src="js/app.js"></script>'));
+    const r = spawnSync(process.execPath, [path.join(REPO, 'scripts', 'flow.js'), 'types', '--write', '--root', path.join(tmp, 'web')], { encoding: 'utf8' });
+    if (r.status !== 0) throw new Error('node scripts/flow.js types --write failed on the copy: ' + r.stdout + r.stderr);
+    const ctx = vm.createContext({ console: { log() {}, warn() {}, error() {} } });
+    vm.runInContext(fs.readFileSync(path.join(tmp, 'apps-script', 'Model.gs'), 'utf8'), ctx, { filename: 'Model.gs' });
+    return JSON.parse(JSON.stringify(vm.runInContext('PP_SCREEN_TYPES', ctx)));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const SHOTS = path.join(__dirname, 'shots');
@@ -26,6 +112,9 @@ fs.readdirSync(SHOTS).filter((f) => /^\d\d-/.test(f)).forEach((f) => fs.unlinkSy
 const results = [];
 const consoleProblems = [];
 let page, browser, server, base, shotNo = 0;
+/* While the Map step blocks the drawing library on purpose, Chrome reports the
+   blocked download as a console error: that one is expected, nothing else. */
+let expectBlockedCdn = false;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T = (name) => '[data-test="' + String(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
@@ -107,7 +196,12 @@ async function waitForFile(name, ms) {
 }
 
 let currentStep = '';
+/* PP_STEPS=<words> runs only the steps whose name matches (a developer
+   shortcut, for example PP_STEPS='route|Map|Try a path|Home: a red banner|PanelServer').
+   A full run (no PP_STEPS) is the real result. */
+const ONLY = process.env.PP_STEPS ? new RegExp(process.env.PP_STEPS, 'i') : null;
 async function step(name, fn) {
+  if (ONLY && !ONLY.test(name)) { results.push(['SKIP', name]); return; }
   currentStep = name;
   const t0 = Date.now();
   try {
@@ -147,14 +241,80 @@ async function openPanel() {
 
 const Q = 'how_do_you_contact_support';
 
+/* PanelServer.gs's new functions, run in Node with small stand-ins for the
+   Code.gs helpers they use and for Google's UrlFetchApp / cache: the route code
+   it hands the window, and its fingerprint of the form's route files (it must
+   equal scripts/build_flow_gs.js's PP_FLOW_FINGERPRINT_ for the same files). */
+function panelServerInNode(serve) {
+  const flow = backend._internals.readFlowGs();
+  const fetched = [];
+  const cache = {};
+  const ctx = vm.createContext({
+    console: { log() {}, error() {} },
+    PP_FLOW_SOURCE_: flow.source, PP_FLOW_FINGERPRINT_: flow.fingerprint,
+    PP_requireAdminCaller_() {}, PP_permissionError_() { return null; }, PP_rawErrorText_(e) { return String(e && e.message || e); },
+    PP_nowIso_() { return new Date().toISOString(); }, PP_text_(v) { return v === null || v === undefined ? '' : String(v); },
+    PP_isPlainObject_(v) { return Object.prototype.toString.call(v) === '[object Object]'; },
+    PP_own_(o, k) { return o !== null && o !== undefined && Object.prototype.hasOwnProperty.call(o, k); },
+    PP_cacheGetOrNull_(k) { return Object.prototype.hasOwnProperty.call(cache, k) ? cache[k] : null; },
+    PP_cachePutSafely_(k, v) { cache[k] = v; },
+    UrlFetchApp: {
+      fetch(url) {
+        fetched.push(url);
+        const res = serve(url);
+        return { getResponseCode: () => res.code, getContentText: () => res.text || '' };
+      }
+    }
+  });
+  vm.runInContext(fs.readFileSync(path.join(REPO, 'apps-script', 'PanelServer.gs'), 'utf8'), ctx, { filename: 'PanelServer.gs' });
+  const call = (name, args) => JSON.parse(JSON.stringify(vm.runInContext(name, ctx).apply(null, args || [])));
+  return { call, fetched, cache, fingerprint: flow.fingerprint, source: flow.source };
+}
+
 async function main() {
+  await step('PanelServer.gs: the route code for the window, and the form fingerprint computed like build_flow_gs.js', async () => {
+    const BASE = 'https://bench.example/form/';
+    const files = {};
+    ['flow.js', 'flow-panel.js', 'flow-check.js'].forEach((f) => { files[BASE + 'js/' + f] = fs.readFileSync(path.join(REPO, 'web', 'js', f), 'utf8'); });
+    const same = panelServerInNode((url) => (files[url] !== undefined ? { code: 200, text: files[url] } : { code: 404 }));
+    const code = same.call('panelFlowCode');
+    check(code.source === same.source && code.fingerprint === same.fingerprint, 'panelFlowCode hands over Flow.gs\'s PP_FLOW_SOURCE_ and PP_FLOW_FINGERPRINT_');
+    const build = require(path.join(REPO, 'scripts', 'build_flow_gs.js')).status(REPO);
+    check(build.fresh, 'Flow.gs is up to date (node scripts/build_flow_gs.js)');
+    const st = same.call('panelFlowStatus', [BASE]);
+    check(st.same === true && st.form === build.fingerprint && st.panel === build.fingerprint, 'the repo\'s own files give the panel\'s fingerprint: ' + JSON.stringify(st));
+    check(same.fetched.length === 3 && same.fetched[0] === BASE + 'js/flow.js', 'three files read, flow.js first: ' + same.fetched.join(', '));
+    same.call('panelFlowStatus', [BASE]);
+    check(same.fetched.length === 3, 'the answer is remembered (no new fetches): ' + same.fetched.length);
+    check(/^form_flow_fp:https:\/\/bench\.example\/form\/$/.test(Object.keys(same.cache)[0] || ''), 'cache key: ' + Object.keys(same.cache).join(', '));
+    const edited = Object.assign({}, files);
+    edited[BASE + 'js/flow-check.js'] = files[BASE + 'js/flow-check.js'] + '\n// another version\n';
+    const other = panelServerInNode((url) => (edited[url] !== undefined ? { code: 200, text: edited[url] } : { code: 404 }));
+    const st2 = other.call('panelFlowStatus', [BASE]);
+    check(st2.same === false && st2.form !== build.fingerprint, 'another flow-check.js: the fingerprints differ: ' + JSON.stringify(st2));
+    const expected = crypto.createHash('sha256').update(Buffer.from(edited[BASE + 'js/flow.js'] + edited[BASE + 'js/flow-panel.js'] + edited[BASE + 'js/flow-check.js'], 'utf8')).digest('hex');
+    check(st2.form === expected, 'SHA-256 of the three files one after the other: ' + st2.form + ' vs ' + expected);
+    const older = panelServerInNode((url) => (/flow-check\.js$/.test(url) ? { code: 404 } : { code: 200, text: files[url] }));
+    const st3 = older.call('panelFlowStatus', [BASE]);
+    check(st3.same === false && /answered 404/.test(st3.problem), 'a form without flow-check.js is older: different: ' + JSON.stringify(st3));
+    const down = panelServerInNode(() => ({ code: 503 }));
+    const st4 = down.call('panelFlowStatus', [BASE]);
+    check(st4.same === null && st4.form === null && down.fetched.length === 1, 'an unreachable form: no answer (no banner): ' + JSON.stringify(st4));
+    const bad = panelServerInNode(() => ({ code: 200, text: '' }));
+    check(bad.call('panelFlowStatus', ['http://not-https/']).same === null && bad.fetched.length === 0, 'a form address that is not https://…/ is never fetched');
+  });
+
   server = await start(0);
   base = 'http://127.0.0.1:' + server.address().port;
   browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-first-run', '--no-default-browser-check'] });
   const context = browser.defaultBrowserContext();
   await context.overridePermissions(base, ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']);
   page = await browser.newPage();
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') consoleProblems.push(m.type() + ': ' + m.text()); });
+  page.on('console', (m) => {
+    if (m.type() !== 'error' && m.type() !== 'warning') return;
+    if (expectBlockedCdn && /ERR_BLOCKED_BY_CLIENT/.test(m.text())) return;
+    consoleProblems.push(m.type() + ': ' + m.text());
+  });
   page.on('pageerror', (e) => consoleProblems.push('pageerror: ' + e.message));
   page.on('framenavigated', (f) => { if (f === page.mainFrame()) console.log('    [navigated]', f.url().slice(0, 80), 'during:', currentStep); });
   page.on('error', (e) => console.log('    [page crashed]', e.message, 'during:', currentStep));
@@ -607,6 +767,20 @@ async function main() {
       'a problem with a question whose words contain "rule" opens the question, not the rule');
     check(isRuleIssue({ ref: 'screen 3', message: 'Question 3 ("How likely are you to recommend Valmo?"): the rule tests an answer that does not exist.' }) === true, 'a rule problem opens the rule');
     check(isRuleIssue({ ref: 'screen 3', message: 'Question 3 has a rule ("Show this question only if…"), which has no use there.' }) === true, 'the "rule has no use there" warning opens the rule');
+    /* 26 Oct 2026 (review finding 11 / G11): a problem with where a question goes opens "After this question". */
+    const mj = /function isJumpIssue\(it\) \{[\s\S]*?\n  \}/.exec(src);
+    check(!!mj, 'isJumpIssue is in Panel.html');
+    const isJumpIssue = new Function(mj[0] + '\nreturn isJumpIssue;')();
+    check(isJumpIssue({ ref: 'screen 3', message: 'Question 3 ("How likely are you to recommend Valmo?"): its jump to "one_fix": this question\'s answer can only be a whole number from 0 to 10, so 11 can never match. (Its code is "nps".)' }) === true,
+      'a jump\'s rule problem opens After this question');
+    check(isJumpIssue({ ref: 'screen 3', message: 'Question 3 ("How likely?"): jump 1 goes to question 10 ("Thanks"), an ending that is hidden, so partners end at the main thank-you screen (question 9) instead.' }) === true, 'a jump to a hidden ending');
+    check(isJumpIssue({ ref: 'screen 10', message: 'Question 10 ("What do you like most?") has no "usually go to", so partners who answer it go straight on to question 11 ("What went wrong?"), which starts another route (question 3 jumps there).' }) === true,
+      'a route running on into another');
+    check(isJumpIssue({ ref: 'screen 3', message: 'Question 3 ("Where do our jump trucks go next?"): the rule tests an answer that does not exist.' }) === false, 'the question\'s own words never decide');
+    check(isJumpIssue({ ref: 'screen 7', message: 'Question 7 ("How was it?") can never be reached: no arrow leads to it from the start. Point the "usually go to" of an earlier screen at it, or remove it.' }) === false,
+      '"nothing leads here" is fixed on an earlier screen, not in this one\'s After this question');
+    check(isJumpIssue({ ref: 'screen 6', message: 'Question 6 ("Did you call?"): its rule ("show only if") tests its own answer: a screen cannot depend on its own answer. Test an earlier answer, or add a jump to this question instead (After this question > Add a jump).' }) === false &&
+      isRuleIssue({ ref: 'screen 6', message: 'Question 6 ("Did you call?"): its rule ("show only if") tests its own answer: a screen cannot depend on its own answer.' }) === true, 'a rule that suggests a jump still opens the rule');
   });
 
   await step('publish: version 1 goes live', async () => {
@@ -638,6 +812,19 @@ async function main() {
     check(!(await exists('codes-unpublished-note')), 'the "nothing published yet" note is gone after publishing');
     await click('screen-edit-' + Q);
     check(!(await exists('screen-rename')), 'no Change code on a live question');
+    await click('editor-back');
+  });
+
+  /* 26 Oct 2026 (review finding 4): an answer partners picked can't be hidden, so it must stay. */
+  await step('a live answer of a pick-one question can\'t be removed: the panel says why, and its label can still be reworded', async () => {
+    await click('nav-questions');
+    await click('screen-edit-' + Q);
+    await el('option-phone_call');
+    check(await page.$eval(T('option-remove-phone_call'), (e) => e.getAttribute('aria-disabled') === 'true'), 'Remove is locked for a live answer');
+    await click('option-remove-phone_call');
+    check(/Partners already picked this answer in a real round, so it must stay: an answer can’t be removed or hidden/.test(await toastText()), 'says why: ' + (await toastText()));
+    check(!(await exists('confirm-remove-option')) && (await exists('option-phone_call')), 'nothing is removed');
+    check(await exists('option-phone_call-en'), 'its label can still be reworded');
     await click('editor-back');
   });
 
@@ -681,11 +868,14 @@ async function main() {
     check(/changes they don/.test(await text('banner')), 'draft differs banner after restore');
   });
 
-  await step('export: four files for the GitHub copy', async () => {
+  await step('export: the four files and docs/flow.md for the GitHub copy', async () => {
     await click('nav-publish');
     await click('export');
     await idle();
-    for (const f of ['survey.json', 'strings.json', 'whats_changed.json', 'audio_clips.json']) {
+    /* Since 26 Oct 2026 (review finding 10) the copy brings docs/flow.md, the map of the route (with the real Model.gs). */
+    const names = REAL ? ['survey.json', 'strings.json', 'whats_changed.json', 'audio_clips.json', 'flow.md'] : ['survey.json', 'strings.json', 'whats_changed.json', 'audio_clips.json'];
+    if (REAL) check(/flow\.md\s*goes to docs\/flow\.md/.test(await text('export-files')), 'flow.md is listed with where it goes: ' + (await text('export-files')));
+    for (const f of names) {
       await click('export-file-' + f);
       if (f === 'survey.json') {
         /* 21 Oct: no web app address yet, so taking survey.json asks first; Cancel takes nothing. */
@@ -700,11 +890,26 @@ async function main() {
       }
       await waitForFile(f);
     }
-    const survey = JSON.parse(fs.readFileSync(path.join(DL, 'survey.json'), 'utf8'));
-    check(survey.backend.mode === 'mock' && survey.backend.apps_script_url === '' && Array.isArray(survey.flow), 'survey.json content (no web app address yet: test mode, passes the settings check)');
+    const surveyText = fs.readFileSync(path.join(DL, 'survey.json'), 'utf8');
+    const survey = JSON.parse(surveyText);
+    check(survey.backend.mode === 'mock' && survey.backend.apps_script_url === '', 'survey.json content (no web app address yet: test mode, passes the settings check)');
+    /* Since stage 4 (26 Oct 2026) the GitHub copy carries the route as the graph, laid out exactly
+       as the repo's survey.json is once converted ("python3 scripts/flow.py migrate --write"). The
+       bench's draft differs from the repo's content here; its byte-for-byte comparison is made on a
+       fresh Sheet below ("web app address: …"). */
+    check(survey.flow && survey.flow.format === 'pp-flow/1' && survey.flow._help === FLOW_PANEL.FLOW_HELP, 'the route is the graph, with its own note: ' + JSON.stringify(survey.flow && survey.flow.format));
+    check(FLOW_PANEL.surveyTextWithFlow(surveyText, JSON.parse(JSON.stringify(survey.flow))) === surveyText, 'the route is laid out exactly as formatFlow writes it (the repo\'s layout)');
+    const repoKeys = Object.keys(JSON.parse(repoSurveyAsGraph()));
+    check(JSON.stringify(Object.keys(survey)) === JSON.stringify(repoKeys), 'the same top-level entries, in the same order, as the repo\'s survey.json (as a graph): ' + Object.keys(survey).join(','));
     check(/keeps the form in test mode/.test(await text('export-warning')), 'the export warning is shown: ' + (await text('export-warning')));
     const strings = JSON.parse(fs.readFileSync(path.join(DL, 'strings.json'), 'utf8'));
     check(strings['q.nps'] && strings['q.nps'].en, 'strings.json content');
+    if (REAL) {
+      const map = fs.readFileSync(path.join(DL, 'flow.md'), 'utf8');
+      const expected = REAL.exportStatic((await serverState()).model, { apps_script_url: '' })['flow.md'];
+      check(map === expected && /^<!-- GENERATED by  node scripts\/flow\.js map --write/.test(map), 'flow.md is the map Model.gs makes of the saved draft: ' + firstDiff(map, expected));
+      check(map === FLOW_CHECK.toMarkdown(survey, strings, { source: 'web/config/survey.json' }), 'and exactly what "node scripts/flow.js map" makes of the downloaded survey.json and strings.json');
+    }
     await shot('publish-export');
   });
 
@@ -892,6 +1097,389 @@ async function main() {
     await click('screen-edit-nps');
     await shot('w900-editor');
     await page.setViewport({ width: 1100, height: 760, deviceScaleFactor: 1 });
+  });
+
+  /* =====================================================================
+     The route (stage 4 of the flow-graph work, 26 Oct 2026), on a fresh
+     Sheet: jumps, "usually go to", "ask for each area", an ending, the
+     badges and warnings, the built-in screens' settings, the Map, Try a
+     path and the Home banner about the form's route code.
+     ===================================================================== */
+  const FIX = 'is_this_fixed_now';
+  const END = 'thank_you_we_will_call_you_this_week';
+  const END_TITLE = 'Thank you! We will call you this week.';
+  const END_BODY = 'Your answers were sent. Our team will call you.';
+  const SRI = 'sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I';
+  async function flowReady() {
+    await page.waitForFunction(() => window.__ppTest && window.__ppTest.flowReady && window.__ppTest.flowReady(), { timeout: 10000 });
+  }
+  const savedModel = async () => (await serverState()).model;
+  const savedScreen = async (id) => (await savedModel()).screens.find((s) => s.id === id);
+
+  await step('route tools: the form\'s own route code runs in the window, and its draft route is the server\'s', async () => {
+    await page.setViewport({ width: 1100, height: 760, deviceScaleFactor: 1 });
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await openPanel();
+    await flowReady();
+    check(await page.evaluate(() => typeof window.PP === 'undefined'), 'the route code runs with a private root: nothing called PP leaks into the page');
+    await click('nav-questions');
+    check(/Ends the survey/.test(await text('screen-end-thanks')), 'the thank-you screen says it ends the survey');
+    check((await exists('open-map')) && (await exists('open-try')) && !(await exists('flow-unavailable-note')), 'Map and Try a path are offered; no "route tools missing" note');
+    check(await exists('other-routes') && await exists('add-ending'), 'the "Other routes and endings" part, with Add an ending');
+    if (REAL) {
+      const mine = await page.evaluate(() => window.__ppTest.flowSurvey());
+      const theirs = serverSurvey(await savedModel());
+      ['languages', 'default_language', 'fallback_language', 'functions', 'deep_dive', 'flow'].forEach((k) => {
+        check(canon(mine[k]) === canon(theirs[k]), k + ' differs from the server\'s compile: ' + canon(mine[k]).slice(0, 160) + ' | ' + canon(theirs[k]).slice(0, 160));
+      });
+      check(mine.rating.allow_not_applicable === theirs.rating.allow_not_applicable, 'rating.allow_not_applicable');
+      ['items', 'allow_not_applicable', 'allow_comment', 'comment_text'].forEach((k) => check(canon(mine.support[k]) === canon(theirs.support[k]), 'support.' + k + ' differs from the server\'s compile'));
+    }
+    await checkTestNames('questions with the route tools');
+    await shot('route-list');
+  });
+
+  await step('a jump built in the editor ends up in the screen\'s jumps and in the compiled route', async () => {
+    await click('screen-edit-nps');
+    await el('after-card');
+    await click('jump-add');
+    await el('jump-0');
+    const answers = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
+    check(answers.some((t) => /^How likely are you to recommend/.test(t)) && answers.indexOf('The partner’s language') !== -1, 'its own answer and the language are offered: ' + answers.join(' / '));
+    check(!answers.some((t) => /^Rating of/.test(t) || /^Support:/.test(t)), 'later answers are not offered: ' + answers.join(' / '));
+    const targets = await page.$$eval(T('jump-0-goto') + ' option', (os) => os.map((o) => o.textContent));
+    check(!targets.some((t) => /^[123]\. /.test(t)) && targets.some((t) => /^8\. /.test(t)) && targets.some((t) => /The thank-you screen/.test(t)), 'only later questions and endings: ' + targets.join(' / '));
+    await select('jump-0-test-0', 'at_least');
+    await select('jump-0-value-0', '9');
+    await select('jump-0-goto', 'one_fix');
+    const sentence = await text('jump-sentence');
+    check(/if the answer to “How likely are you to recommend Valmo to/.test(sentence) && /is 9 or higher, they go to question 8/.test(sentence), 'sentence: ' + sentence);
+    await checkTestNames('jump builder');
+    await shot('route-jump-builder');
+    await click('editor-back');
+    check(/^↪ goes to question 8 when .* ≥ 9$/.test(await text('screen-jump-nps-0')), 'badge: ' + (await text('screen-jump-nps-0')));
+    await click('save');
+    await waitSaved();
+    const nps = await savedScreen('nps');
+    check(canon(nps.jumps) === canon([{ when: { answer: 'nps', at_least: 9 }, goto: 'one_fix' }]), 'saved in the screen\'s jumps: ' + JSON.stringify(nps.jumps));
+    if (REAL) {
+      const node = nodeOf(serverSurvey(await savedModel()).flow, 'nps');
+      check(canon(node.next) === canon([{ when: { answer: 'nps', at_least: 9 }, goto: 'one_fix' }, { default: 'fn_ratings' }]), 'the compiled route: ' + JSON.stringify(node.next));
+    }
+  });
+
+  await step('"Usually go to" is saved as the screen\'s next, and becomes its arrow', async () => {
+    await click('screen-edit-support');
+    await select('next-select', 'thanks');
+    check(/partners go to the thank-you screen \(question 9\)\./.test(await text('jump-sentence')), 'sentence: ' + (await text('jump-sentence')));
+    await click('editor-back');
+    check(/↪ then goes to the thank-you screen/.test(await text('screen-next-support')), 'badge: ' + (await text('screen-next-support')));
+    await click('save');
+    await waitSaved();
+    check((await savedScreen('support')).next === 'thanks', 'saved as next');
+    if (REAL) check(nodeOf(serverSurvey(await savedModel()).flow, 'support').next === 'thanks', 'the compiled arrow');
+    await click('screen-edit-support');
+    await select('next-select', '');
+    await click('editor-back');
+    check(!(await exists('screen-next-support')), 'back to "the next one in the list": no badge');
+  });
+
+  await step('the repeat selector: a question asked once for each area rated low', async () => {
+    await click('add-question');
+    await click('type-pick-yes_no');
+    await typeInto('new-question-text', 'Is this fixed now?');
+    check((await text('new-question-code')).includes(FIX), 'code ' + FIX);
+    await select('new-question-after', '4');   // after "5. Problem screens"
+    await click('new-question-create');
+    await el('repeat-card');
+    check(await page.$eval(T('repeat-once'), (e) => e.checked), 'asked once by default');
+    await click('repeat-each_low_area');
+    check(/is_this_fixed_now:<area>/.test(await text('repeat-help')), 'explains the answer codes: ' + (await text('repeat-help')));
+    await checkTestNames('repeat card');
+    await shot('route-repeat');
+    await click('editor-back');
+    check(/Repeats for each area rated low/.test(await text('screen-repeat-' + FIX)), 'badge');
+    await click('save');
+    await waitSaved();
+    const saved = await savedScreen(FIX);
+    check(saved && saved.repeat === 'each_low_area' && saved.type === 'yes_no', 'saved: ' + JSON.stringify(saved && saved.repeat));
+    if (REAL) {
+      const node = nodeOf(serverSurvey(await savedModel()).flow, FIX);
+      check(canon(node.repeat_for) === canon({ each: 'area', in: 'areas', where: { answer: 'fn_rating:{area}', at_most: { var: 'area.threshold' } } }) &&
+        node.store_as === FIX + ':{area}' && node.label === 'fn.{area}.name', 'the compiled loop: ' + JSON.stringify(node));
+    }
+  });
+
+  await step('"Add an ending": another thank-you screen below the main one, with its own texts, reached by a jump', async () => {
+    await el('other-routes');
+    await click('add-ending');
+    await el('add-ending-modal');
+    await typeInto('ending-new-title', END_TITLE);
+    check((await text('ending-new-code')).includes(END), 'code: ' + (await text('ending-new-code')));
+    await typeInto('ending-new-body', END_BODY);
+    await checkTestNames('add-ending pop-up');
+    await click('ending-new-create');
+    await el('screen-card-' + END);
+    check(await page.$eval(T('other-routes'), (e, id) => !!e.querySelector('[data-test="screen-card-' + id + '"]'), END), 'listed under Other routes and endings');
+    check(/Ends the survey/.test(await text('screen-end-' + END)), 'it ends the survey');
+    check(await exists('screen-unreached-' + END), 'nothing leads there yet: a warning says so');
+    await click('screen-edit-nps');
+    await select('jump-0-goto', END);
+    await click('editor-back');
+    check(!(await exists('screen-unreached-' + END)), 'reached by the jump now: the warning goes');
+    check(/^↪ goes to the ending “Thank you! We will call/.test(await text('screen-jump-nps-0')), 'the jump names the ending: ' + (await text('screen-jump-nps-0')));
+    await shot('route-ending');
+    await click('save');
+    await waitSaved();
+    const m = await savedModel();
+    const row = m.screens.find((s) => s.id === END);
+    check(row && row.type === 'thank_you' && row.text === 'end.' + END + '.title' && row.body === 'end.' + END + '.body' && m.screens.indexOf(row) === m.screens.length - 1, 'saved as the last row, with its own text keys');
+    check(m.texts['end.' + END + '.title'].en === END_TITLE && m.texts['end.' + END + '.title'].hi === '[TRANSLATE] ' + END_TITLE, 'English first, Hindi marked to translate: ' + JSON.stringify(m.texts['end.' + END + '.title']));
+    check(m.texts['end.' + END + '.body'].ta === '[TRANSLATE] ' + END_BODY, 'the message too: ' + JSON.stringify(m.texts['end.' + END + '.body']));
+    if (REAL) {
+      const g = serverSurvey(m).flow;
+      const node = nodeOf(g, END);
+      check(node && node.type === 'thank_you' && node.text === 'end.' + END + '.title' && node.body === 'end.' + END + '.body' && node.next === undefined, 'the compiled ending: ' + JSON.stringify(node));
+      check(nodeOf(g, 'nps').next[0].goto === END, 'the nps jump goes to it');
+    }
+  });
+
+  await step('badges and warnings: a jump that can never happen; hiding, moving and deleting warn about jumps', async () => {
+    await click('screen-edit-one_fix');
+    await click('jump-add');
+    await select('jump-0-answer-0', 'support_gate');
+    await select('jump-0-goto', END);
+    await click('editor-back');
+    check((await exists('screen-jump-one_fix-0')) && !(await exists('screen-jump-problem-one_fix')), 'a working jump: no warning');
+    await click('screen-toggle-support_gate');   // hide the answer that jump tests
+    check(/A rule or jump on question 8, question 9 tests this hidden question/.test(await toastText()), 'hiding warns about the rule and the jump: ' + (await toastText()));
+    check(/this jump can never happen/.test(await text('screen-jump-problem-one_fix')), 'the badge says the jump can never happen');
+    await shot('route-jump-problem');
+    await click('screen-edit-one_fix');
+    check(/This jump can never happen/.test(await text('jump-0-problem')), 'the editor says why: ' + (await text('jump-0-problem')));
+    await click('editor-back');
+    await click('screen-toggle-support_gate');
+    check(!(await exists('screen-jump-problem-one_fix')), 'shown again: the warning goes');
+    await click('screen-toggle-' + END);   // hide a jump's target, an ending
+    /* CHANGED EXPECTATION (26 Oct 2026, review finding 1): a hidden ending still ends its route, at the main thank-you
+       screen; hiding an ending partners reach says so first. */
+    await el('confirm-hide-ending');
+    check(/^While it is hidden, partners who would reach it \(question 3 jumps here; question 9 jumps here\) end at the main thank-you screen \(question 10\) instead\. Their answers are still sent, and they never go on to the screens below it\.$/.test(await text('hide-ending-note')),
+      'hiding an ending says where partners end then: ' + (await text('hide-ending-note')));
+    await click('modal-confirm');
+    check(/Ending hidden\. Partners who would reach it now end at the main thank-you screen \(question 10\)\./.test(await toastText()), 'toast: ' + (await toastText()));
+    await click('screen-toggle-' + END);
+    await click('screen-edit-support');   // an arrow, then move its target above it
+    await select('next-select', 'one_fix');
+    await click('editor-back');
+    await click('screen-up-one_fix');
+    check(/Question 9 now has an arrow back up to question 8\./.test(await toastText()), 'moving warns about the arrow that now points up: ' + (await toastText()));
+    await click('screen-down-one_fix');
+    await click('screen-edit-support');
+    await select('next-select', '');
+    await click('editor-back');
+    await click('screen-delete-' + END);   // delete a target: its arrows go too, and Undo brings them back
+    await el('confirm-delete-screen');
+    check(/^Question 3 and question 9 go to this ending\. Those arrows are removed too: partners then go where that question usually goes\./.test(await text('delete-arrows-note')), 'the confirmation names the arrows: ' + (await text('delete-arrows-note')));
+    await click('modal-confirm');
+    check(/Ending deleted\. 2 arrows to it removed too\./.test(await toastText()), 'toast: ' + (await toastText()));
+    check(!(await exists('screen-jump-nps-0')) && !(await exists('screen-jump-one_fix-0')), 'the jumps to it are gone');
+    await click('toast-undo');
+    await el('screen-card-' + END);
+    check((await exists('screen-jump-nps-0')) && (await exists('screen-jump-one_fix-0')), 'Undo brings the ending and its jumps back');
+  });
+
+  await step('the problem, support and area-rating editors show their Settings and change the same entries', async () => {
+    await click('screen-edit-fn_deep_dives');
+    await el('editor-settings-card');
+    check(await page.$eval(T('editor-dd-when-after_all_ratings'), (e) => e.checked), 'problem screens after all the ratings');
+    await select('next-select', 'support');   // a "usually go to" set while the problem screens come after all the ratings ...
+    await click('editor-dd-when-immediate');
+    await el('editor-dd-immediate-note');
+    check(await exists('after-not-used'), 'its own arrows are not used in that mode');
+    /* 26 Oct 2026 (review finding 7): in that mode the row's own arrows are not offered, and what is left over can be cleared. */
+    check(!(await exists('next-select')) && !(await exists('jump-add')), 'no "Usually go to" or "Add a jump" in that mode');
+    check(/^This row still has a “Usually go to” from before\. They change nothing for partners in this mode, but the check warns about them until they are cleared\./.test(await text('after-leftovers')),
+      'the leftover is named: ' + (await text('after-leftovers')));
+    await click('after-clear');
+    check(!(await exists('after-leftovers')), 'cleared');
+    await click('editor-dd-when-after_all_ratings');
+    check((await value('next-select')) === '', 'the "usually go to" is gone: ' + (await value('next-select')));
+    await click('editor-dd-when-immediate');
+    await el('editor-dd-immediate-note');
+    await click('nav-settings');
+    check((await value('setting-deep_dive.when')) === 'immediate', 'the same Settings entry changed');
+    await select('setting-deep_dive.when', 'after_all_ratings');
+    await click('nav-questions');
+    await click('screen-edit-fn_deep_dives');
+    check(await page.$eval(T('editor-dd-when-after_all_ratings'), (e) => e.checked), 'and back');
+    check(await page.$eval(T('editor-setting-deep_dive.require_chip'), (e) => e.checked), 'a problem must be picked');
+    check(await page.$eval(T('editor-setting-deep_dive.require_detail_if_other'), (e) => e.checked), '"Other" needs detail');
+    await click('editor-setting-deep_dive.require_chip');
+    await checkTestNames('problem screens editor');
+    await shot('route-dd-settings');
+    await click('nav-settings');
+    check(!(await page.$eval(T('setting-deep_dive.require_chip'), (e) => e.checked)), 'Settings shows it switched off');
+    await click('setting-deep_dive.require_chip');
+    await click('nav-questions');
+    await click('screen-edit-support');
+    await click('editor-setting-support.allow_not_applicable');
+    await el('editor-support-na-label-en');
+    check(await page.$eval(T('editor-setting-support.allow_comment'), (e) => e.checked), 'the comment box is on');
+    await el('editor-support-comment-text-en');
+    await click('nav-support');
+    check(await page.$eval(T('support-na-toggle'), (e) => e.checked), 'Support questions shows the same "Doesn\'t apply"');
+    await click('support-na-toggle');
+    await click('nav-questions');
+    await click('screen-edit-fn_ratings');
+    check(await page.$eval(T('editor-setting-rating.allow_not_applicable'), (e) => e.checked), '"I don\'t handle this" is shown in the area ratings');
+    await checkTestNames('area ratings editor');
+    await click('editor-back');
+  });
+
+  /* CHANGED (26 Oct 2026, review finding 11): the outline shows at once and the drawing replaces it when it is
+     ready; after 6 s a note says the drawing is still loading; the panel waits up to 20 s. */
+  await step('Map: the outline at once; the drawing (pinned library, sandboxed frame) replaces it when drawn; "still loading" after 6 s; after 20 s the outline stays, with a mermaid.live link', async () => {
+    await click('nav-questions');
+    const held = [];
+    const onRequest = (r) => {
+      if (/cdn\.jsdelivr\.net/.test(r.url())) { held.push(r); return; }   // held: the library never arrives
+      r.continue();
+    };
+    const mapState = () => page.$eval(T('map-box'), (e) => e.getAttribute('data-state'));
+    expectBlockedCdn = true;
+    await page.setRequestInterception(true);
+    page.on('request', onRequest);
+    try {
+      let t0 = Date.now();
+      await click('open-map');
+      await page.waitForSelector(T('map-outline'), { visible: true, timeout: 3000 });
+      check(Date.now() - t0 < 3000, 'the outline shows at once: ' + (Date.now() - t0) + ' ms');
+      check((await mapState()) === 'drawing' && /^Drawing the map of your draft… Meanwhile, here is the same route as a list\.$/.test((await text('map-status')).trim()),
+        'while the drawing loads: ' + (await text('map-status')));
+      const outline = await page.$$eval(T('map-outline') + ' > li', (els) => els.map((e) => e.innerText));
+      check(outline.length >= 10 && outline.some((t) => /^Ending: “Thank you! We will call you this week\.”/.test(t)) && outline.some((t) => /If nps >= 9: the ending "thank_you_we_will_call_you_this_week"/.test(t)),
+        'the outline lists the screens and the jump: ' + outline.slice(0, 3).join(' / '));
+      const href = await page.$eval(T('map-mermaid-live'), (e) => e.getAttribute('href'));
+      check(/^https:\/\/mermaid\.live\/edit#base64:/.test(href), 'the mermaid.live link is there at once: ' + href.slice(0, 60));
+      const linkState = JSON.parse(Buffer.from(href.split('#base64:')[1], 'base64').toString('utf8'));
+      check(/^flowchart TD/.test(linkState.code) && linkState.code.indexOf('n_' + END) !== -1 && /if nps #gt;= 9/.test(linkState.code), 'the link carries the whole map');
+      const frame = await page.waitForSelector(T('map-frame'), { timeout: 3000 });
+      const attrs = await frame.evaluate((e) => ({ sandbox: e.getAttribute('sandbox'), doc: e.getAttribute('srcdoc'), loading: e.classList.contains('is-loading') }));
+      check(attrs.sandbox === 'allow-scripts', 'sandboxed without "allow-same-origin": ' + attrs.sandbox);
+      check(attrs.doc.indexOf('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js') !== -1 && attrs.doc.indexOf(SRI) !== -1, 'the frame loads Mermaid 11.4.1 with its SRI hash');
+      check(attrs.loading, 'the frame stays out of sight while it loads');
+      const inner = await frame.contentFrame();
+      const reach = inner ? await inner.evaluate(() => { try { return typeof parent.google.script.run; } catch (e) { return 'blocked'; } }) : 'no frame';
+      check(reach === 'blocked', 'the frame cannot reach google.script.run: ' + reach);
+      await checkTestNames('map (loading)');
+      await page.waitForFunction(() => document.querySelector('[data-test="map-box"]').getAttribute('data-state') === 'slow', { timeout: 9000 });
+      check(Date.now() - t0 >= 5500, 'the "still loading" note comes after about 6 s: ' + (Date.now() - t0) + ' ms');
+      check(/^The drawing is still loading/.test((await text('map-status')).trim()) && (await exists('map-outline')), 'still loading, the outline still shown: ' + (await text('map-status')));
+      /* The frame's own "drawn" message (sent here from inside the frame, as Mermaid's success would send it). */
+      const token = JSON.parse(/token = ("[^"]*")/.exec(attrs.doc)[1]);
+      await inner.evaluate((tok) => { parent.postMessage({ pp: 'map', kind: 'drawn', token: tok, why: '', height: 320 }, '*'); }, token);
+      await page.waitForFunction(() => document.querySelector('[data-test="map-box"]').getAttribute('data-state') === 'drawn', { timeout: 3000 });
+      check(!(await exists('map-outline')) && !(await exists('map-status')), 'the drawing replaces the outline');
+      const shown = await page.$eval(T('map-frame'), (e) => ({ loading: e.classList.contains('is-loading'), height: e.getBoundingClientRect().height }));
+      check(!shown.loading && shown.height >= 300, 'the frame is shown at the drawing\'s height: ' + JSON.stringify(shown));
+      check(await exists('map-mermaid-live'), 'the mermaid.live link stays');
+      await shot('route-map-drawn');
+      /* Again, and this time the drawing never arrives: the panel stops waiting after 20 s and keeps the outline. */
+      await click('qview-back');
+      t0 = Date.now();
+      await click('open-map');
+      await page.waitForSelector(T('map-outline'), { visible: true, timeout: 3000 });
+      await page.waitForFunction(() => document.querySelector('[data-test="map-box"]').getAttribute('data-state') === 'fallback', { timeout: 26000 });
+      const waited = Date.now() - t0;
+      check(waited >= 19000, 'the panel waits about 20 seconds for the drawing: ' + waited + ' ms');
+      check(/^The diagram could not be drawn here \(it did not finish within 20 seconds\)\. Below is the same route as a list; the link opens the drawing in a new tab\.$/.test((await text('map-fallback')).trim()),
+        'then says so: ' + (await text('map-fallback')));
+      check(!(await exists('map-frame')) && (await exists('map-outline')) && (await exists('map-mermaid-live')), 'the outline and the link stay, the frame goes');
+      await checkTestNames('map');
+      await shot('route-map-fallback');
+      await page.setViewport({ width: 900, height: 700, deviceScaleFactor: 1 });
+      await sleep(150);
+      const over = await page.$eval('#main', (e) => e.scrollWidth - e.clientWidth);
+      check(over <= 0, 'the map\'s outline at 900 px overflows sideways by ' + over + ' px');
+      await page.setViewport({ width: 1100, height: 760, deviceScaleFactor: 1 });
+      await click('map-which-live');
+      await el('map-live-none');
+      check(/Nothing is published yet/.test(await text('map-live-none')), 'the live map: nothing published yet');
+      await click('map-which-draft');
+    } finally {
+      page.off('request', onRequest);
+      held.forEach((r) => { try { r.abort('blockedbyclient'); } catch (e) { /* already gone with its frame */ } });
+      await page.setRequestInterception(false);
+      await sleep(300);
+      expectBlockedCdn = false;
+    }
+  });
+
+  await step('Try a path: the tested answers, the screens in order, why others are skipped, and what would be sent', async () => {
+    await click('qview-back');
+    await click('open-try');
+    await el('try-inputs');
+    const inputs = await page.$$eval('[data-test^="try-answer-"]', (els) => els.map((e) => e.getAttribute('data-test').slice(11)));
+    check(inputs.indexOf('nps') !== -1 && inputs.indexOf('fn_rating:payments') !== -1 && inputs.indexOf('support_gate') !== -1, 'drop-downs for the tested answers: ' + inputs.join(', '));
+    check((await exists('try-lang')) && (await exists('try-lang-in-url')) && (await exists('try-wc')) && (await exists('try-round')) === false, 'language, link-has-language, what changed (no round: no rule tests it)');
+    await select('try-answer-nps', '9');
+    let steps = await text('try-steps');
+    check(/Thank you! We will call you this week\./.test(steps) && !/How is your experience/.test(steps), 'NPS 9 jumps to the ending: ' + steps);
+    check(/jump: nps >= 9/.test(await text('try-skipped')), 'the skipped screens say why: ' + (await text('try-skipped')).slice(0, 200));
+    await click('try-sent-toggle');
+    check(/"nps": 9/.test(await text('try-sent-json')), 'NPS 9 would be sent');
+    await select('try-answer-nps', '4');
+    await select('try-answer-fn_rating:payments', '2');
+    steps = await text('try-steps');
+    check(/Payments \/ Payouts: Is this fixed now\?/.test(steps) && /Payments \/ Payouts: What is the main problem\?/.test(steps), 'rated low: the problem screen and the repeated question for Payments: ' + steps);
+    check(!/Losses & Debits: Is this fixed now\?/.test(steps), 'not for areas that are not rated low');
+    check(/Next needs an answer/.test(await text('try-summary')), 'Next is blocked on screens no rule tests: ' + (await text('try-summary')));
+    await click('try-lang-in-url');
+    check(!/Choose your language/.test(await text('try-steps')), 'a link with ?lang= skips the language screen');
+    await checkTestNames('try a path');
+    await shot('route-try-a-path');
+    await page.setViewport({ width: 900, height: 700, deviceScaleFactor: 1 });
+    await sleep(150);
+    const over = await page.$eval('#main', (e) => e.scrollWidth - e.clientWidth);
+    check(over <= 0, 'Try a path at 900 px overflows sideways by ' + over + ' px');
+    await page.setViewport({ width: 1100, height: 760, deviceScaleFactor: 1 });
+    await click('qview-back');
+    await click('save');
+    await waitSaved();
+  });
+
+  await step('without the route code the panel still works: a short note, no Map or jumps, the older rule builder', async () => {
+    await control('fail', { fn: 'panelFlowCode', message: 'The script file "Flow" is missing from the Apps Script project.' });
+    await openPanel();
+    await click('nav-questions');
+    check(/could not start: The script file "Flow" is missing/.test(await text('flow-unavailable-note')), 'note: ' + (await text('flow-unavailable-note')));
+    check(await page.$eval(T('open-map'), (e) => e.getAttribute('aria-disabled') === 'true') && await page.$eval(T('open-try'), (e) => e.getAttribute('aria-disabled') === 'true'), 'Map and Try a path are switched off');
+    check(!(await exists('add-ending')) && !(await exists('screen-end-thanks')), 'no route badges or Add an ending');
+    await click('screen-edit-support');
+    check(!(await exists('after-card')) && !(await exists('repeat-card')), 'no "After this question" or repeat card');
+    const answers = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.textContent));
+    check(answers.some((t) => /^In the last 30 days/.test(t)), 'the rule builder still lists the earlier answers: ' + answers.join(' / '));
+    await click('editor-back');
+    await openPanel();   // the next window loads the route code again
+    await flowReady();
+  });
+
+  await step('Home: a red banner when the form on GitHub runs other route code; none when it can\'t be reached or matches', async () => {
+    await control('flow_status', { form: 'f'.repeat(64) });
+    await openPanel();
+    const banner = await text('flow-mismatch-banner');
+    check(/does not run the same route code as this control panel/.test(banner) && /form: ffffffffffff…/.test(banner), 'banner: ' + banner);
+    await shot('route-home-banner');
+    await control('flow_status', { form: 'unreachable' });
+    await openPanel();
+    await sleep(400);
+    check(!(await exists('flow-mismatch-banner')), 'no banner when the form can\'t be reached');
+    await control('flow_status', { form: 'repo' });
+    await openPanel();
+    await sleep(400);
+    check(!(await exists('flow-mismatch-banner')), 'no banner when the form runs the same code');
   });
 
   /* =====================================================================
@@ -1096,6 +1684,16 @@ async function main() {
     await click('export');
     await el('export-files', 10000);
     check(/keeps the form in test mode \("mock"\)/.test(await text('export-warning')), 'the server\'s export warning is shown: ' + (await text('export-warning')));
+    /* On this fresh Sheet the questionnaire is the repo's own (only texts and rounds changed), so the
+       GitHub copy is the repo's survey.json byte for byte, apart from config_version: the route as the
+       graph (the repo file itself once converted; until then that file converted in memory). */
+    fs.rmSync(path.join(DL, 'survey.json'), { force: true });
+    await click('export-file-survey.json');
+    await el('confirm-export-test-mode');
+    await click('modal-confirm');
+    const freshCopy = await waitForFile('survey.json');
+    const expectedCopy = repoSurveyAsGraph();
+    check(withoutVersion(freshCopy) === withoutVersion(expectedCopy), 'survey.json is the repo\'s copy, byte for byte apart from config_version: ' + firstDiff(withoutVersion(freshCopy), withoutVersion(expectedCopy)));
     await click('nav-home');
     const box = await text('webapp-field');
     check(/^Web app address \(for whoever sets up the form\)/.test(box) && /After deploying the web app, paste its address here\. The GitHub copy of the questionnaire then points the form at it\./.test(box), 'explained: ' + box);
@@ -1272,6 +1870,258 @@ async function main() {
     check(!(await exists('links-meesho-only')), 'and from Links');
   });
 
+  /* =====================================================================
+     The reviewers' fixes of 26 Oct 2026 (Google side and panel): endings
+     below the thank-you screen, Publish's warnings, and rules on the
+     partner's language or the round. On a fresh Sheet with two short routes.
+     ===================================================================== */
+  /* The screens the form's own engine shows for some answers (the link says the language; no "what changed"). */
+  function walkSurvey(survey, answers) {
+    const sv = JSON.parse(JSON.stringify(survey));
+    return FLOW.path(FLOW.load(sv), sv, { facts: { lang: 'en', lang_in_url: true, whats_changed_count: 0 } }, { answers: answers || {}, texts: {}, audio: {} }).map((x) => x.id);
+  }
+  async function issueTexts(kind) {
+    return page.$$eval('[data-test^="issue-' + kind + '-"]', (els, k) => els.filter((e) => new RegExp('^issue-' + k + '-\\d+$').test(e.getAttribute('data-test'))).map((e) => e.innerText), kind);
+  }
+
+  await step('an ending below the thank-you screen: hiding or deleting it says what happens; a route never runs into another (the check stops it, "Go there" opens After this question)', async () => {
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    const m = (await serverState()).model;
+    const row = (o) => Object.assign({ id: '', type: '', text: '', required: null, show_if: null, skip_if: '', options: [], low_label: '', high_label: '',
+      scale_hint: '', body: '', active: true, next: '', jumps: [], repeat: '' }, o);
+    const words = (en) => { const v = {}; m.languages.forEach((l) => { v[l.code] = ''; }); v.en = en; return v; };
+    m.screens.find((x) => x.id === 'nps').jumps = [{ when: { answer: 'nps', at_least: 9 }, goto: 'promo_q' }, { when: { answer: 'nps', at_most: 6 }, goto: 'detractor_q' }];
+    m.screens.push(row({ id: 'promo_q', type: 'free_text', text: 'q.promo_q', required: false }),
+      row({ id: 'promo_end', type: 'thank_you', text: 'end.promo_end.title', body: 'end.promo_end.body' }),
+      row({ id: 'detractor_q', type: 'free_text', text: 'q.detractor_q', required: false }),
+      row({ id: 'detractor_end', type: 'thank_you', text: 'end.detractor_end.title', body: 'end.detractor_end.body' }));
+    [['q.promo_q', 'What do you like most about Valmo?'], ['q.detractor_q', 'What went wrong?'], ['end.promo_end.title', 'Thank you, fan!'],
+      ['end.promo_end.body', 'Your answers were sent.'], ['end.detractor_end.title', 'Sorry to hear that.'], ['end.detractor_end.body', 'Your answers were sent.']]
+      .forEach(([k, en]) => { m.texts[k] = words(en); m.text_notes[k] = ''; });
+    await control('model', { model: m });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    await el('screen-card-promo_end');
+    // Hide: a hidden ending still ends the route, at the main thank-you screen (question 9); the panel says so first
+    await click('screen-toggle-promo_end');
+    await el('confirm-hide-ending');
+    check(/^While it is hidden, partners who would reach it \(question 10, just above it, goes on to it\) end at the main thank-you screen \(question 9\) instead\. Their answers are still sent, and they never go on to the screens below it\.$/.test(await text('hide-ending-note')),
+      'hiding says what will happen: ' + (await text('hide-ending-note')));
+    await checkTestNames('hide an ending');
+    await click('modal-confirm');
+    const hidden = await page.evaluate(() => window.__ppTest.flowSurvey());
+    check(JSON.stringify(walkSurvey(hidden, { nps: 10 })) === JSON.stringify(['nps', 'promo_q', 'thanks']), 'promoters end at the main thank-you screen: ' + walkSurvey(hidden, { nps: 10 }).join(' > '));
+    check(JSON.stringify(walkSurvey(hidden, { nps: 2 })) === JSON.stringify(['nps', 'detractor_q', 'detractor_end']), 'detractors keep their route');
+    const note = await page.$eval(T('screen-route-problem-promo_q'), (e) => e.innerText + ' | ' + e.getAttribute('title') + ' | ' + e.className);
+    check(/route note: see the editor \| .*end at the main thank-you screen \(question 9\).*badge-warn/.test(note), 'the question above it has a warning badge saying so: ' + note);
+    await click('screen-toggle-promo_end');
+    // Delete: the question above would run on into the detractors' question; the dialog says so and offers "Hide it instead"
+    await click('screen-delete-promo_end');
+    await el('confirm-delete-screen');
+    check(/^Question 10, just above this ending, has no “Usually go to”: it then goes on to question 12 \(“What went wrong\?”\), which starts another route, so Publish refuses until you choose where question 10 goes\. To keep its route ending here, hide this ending instead \(partners then end at the main thank-you screen \(question 9\)\), or set question 10’s “Usually go to” first \(Edit it > After this question\)\.$/
+      .test(await text('delete-ending-note')), 'the delete dialog explains: ' + (await text('delete-ending-note')));
+    await checkTestNames('delete an ending');
+    await shot('ending-delete-dialog');
+    await click('modal-hide-instead');
+    check(/Hidden/.test(await text('screen-card-promo_end')), '"Hide it instead" hides it');
+    await click('nav-publish');
+    await click('check');
+    await idle();
+    check(/No problems/.test(await text('check-errors-count')), 'a hidden ending is no problem: ' + (await text('check-errors-count')));
+    // Deleted for real: the check stops Publish, and "Go there" opens that question's "After this question"
+    await click('nav-questions');
+    await click('screen-toggle-promo_end');
+    await click('screen-delete-promo_end');
+    await el('confirm-delete-screen');
+    await click('modal-confirm');
+    await click('nav-publish');
+    await click('check');
+    await idle();
+    const errors = await issueTexts('error');
+    const at = errors.findIndex((t) => /has no "usually go to", so partners who answer it go straight on to question 11 \("What went wrong\?"\), which starts another route \(question 3 jumps there\)/.test(t));
+    check(at !== -1, 'the check names the run-on: ' + errors.join(' | '));
+    await click('issue-goto-error-' + at);
+    await el('after-card');
+    check(/^Question 10:/.test(await page.$eval('.editor-head h1', (e) => e.innerText)), 'Go there opens question 10');
+    await page.waitForFunction(() => { const c = document.querySelector('[data-test="after-card"]'); return c && c.classList.contains('flash'); }, { timeout: 3000 });
+    const targets = await page.$$eval(T('next-select') + ' option', (os) => os.map((o) => o.value + '=' + o.textContent));
+    check(targets.some((t) => /^thanks=9\. The thank-you screen$/.test(t)), 'the main thank-you screen above it is offered (an ending): ' + targets.join(' / '));
+    await select('next-select', 'thanks');
+    check(/After this question, partners go to the thank-you screen \(question 9\)\./.test(await text('jump-sentence')), 'sentence: ' + (await text('jump-sentence')));
+    await click('nav-publish');
+    await click('check');
+    await idle();
+    check(/No problems/.test(await text('check-errors-count')), 'fixed: ' + (await issueTexts('error')).join(' | '));
+    const now = await page.evaluate(() => window.__ppTest.flowSurvey());
+    check(JSON.stringify(walkSurvey(now, { nps: 10 })) === JSON.stringify(['nps', 'promo_q', 'thanks']), 'promoters end at the main thank-you screen');
+  });
+
+  await step('Publish\'s warnings are shown in the "Version N is live" dialog', async () => {
+    const warning = 'Published, but Partner Pulse could not check that the form on GitHub understands this version (the bench pretends). If partners keep seeing the old questions, upload the new form code to GitHub, wait for the green tick, then publish again.';
+    await control('publish_warnings', { warnings: [warning] });
+    await publishNow('Bench: a publish that needs a look');
+    const shown = await text('published-warnings');
+    check(/^Please check one thing:/.test(shown.trim()) && shown.indexOf(warning) !== -1, 'the warning is in the dialog: ' + shown);
+    await checkTestNames('published dialog');
+    await shot('published-warnings');
+    await click('published-ok');
+    await idle();
+    await publishNow('Bench: a publish without warnings');
+    check(!(await exists('published-warnings')), 'no warning box when there is nothing to check');
+    await click('published-ok');
+    await idle();
+  });
+
+  await step('"Show this question only if" also offers the partner\'s language and the round; the server checks such a rule', async () => {
+    await click('nav-questions');
+    await click('screen-edit-one_fix');
+    await click('rule-mode-if');
+    await el('rule-cond-0');
+    const answers = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.value + '=' + o.textContent));
+    check(answers.indexOf('@lang=The partner’s language') !== -1 && answers.indexOf('@round=The round') !== -1, 'the language and the round are offered: ' + answers.join(' / '));
+    check((await value('rule-answer-0')).charAt(0) !== '@', 'a new rule still starts from the latest earlier answer: ' + (await value('rule-answer-0')));
+    await select('rule-answer-0', '@lang');
+    await select('rule-value-0', 'hi');
+    check(/Partners see this question only if the partner’s language is “Hindi”\./.test(await text('rule-sentence')), 'sentence: ' + (await text('rule-sentence')));
+    await checkTestNames('rule on the language');
+    await click('save');
+    await waitSaved();
+    const saved = (await serverState()).model.screens.find((x) => x.id === 'one_fix');
+    check(canon(saved.show_if) === canon({ fact: 'lang', equals: 'hi' }), 'saved as a rule on the language: ' + JSON.stringify(saved.show_if));
+    await click('nav-publish');
+    await click('check');
+    await idle();
+    check(/No problems/.test(await text('check-errors-count')), 'the server accepts it: ' + (await issueTexts('error')).join(' | '));
+    if (REAL) {
+      const node = nodeOf(serverSurvey((await serverState()).model).flow, 'one_fix');
+      check(canon(node.show_if) === canon({ fact: 'lang', equals: 'hi' }), 'compiled: ' + JSON.stringify(node.show_if));
+    }
+    await click('nav-questions');
+    await click('screen-edit-one_fix');
+    await click('rule-mode-always');
+    await click('editor-back');
+    await click('save');
+    await waitSaved();
+  });
+
+  await step('a broken jump is marked on that jump only, even when two jumps go to the same screen; with an older or failing route code the builders fall back to the earlier rows', async () => {
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    const m = (await serverState()).model;
+    // jump 1 works; jump 2 goes to the same screen but tests an answer that comes later (support_gate): it can never happen
+    m.screens.find((x) => x.id === 'nps').jumps = [{ when: { answer: 'nps', at_least: 9 }, goto: 'one_fix' }, { when: { answer: 'support_gate', equals: 'yes' }, goto: 'one_fix' }];
+    await control('model', { model: m });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    check(/this jump can never happen/.test(await text('screen-jump-problem-nps')), 'the badge: ' + (await text('screen-jump-problem-nps')));
+    check(/"support_gate"/.test(await page.$eval(T('screen-jump-problem-nps'), (e) => e.getAttribute('title'))), 'its tooltip is the checker\'s message');
+    await click('screen-edit-nps');
+    await el('after-card');
+    const why = await text('jump-1-problem');
+    check(/This jump can never happen\./.test(why) && /"support_gate"/.test(why) && /never comes before this jump/.test(why), 'jump 2 says why: ' + why);
+    check(!(await exists('jump-0-problem')), 'jump 1 goes to the same screen and works: nothing is marked on it (the checker says which jump the problem is about)');
+    const own = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
+    check(own.some((t) => /^How likely are you to recommend/.test(t)) && own.indexOf('The partner’s language') !== -1, 'a jump may test the question\'s own answer and the language: ' + own.join(' / '));
+    check(!own.some((t) => /^In the last 30 days/.test(t) || /^Rating of/.test(t)), 'never a later answer: ' + own.join(' / '));
+    await shot('jump-problem-on-one-jump');
+    await click('editor-back');
+    await click('screen-edit-support');
+    await click('rule-mode-if');
+    const earlier = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.value));
+    check(earlier.indexOf('support_gate') !== -1 && earlier.indexOf('fn_rating:payments') !== -1 && earlier.indexOf('nps') !== -1, 'a rule may test the answers before it: ' + earlier.join(', '));
+    check(!earlier.some((v) => /^support:/.test(v) || v === 'one_fix'), 'not its own or later ones: ' + earlier.join(', '));
+    await click('rule-mode-always');
+    await click('editor-back');
+    // an older route code (a Flow.gs from before 26 Oct 2026: no answersAt, findings without their place)
+    await control('flow_code', { older: true });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    check(/this jump can never happen/.test(await text('screen-jump-problem-nps')), 'older route code: the badge is still there (from the words of the message)');
+    await click('screen-edit-nps');
+    await el('after-card');
+    check(/"support_gate"/.test(await text('jump-1-problem')), 'older route code: jump 2 is still marked');
+    const older = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
+    check(older.some((t) => /^How likely are you to recommend/.test(t)) && older.indexOf('The partner’s language') !== -1 && !older.some((t) => /^Rating of/.test(t)),
+      'older route code: the jump builder falls back to the rows up to this one: ' + older.join(' / '));
+    await click('editor-back');
+    await click('screen-edit-support');
+    await click('rule-mode-if');
+    const olderRule = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.value));
+    check(olderRule.indexOf('support_gate') !== -1 && !olderRule.some((v) => /^support:/.test(v)), 'older route code: the rule builder offers the earlier rows: ' + olderRule.join(', '));
+    await click('rule-mode-always');
+    await click('editor-back');
+    // a route code whose answersAt fails: the route tools keep working, and the builders offer the earlier rows
+    await control('flow_code', { failing: true });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    check(!(await exists('flow-error-note')) && (await exists('open-map')), 'answersAt failing: the route tools keep working');
+    check(/this jump can never happen/.test(await text('screen-jump-problem-nps')), 'answersAt failing: the badge is still there');
+    await click('screen-edit-nps');
+    await el('after-card');
+    const failing = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
+    check(failing.some((t) => /^How likely are you to recommend/.test(t)) && failing.indexOf('The partner’s language') !== -1 && !failing.some((t) => /^Rating of/.test(t)),
+      'answersAt failing: the jump builder falls back to the rows up to this one: ' + failing.join(' / '));
+    await click('editor-back');
+    await control('flow_code', { older: false });
+    await control('reset');
+    await openPanel();
+    await flowReady();
+  });
+
+  await step('a kind of question added in web/js/types/ (the guide\'s example) comes with the list of kinds: the jump builder and Try a path know its answer', async () => {
+    const types = screenTypesWithStars();
+    const row = types.find((t) => t.type === 'stars_1_10');
+    check(row && row.catalogue && row.catalogue.type === 'stars_1_10' && row.catalogue.answer && row.catalogue.answer.kind === 'number' && row.catalogue.answer.max === 10,
+      'the list "types --write" makes carries the kind\'s whole description: ' + JSON.stringify(row || null).slice(0, 240));
+    check(types.filter((t) => t.catalogue).length === 1, 'only the added kind carries one');
+    await control('reset');
+    await control('screen_types', { types });
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    await click('add-question');
+    await click('type-pick-stars_1_10');
+    await typeInto('new-question-text', 'How many stars would you give us?');
+    const code = 'how_many_stars_would_you_give_us';
+    check((await text('new-question-code')).includes(code), 'code: ' + (await text('new-question-code')));
+    await click('new-question-create');
+    await el('after-card');
+    await click('jump-add');
+    await el('jump-0');
+    const answers = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.value + '=' + o.textContent));
+    check(answers.some((t) => t.indexOf(code + '=How many stars would you give us?') === 0), 'its own answer is offered: ' + answers.join(' / '));
+    check((await value('jump-0-answer-0')) === code, 'a new jump starts from its own answer: ' + (await value('jump-0-answer-0')));
+    await select('jump-0-test-0', 'at_least');
+    const values = await page.$$eval(T('jump-0-value-0') + ' option', (os) => os.map((o) => o.value));
+    check(values.join(',') === '1,2,3,4,5,6,7,8,9,10', 'its answer is 1 to 10, as the kind says: ' + values.join(','));
+    await select('jump-0-value-0', '9');
+    await select('jump-0-goto', 'thanks');
+    await checkTestNames('a jump on an added kind');
+    await click('editor-back');
+    check(!(await exists('screen-jump-problem-' + code)), 'the jump can happen: no warning');
+    await click('open-try');
+    await el('try-inputs');
+    const tryValues = await page.$$eval(T('try-answer-' + code) + ' option', (os) => os.map((o) => o.value));
+    check(tryValues.join(',') === ',1,2,3,4,5,6,7,8,9,10', 'Try a path offers its answer: ' + tryValues.join(','));
+    check(!(await exists('try-unknown')), 'and never says no screen stores it');
+    await select('try-answer-' + code, '9');
+    await click('try-sent-toggle');
+    check(new RegExp('"' + code + '": 9').test(await text('try-sent-json')), 'its answer would be sent: ' + (await text('try-sent-json')).slice(0, 300));
+    await shot('added-kind-try-a-path');
+    await click('qview-back');
+    await control('screen_types', { types: null });
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await openPanel();
+    await flowReady();
+  });
+
   await step('no console errors or warnings', async () => {
     check(!consoleProblems.length, consoleProblems.join('\n'));
   });
@@ -1282,7 +2132,9 @@ main().catch((e) => { console.log('CRASH', e.stack); results.push(['FAIL', 'cras
     try { if (browser) await browser.close(); } catch (e) { /* ignore */ }
     try { if (server) server.close(); } catch (e) { /* ignore */ }
     const failed = results.filter((r) => r[0] === 'FAIL');
-    console.log('\n' + (results.length - failed.length) + ' passed, ' + failed.length + ' failed');
+    const skipped = results.filter((r) => r[0] === 'SKIP');
+    console.log('\n' + results.filter((r) => r[0] === 'PASS').length + ' passed, ' + failed.length + ' failed' +
+      (skipped.length ? ', ' + skipped.length + ' skipped (PP_STEPS)' : ''));
     failed.forEach((f) => console.log(' - ' + f[1] + ': ' + f[2]));
     process.exitCode = failed.length ? 1 : 0;
   });
