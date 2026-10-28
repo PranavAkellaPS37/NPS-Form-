@@ -28,7 +28,7 @@ const REQUIRED_FUNCTIONS = ['onOpen', 'ppSetup', 'doGet', 'doPost', 'panelOpen',
   'panelPreviewUrl', 'panelNewPreviewKey', 'panelGetSecret', 'panelImport', 'panelExport', 'panelSetFormUrl',
   'panelSetWebAppUrl', 'PP_readModel', 'PP_writeModel',
   'PP_compile', 'PP_validate', 'PP_importStatic', 'PP_exportStatic', 'PP_publish', 'PP_restore', 'PP_modelFromPublished',
-  'PP_ensureRoundStore_', 'PP_slug', 'PP_derivedTextKeys', 'ppFormRequest', 'PP_flowLib_'];
+  'PP_ensureRoundStore_', 'PP_slug', 'PP_derivedTextKeys', 'ppFormRequest', 'PP_flowLib_', 'panelRouteTable'];
 const REQUIRED_CONSTANTS = ['PP_SETTINGS_SCHEMA', 'PP_SCREEN_TYPES', 'PP_FORM_TEXT_KEYS', 'PP_FLOW_FINGERPRINT_', 'PP_FLOW_SOURCE_'];
 
 module.exports = function register(add) {

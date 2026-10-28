@@ -1,0 +1,10 @@
+code	kind	question (English)	answers	required	show only if	then go to	jumps	ask for	show
+language	language								yes
+speed	faces	How fast are payouts?		yes					yes
+rating_q	ratting	How do you rate us?							yes
+slow_why	voice/typing	Why is it slow?		no	sped <= 2				yes
+back_jump	yes/no	Anything else to add?					if back_jump = yes go to speed		yes
+channel	pick one	Which channel do you use?	a: Phone; a: App						yes
+empty_pick	pick one	Pick something							yes
+support_gate	support question	In the last 30 days, did you contact Valmo support?		yes					yes
+thanks	thank you								yes

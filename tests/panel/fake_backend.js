@@ -40,6 +40,28 @@
      of kinds of screen (setScreenTypes, POST /control/screen_types {types}),
      for example the one "node scripts/flow.js types --write" makes with a
      kind added in web/js/types/ (its row carries the kind's "catalogue").
+   - Since 27 Oct 2026 ("Paste a route"): the bench can also hand the panel a
+     route code from before the route table (setFlowCode('no_table'), POST
+     /control/flow_code {noTable: true}): the repo's Flow.gs without
+     PP.flowPanel.fromTable, so the panel must say the Flow file needs updating.
+   - Since the 27 Oct 2026 review (W8):
+       panelRouteTable  the route table's tools on the server, for a window that
+                        can't run the route code: the REAL PanelServer.gs
+                        function, run with the real Model.gs and Flow.gs in a
+                        fresh space for every call, as Google does
+                        (real_server.js). A list of kinds set with
+                        setScreenTypes stands for a Model.gs made with them
+                        (its PP_ADDED_TYPES_).
+       setFlowCode('refused')  the window gets route code that refuses to run
+                        (as if Google's window refused it; POST
+                        /control/flow_code {refused: true}); the server still
+                        runs the real Flow.gs. 'refused_no_table' ({refused:
+                        true, noTable: true}): and the server's Flow.gs is from
+                        before the route table too ('no_table' also takes the
+                        table from the server's Flow.gs).
+       panelLoad's live_ids.kinds  the live version's kinds, from the real
+                        PanelServer.gs PP_liveIdsOf_ (Model.gs PP_mdlLiveKinds_;
+                        only while codes are locked).
    ============================================================================= */
 'use strict';
 const fs = require('fs');
@@ -52,6 +74,8 @@ const REPO = process.env.PP_REPO || path.resolve(__dirname, '..', '..');   // th
    import, normaliser, validator, compiler, translation helpers, restore,
    export). Set PP_STANDIN=1 to use the stand-ins in this file instead. */
 const REAL = process.env.PP_STANDIN ? null : require('./real_model').loadRealModel(REPO);
+/* PanelServer.gs's own functions, with the real Model.gs and Flow.gs (a fresh space per use). */
+const { loadRealServer } = require('./real_server');
 const FORM_URL = 'https://pranavakellaps37.github.io/NPS-Form-/';
 
 const C = (key, def, help) => ({ key, type: 'color', default: def, group: 'Look & feel', help });
@@ -502,7 +526,8 @@ function fresh() {
     liveUnknown: false,     // pretend Drive had a passing problem: the live codes are unknown (live_ids_unknown)
     formFlow: 'repo',       // panelFlowStatus: 'repo' (the repo's web/js files), 'unreachable', or a fingerprint to pretend
     publishWarnings: [],    // what the next successful panelPublish answers as "warnings" (like PP_publish)
-    flowCode: 'current',    // panelFlowCode: 'current' (the repo's Flow.gs), 'older' (as before 26 Oct 2026, see olderFlowSource) or 'failing'
+    flowCode: 'current',    // panelFlowCode: 'current' (the repo's Flow.gs), 'older' (as before 26 Oct 2026, see olderFlowSource), 'failing',
+                            // 'no_table', 'refused' (the window can't run it) or 'refused_no_table' (and the server has no route table)
     screenTypes: null       // panelLoad's list of kinds of screen: null = the real Model.gs PP_SCREEN_TYPES
   };
 }
@@ -523,25 +548,55 @@ function olderFlowSource(source) {
     return text.replace(from, to);
   }, source);
 }
+/* The repo's route code as a Flow.gs from before 27 Oct 2026: no route table (fromTable). */
+function noTableFlowSource(source) {
+  const from = '  panel.fromTable = function (text, survey, strings, opts) {';
+  if (source.split(from).length !== 2) throw new Error('The bench\'s route code without the table (fake_backend.js noTableFlowSource) no longer applies: update it.');
+  return source.replace(from, '  panel.fromTableNotYet = function (text, survey, strings, opts) {');
+}
 /* The repo's route code with an answersAt that always fails (the panel must keep its route tools). */
 function failingFlowSource(source) {
   const from = '  api.answersAt = function (survey, nodeId, opts) {';
   if (source.split(from).length !== 2) throw new Error('The bench\'s failing route code (fake_backend.js failingFlowSource) no longer applies: update it.');
   return source.replace(from, from + "\n    throw new Error('The bench makes answersAt fail.');");
 }
+/* The route code as a window that refuses to run code made from text would meet it: running it stops at
+   once with the browser's own words (the panel must then paste routes through the server). */
+const REFUSED = "Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script (the bench pretends).";
+function refusedFlowSource(source) {
+  return 'throw new EvalError(' + JSON.stringify(REFUSED) + ');\n' + source;
+}
+/* The text of Flow.gs the SERVER runs (panelRouteTable): the repo's, or, while the bench pretends a Flow.gs from
+   before the route table, that file without PP.flowPanel.fromTable (in its code and in PP_FLOW_SOURCE_). */
+function serverFlowText() {
+  const text = fs.readFileSync(path.join(REPO, 'apps-script', 'Flow.gs'), 'utf8');
+  if (state.flowCode !== 'no_table' && state.flowCode !== 'refused_no_table') return text;
+  const from = '  panel.fromTable = function (text, survey, strings, opts) {';
+  if (text.split(from).length !== 3) throw new Error('The bench\'s server Flow.gs without the table (fake_backend.js serverFlowText) no longer applies: update it.');
+  return text.split(from).join('  panel.fromTableNotYet = function (text, survey, strings, opts) {');
+}
+/* PP_ADDED_TYPES_ of a Model.gs made with the bench's list of kinds (setScreenTypes): the "catalogue" of
+   each kind added in web/js/types/, as "node scripts/flow.js types --write" writes both lists together.
+   undefined = the repo's own Model.gs. */
+function addedTypes() {
+  if (!state.screenTypes) return undefined;
+  return state.screenTypes.filter((t) => t && t.catalogue && typeof t.catalogue === 'object' && !Array.isArray(t.catalogue)).map((t) => clone(t.catalogue));
+}
 let state = fresh();
 
 function liveDoc() { const p = state.published.find((x) => x.version === state.liveVersion); return p ? p.doc : null; }
+/* Like PanelServer.gs PP_liveIdsOf_: the live codes, and (since 27 Oct 2026) their kinds (the real PP_liveIdsOf_'s). */
 function liveIds() {
   const d = liveDoc();
   if (!d) return { screens: [], areas: [], chips: {}, support: [], options: {} };
-  if (logic.liveIds) return logic.liveIds(d);
+  const kinds = loadRealServer(REPO).call('PP_liveIdsOf_', [d, null]).kinds;
+  if (logic.liveIds) return Object.assign(logic.liveIds(d), { kinds });
   const sv = d.survey;
   const options = {};
   sv.flow.forEach((e) => { if (e.options) options[e.id] = e.options.slice(); });
   return {
     screens: sv.flow.map((e) => e.id), areas: sv.functions.map((f) => f.id),
-    chips: Object.fromEntries(sv.functions.map((f) => [f.id, f.issues.slice()])), support: sv.support.items.slice(), options
+    chips: Object.fromEntries(sv.functions.map((f) => [f.id, f.issues.slice()])), support: sv.support.items.slice(), options, kinds
   };
 }
 function differs() { return logic.differs(state.model, liveDoc()); }
@@ -744,9 +799,15 @@ const api = {
   /* Like PanelServer.gs: the text of Flow.gs's route files, for the panel window. */
   panelFlowCode() {
     const flow = readFlowGs();
-    if (!flow) throw new Error('The script file "Flow" is missing from the Apps Script project, so the control panel cannot show the map, "Try a path" or the jumps.');
-    const source = state.flowCode === 'older' ? olderFlowSource(flow.source) : state.flowCode === 'failing' ? failingFlowSource(flow.source) : flow.source;
+    if (!flow) throw new Error('The script file "Flow" is missing from the Apps Script project, so the control panel cannot paste a route or show the map and "Try a path".');
+    const source = state.flowCode === 'older' ? olderFlowSource(flow.source) : state.flowCode === 'failing' ? failingFlowSource(flow.source)
+      : state.flowCode === 'no_table' ? noTableFlowSource(flow.source)
+      : state.flowCode === 'refused' || state.flowCode === 'refused_no_table' ? refusedFlowSource(flow.source) : flow.source;
     return { source, fingerprint: flow.fingerprint };
+  },
+  /* The real PanelServer.gs panelRouteTable (the route table's tools on the server), in a fresh space. */
+  panelRouteTable(request) {
+    return loadRealServer(REPO, { flowText: serverFlowText(), addedTypes: addedTypes() }).call('panelRouteTable', [request]);
   },
   /* Like PanelServer.gs: does the form at formUrl run the same route code as the panel? */
   panelFlowStatus(formUrl) {
@@ -798,8 +859,8 @@ module.exports = {
   /* The next successful panelPublish answers these warnings (PP_publish's "warnings"). */
   setPublishWarnings(list) { state.publishWarnings = Array.isArray(list) ? list.map(String) : []; },
   /* panelFlowCode hands the window the repo's route code ('current'), an older one ('older', olderFlowSource),
-     or one whose answersAt fails ('failing'). */
-  setFlowCode(which) { state.flowCode = which === 'older' || which === 'failing' ? which : 'current'; },
+     one whose answersAt fails ('failing'), or one without the route table ('no_table', noTableFlowSource). */
+  setFlowCode(which) { state.flowCode = ['older', 'failing', 'no_table', 'refused', 'refused_no_table'].indexOf(which) !== -1 ? which : 'current'; },
   /* panelLoad's list of kinds of screen (null: the real one); for example with a kind added in web/js/types/. */
   setScreenTypes(list) { state.screenTypes = Array.isArray(list) ? clone(list) : null; },
   /* Puts a whole draft in the Sheet (as if saved by someone): tidied like panelSave does, revision + 1. */

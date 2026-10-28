@@ -33,6 +33,15 @@
    that copy's Model.gs (with PP_ADDED_TYPES_) and the real Flow.gs then
    check, publish and restore a draft that uses it. The copy is made in the
    computer's temporary folder and deleted afterwards.
+   Group 16 (27 Oct 2026, review W8 of "Paste a route": the route is changed
+   only by pasting a route table now): a route that runs on into another is
+   told once, as an error, in Flow.gs's words (its note G5; Model.gs's own
+   copy of that rule is gone), and the table's Check refuses it at the same
+   row; a question partners answered keeps its kind (Publish and the table's
+   Check, with PP_mdlLiveKinds_ as its liveKinds, agree); the kinds are named
+   as the table names them (compared with web/js/flow-panel.js); no Publish
+   message, and no text in Model.gs, names the removed question editor; the
+   checker's words are the table's (the same as the table's own Check).
 */
 'use strict';
 
@@ -477,21 +486,21 @@ const BREAKAGES = [
   ['duplicate screen id', m => { m.screens[2].id = 'language'; }, 'screens', 'screen 3', /^Question 3 \("How likely are you to recommend Valmo to another DC owner\?"\) has the same code as question 1 \(Language buttons\)\..*\(The code is "language"\.\)$/],
   ['invalid screen id', m => { m.screens[7].id = 'One Fix'; }, 'screens', 'screen 8', /^Question 8 \("If Valmo could fix just one thing for you, what should it be\?"\) has a code that is not allowed: use only lowercase.*\(Its code is "One Fix"; "one_fix" would work\.\)$/],
   ['screen without id', m => { m.screens[7].id = ''; }, 'screens', 'screen 8', /^Question 8 \("If Valmo could fix.*"\) has no code\. Give it one/],
-  ['unknown screen type (typo)', m => { m.screens[2].type = 'nps_0_11'; }, 'screens', 'screen 3', /is a kind of screen the form does not know\..*\(Its type is "nps_0_11"\. Did you mean "nps_0_10"\?/],
+  ['unknown screen type (typo)', m => { m.screens[2].type = 'nps_0_11'; }, 'screens', 'screen 3', /is a kind of screen the form does not know\. Correct the "kind" column of its row in the route table \(Questions > Paste a route\).*\(Its kind is "nps_0_11"\. Did you mean "0 to 10"\? The kinds: language, what changed, nps,/],
   ['built-in type used twice', m => { addScreenBefore(m, 'thanks', { id: 'support2', type: 'support_block', text: 'q.support_block' }); }, 'screens', 'screen 9', /already a "Support ratings" screen \(question 7\)/],
   ['thank-you screen not last', m => { const t = m.screens.splice(8, 1)[0]; m.screens.splice(7, 0, t); }, 'screens', 'screen 8', /The thank-you screen \(question 8\) must be the last one, but 1 question comes after it/],
   ['thank-you screen missing', m => { m.screens.splice(8, 1); }, 'screens', '', /There is no thank-you screen/],
   ['thank-you screen hidden', m => { m.screens[8].active = false; }, 'screens', 'screen 9', /The thank-you screen \(question 9\) is hidden/],
-  ['problem screens before area ratings', m => { const d = m.screens.splice(4, 1)[0]; m.screens.splice(3, 0, d); }, 'screens', 'screen 4', /^Question 4 \(Problem screens\): its "repeat for" filter \("where"\) tests "fn_rating:losses".*, which question 5 \(Area ratings\) answers, but that screen never comes before this point/],
-  ['problem screens without area ratings', m => { m.screens[3].active = false; }, 'screens', 'screen 5', /^Question 5 \(Problem screens\): its "repeat for" filter \("where"\) tests "fn_rating:losses" \(and 5 more\), but what answers it is hidden \(switched off\), so there is never an answer/],
+  ['problem screens before area ratings', m => { const d = m.screens.splice(4, 1)[0]; m.screens.splice(3, 0, d); }, 'screens', 'screen 4', /^Question 4 \(Problem screens\): its "ask for" tests "fn_rating:losses".*, which question 5 \(Area ratings\) answers, but that screen never comes before this point/],
+  ['problem screens without area ratings', m => { m.screens[3].active = false; }, 'screens', 'screen 5', /^Question 5 \(Problem screens\): its "ask for" tests "fn_rating:losses" \(and 5 more\), but what answers it is hidden \(switched off\), so there is never an answer/],
   ['question without its text', m => { m.screens[2].text = ''; }, 'screens', 'screen 3', /^Question 3 \(0 to 10 question\): a 0-10 question \(nps_0_10\) needs "text"\. It is the name of its question in Texts & translations/],
   ['support block without its text', m => { m.screens[6].text = ''; }, 'screens', 'screen 7', /^Question 7 \(Support ratings\): a Support ratings \(support_block\) needs "text"/],
   ['pick-one question without options', m => { addScreenBefore(m, 'thanks', { id: 'role', type: 'single_choice', text: 'q.one_fix' }); }, 'screens', 'screen 9', /^Question 9 \(.*\): a Pick-one question \(single_choice\) needs "options"\./],
   ['pick-one option listed twice', m => { addScreenBefore(m, 'thanks', { id: 'role', type: 'single_choice', text: 'q.one_fix', options: ['owner', 'owner'] }); addText(m, 'choice.role.owner', 'Owner'); }, 'screens', 'screen 9', /^Question 9 \(.*\): the option "owner" is listed twice\./],
   ['pick-one option with a bad code', m => { addScreenBefore(m, 'thanks', { id: 'role', type: 'single_choice', text: 'q.one_fix', options: ['Owner'] }); }, 'screens', 'screen 9', /^Question 9 \(.*\): the option "Owner" is not allowed\. Use only lowercase letters a-z, digits and _/],
   ['skip_if on an ordinary question', m => { m.screens[2].skip_if = 'empty'; }, 'screens', 'screen 3', /is set to be skipped, but only the language buttons and the "What changed" card can be skipped/],
-  ['wrong skip_if on the language screen', m => { m.screens[0].skip_if = 'empty'; }, 'screens', 'screen 1', /^Question 1 \(Language buttons\) has a skip setting the form does not know\. Choose "Skip this screen when the partner’s link already says the language"/],
-  ['wrong skip_if on the What changed screen', m => { m.screens[1].skip_if = 'lang_in_url'; }, 'screens', 'screen 2', /^Question 2 \("What changed" card\) has a skip setting the form does not know\. Choose "Skip this screen when the round has nothing to show"/],
+  ['wrong skip_if on the language screen', m => { m.screens[0].skip_if = 'empty'; }, 'screens', 'screen 1', /^Question 1 \(Language buttons\) has a skip setting the form does not know\. Use the usual one \("Skip this screen when the partner’s link already says the language"\), or switch skipping off: in the route table \(Questions > Paste a route\), leave its "show only if" column empty for the usual one, or write always there/],
+  ['wrong skip_if on the What changed screen', m => { m.screens[1].skip_if = 'lang_in_url'; }, 'screens', 'screen 2', /^Question 2 \("What changed" card\) has a skip setting the form does not know\. Use the usual one \("Skip this screen when the round has nothing to show"\)/],
   ['"required" neither TRUE nor FALSE', m => { m.screens[7].required = 'maybe'; }, 'screens', 'screen 8', /has "required" set to "maybe"/],
   // ---- Rules
   ['rule with two tests', m => { m.screens[6].show_if = { answer: 'support_gate', equals: 'yes', not_equals: 'no' }; }, 'screens', 'screen 7', /: its rule \("show only if"\) must have exactly one test next to "answer".*It has 2: equals, not_equals\./],
@@ -502,14 +511,14 @@ const BREAKAGES = [
   ['rule on a later screen', m => { m.screens[2].show_if = { answer: 'support_gate', equals: 'yes' }; }, 'screens', 'screen 3', /tests "support_gate", which question 6 \("In the last 30 days, did you contact Valmo support\?"\) answers, but that screen never comes before this point.*Move "support_gate" above this question.*\(Its code is "nps"\.\)$/],
   ['rule on a hidden screen', m => { m.screens[5].active = false; }, 'screens', 'screen 7', /tests "support_gate", but what answers it is hidden \(switched off\), so there is never an answer\. Switch it on again, or change the rule\./],
   ['rule on its own answer', m => { m.screens[5].show_if = { answer: 'support_gate', equals: 'yes' }; }, 'screens', 'screen 6', /cannot depend on its own answer/],
-  ['free-text answer tested without "answered"', m => { addScreenBefore(m, 'thanks', { id: 'follow_up', type: 'yes_no', text: 'q.support_gate', required: true, show_if: { answer: 'one_fix', equals: 'yes' } }); }, 'screens', 'screen 9', /: the voice or typed answer "one_fix" is typed or spoken text, so it can only be tested with "answered": true or false/],
+  ['free-text answer tested without "answered"', m => { addScreenBefore(m, 'thanks', { id: 'follow_up', type: 'yes_no', text: 'q.support_gate', required: true, show_if: { answer: 'one_fix', equals: 'yes' } }); }, 'screens', 'screen 9', /: the voice or typed answer "one_fix" is typed or spoken text, so it can only be tested with "answered" or "not answered"/],
   ['"answered" written in quotes', m => { addScreenBefore(m, 'thanks', { id: 'follow_up', type: 'yes_no', text: 'q.support_gate', show_if: { answer: 'one_fix', answered: 'true' } }); }, 'screens', 'screen 9', /: "answered" must be true or false, without quotes/],
   ['rule on an unknown area', m => { m.screens[6].show_if = { answer: 'fn_rating:payment', at_most: 2 }; }, 'screens', 'screen 7', /tests "fn_rating:payment", but no screen stores that answer\. Did you mean "fn_rating:payments"\? There is no area "payment"/],
   ['rule on a hidden area', m => { m.areas[1].active = false; m.screens[6].show_if = { answer: 'fn_rating:payments', at_most: 2 }; }, 'screens', 'screen 7', /tests "fn_rating:payments", but what answers it is hidden \(switched off\)/],
   ['rule on a support rating before the support screen', m => { addScreenBefore(m, 'support', { id: 'early', type: 'yes_no', text: 'q.support_gate', show_if: { answer: 'support:kept_updated', at_most: 2 } }); }, 'screens', 'screen 7', /tests "support:kept_updated", which question 8 \("How was your last contact with Valmo support\?"\) answers, but that screen never comes before this point/],
   ['rule on a problem picked before the problem screens', m => { addScreenBefore(m, 'fn_deep_dives', { id: 'pay_check', type: 'yes_no', text: 'q.support_gate', show_if: { answer: 'fn_deep_dive:payments', equals: 'payout_delayed' } }); }, 'screens', 'screen 5', /tests "fn_deep_dive:payments", which question 6 \(Problem screens\) answers, but that screen never comes before this point/],
   ['rule value with wrong capital letters', m => { m.screens[6].show_if = { answer: 'support_gate', equals: 'Yes' }; }, 'screens', 'screen 7', /can only be "yes" or "no", so "Yes" can never match\. Capital letters matter/],
-  ['number test on a yes/no answer', m => { m.screens[6].show_if = { answer: 'support_gate', at_most: 1 }; }, 'screens', 'screen 7', /: "at_most" compares numbers, but the yes\/no question "support_gate" is never a number/],
+  ['number test on a yes/no answer', m => { m.screens[6].show_if = { answer: 'support_gate', at_most: 1 }; }, 'screens', 'screen 7', /: "<=" compares numbers, but the yes\/no question "support_gate" is never a number/],
   ['number test with text', m => { m.screens[6].show_if = { answer: 'nps', at_most: 'six' }; }, 'screens', 'screen 7', /needs a number/],
   ['"is one of" without a list', m => { m.screens[6].show_if = { answer: 'support_gate', in: 'yes' }; }, 'screens', 'screen 7', /: "in" needs a list of possible values in square brackets/],
   ['impossible problem code', m => { m.screens[6].show_if = { answer: 'fn_deep_dive:payments', equals: 'late_payout' }; }, 'screens', 'screen 7', /: the problem picked for "fn_deep_dive:payments" can only be "payout_delayed", .* or "other", so "late_payout" can never match\./],
@@ -517,7 +526,7 @@ const BREAKAGES = [
   ['unreadable rule text (from the Screens tab)', m => { m.screens[6].show_if = '{"answer": "support_gate", equals: yes}'; }, 'screens', 'screen 7', /could not be read/],
   ['rule testing an information card', m => { addScreenBefore(m, 'thanks', { id: 'card', type: 'info_card', text: 'q.one_fix' }); addScreenBefore(m, 'thanks', { id: 'after_card', type: 'yes_no', text: 'q.support_gate', show_if: { answer: 'card', answered: true } }); }, 'screens', 'screen 10', /tests "card", but no screen stores that answer\. The screen "card" \(info_card\) does not record an answer a rule can test\./],
   ['rule on the support comment while the comment box is off', m => { m.settings['support.allow_comment'] = false; addScreenBefore(m, 'thanks', { id: 'follow_up', type: 'yes_no', text: 'q.support_gate', show_if: { answer: 'support_comment', answered: true } }); }, 'screens', 'screen 9', /tests "support_comment", but what answers it is hidden \(switched off\)/],
-  ['nested rule problem', m => { m.screens[6].show_if = { any: [{ answer: 'support_gate', equals: 'yes' }, { answer: 'nps', at_most: 'low' }] }; }, 'screens', 'screen 7', /its rule \("show only if"\) > any > rule 2: "at_most" needs a number \(without quotes\), but it is "low"\./],
+  ['nested rule problem', m => { m.screens[6].show_if = { any: [{ answer: 'support_gate', equals: 'yes' }, { answer: 'nps', at_most: 'low' }] }; }, 'screens', 'screen 7', /the 2nd part of its rule \("show only if"\): "<=" needs a number \(without quotes\), but it is "low"\./],
   // ---- Areas, problems, support
   ['area listed twice', m => { m.areas[1].id = 'losses'; }, 'areas', 'losses', /^The area "Losses & Debits" is listed twice\..*\(Its code is "losses"\.\)$/],
   ['invalid area code', m => { m.areas[1].id = 'Payments'; }, 'areas', 'Payments', /^Area 2 has a code that is not allowed: use .*\(Its code is "Payments"; "payments" would work\.\)$/],
@@ -599,7 +608,7 @@ const WARNINGS = [
   ['open DEMO round', m => { m.rounds[0].status = 'open'; }, 'rounds', 'DEMO-R1', /is OPEN, but its name contains DEMO/],
   ['[SAMPLE] left in a real round', m => { m.whats_changed['2026-R1'] = [{ en: '[SAMPLE] Faster payouts', hi: 'तेज़ पेआउट', ta: '', te: '', kn: '', ml: '' }]; }, 'whats_changed', '2026-R1 item 1', /\[SAMPLE\]/],
   ['text nothing uses', m => { addText(m, 'old.thing', 'Old thing'); }, 'texts', 'old.thing', /^1 text is not used by any question, area, problem, support question or the form itself.*\(Text name: "old\.thing"\.\)$/],
-  ['rule that lets every answer through', m => { m.screens[6].show_if = { answer: 'nps', at_most: 10 }; }, 'screens', 'screen 7', /the 0-10 question "nps" is between 0 and 10, so with "at_most": 10 every answer passes\. Check the number\./],
+  ['rule that lets every answer through', m => { m.screens[6].show_if = { answer: 'nps', at_most: 10 }; }, 'screens', 'screen 7', /the 0-10 question "nps" is between 0 and 10, so with <= 10 every answer passes\. Check the number\./],
   ['support screen with no support question', m => { m.support.forEach(s => { s.active = false; }); }, 'support', '', /no support question is/],
   ['odd voice tag', m => { m.languages[2].bcp47 = 'ta_IN'; }, 'languages', 'ta', /does not look like a language tag/]
 ];
@@ -661,7 +670,7 @@ test(G4, 'warning: codes live today but missing from the draft (hidden ones do n
   const live_ = result.warnings.filter(w => /live today but is no longer in the draft/.test(w.message));
   const refs = live_.map(w => w.section + ':' + w.ref).sort();
   eqJson(refs, ['areas:orders', 'chips:payments/invoice_gst', 'screens:one_fix', 'support:kept_updated'], 'live warnings');
-  check(/rename|change the label/.test(live_[0].message), live_[0].message);
+  check(/rename|change the label|change its words/.test(live_[0].message), live_[0].message);
   return live_.map(w => w.message).join('\n      ');
 });
 
@@ -2047,7 +2056,7 @@ const G13 = '13. route checks: the one checker (PP.flowCheck) reports everything
 const OLD_MODEL_FILE = path.join(HERE, 'legacy', 'Model_before_flowcheck.gs');
 const OLD_MODEL_SHA = 'f8f6b4c7e9cc0954456ab2f12df86849ece29a1648a22d6b79e349db264615af';
 const PARITY_NEW = {
-  G1: 'a question no arrow reaches (a "usually go to" that skips it, or a row after the main thank-you): the old checks only looked after the thank-you',
+  G1: 'a question no arrow reaches (a "then go to" that skips it, or a row after the main thank-you): the old checks only looked after the thank-you',
   G2: 'an arrow that leads nowhere, or a question from which no ending can be reached',
   R1: 'a rule (including a jump\'s rule, which the old checks never read) that tests an answer that cannot exist yet',
   R2: 'a rule (including a jump\'s rule) that is malformed, or a question that tests its own answer',
@@ -2061,6 +2070,26 @@ const PARITY_NEW = {
   C1: 'a code partners answered in a real round deleted (the codes lock now blocks Publish)',
   F1: 'a field the form cannot use on a shown question (for example a pick-one question without answers)'
 };
+
+/* Messages of the other sections (not "screens") reworded on purpose since the frozen copy, each with its reason:
+   the new words are compared as the old ones, so any other change still fails. (27 Oct 2026, review W8 findings 10
+   and 14: the questions' route is changed only by pasting a route table now, so a screen is hidden there.) */
+const PARITY_REWORDED = [
+  { why: 'a screen is hidden with "no" in the route table\'s "show" column (the question editor is gone)',
+    now: 'or hide the area ratings screen by writing no in the "show" column of its row in the route table (Questions > Paste a route).',
+    old: 'or hide the area ratings screen.' },
+  { why: 'a screen is hidden with "no" in the route table\'s "show" column (the question editor is gone)',
+    now: 'or hide the screen by writing no in the "show" column of its row in the route table (Questions > Paste a route).',
+    old: 'or hide the screen.' }
+];
+const reworded = {};   // the rewordings the corpus met: now -> count
+function asOldWords(message) {
+  return PARITY_REWORDED.reduce((text, r) => {
+    if (text.indexOf(r.now) === -1) return text;
+    reworded[r.now] = (reworded[r.now] || 0) + 1;
+    return text.split(r.now).join(r.old);
+  }, message);
+}
 
 /* Problems the old checks reported WRONGLY, which the one checker rightly no longer reports: each with its reason. */
 const PARITY_FIXED = [
@@ -2149,7 +2178,7 @@ function parityCorpus() {
   add('new: a jump whose rule tests a later answer', jumpRule);
   const skipped = fresh();
   skipped.screens[screenIndex(skipped, 'support_gate')].next = 'one_fix';
-  add('new: a "usually go to" that skips a question nothing else reaches', skipped);
+  add('new: a "then go to" that skips a question nothing else reaches', skipped);
   ['nps', 'support_gate'].forEach(id => {
     const gone = fresh();
     gone.screens = gone.screens.filter(s => s.id !== id);
@@ -2214,6 +2243,9 @@ function parityCorpus() {
   return out;
 }
 
+/* Today's PP_validate of every corpus draft, as the parity test computed it (group 16 reads the messages). */
+const CORPUS_NOW = [];
+
 const issuesOf = result => result.errors.map(e => Object.assign({ level: 'error' }, e))
   .concat(result.warnings.map(w => Object.assign({ level: 'warning' }, w)));
 const isLiveCodeIssue = i => /is live today but is no longer in the draft|was answered in an earlier published version|answered by partners in a real round|answered in a real round/.test(i.message);
@@ -2235,14 +2267,16 @@ test(G13, 'parity on the corpus: nothing the old route checks reported is lost; 
   corpus.forEach(item => {
     const old = plain(OLD.PP_validate(plain(item.model), item.live, item.everLive));
     const now = plain(M.PP_validate(plain(item.model), item.live, item.everLive));
+    CORPUS_NOW.push({ name: item.name, result: now });
     compared++;
     const oldIssues = issuesOf(old);
     const newIssues = issuesOf(now);
-    // 1. the other sections: exactly the same (apart from deleted live codes, below)
-    const others = list => list.filter(i => i.section !== 'screens' && !isLiveCodeIssue(i)).map(issueKey).sort();
-    if (JSON.stringify(others(oldIssues)) !== JSON.stringify(others(newIssues))) {
+    // 1. the other sections: exactly the same (apart from deleted live codes, below, and PARITY_REWORDED)
+    const others = (list, now) => list.filter(i => i.section !== 'screens' && !isLiveCodeIssue(i))
+      .map(i => issueKey(now ? Object.assign({}, i, { message: asOldWords(i.message) }) : i)).sort();
+    if (JSON.stringify(others(oldIssues)) !== JSON.stringify(others(newIssues, true))) {
       problems.push(item.name + ': the other sections changed:\n        old ' + JSON.stringify(others(oldIssues)).slice(0, 400) +
-        '\n        new ' + JSON.stringify(others(newIssues)).slice(0, 400));
+        '\n        new ' + JSON.stringify(others(newIssues, true)).slice(0, 400));
     }
     // 2. deleted live codes: still reported at the same place (a warning may become an error: C1)
     oldIssues.filter(isLiveCodeIssue).forEach(i => {
@@ -2277,6 +2311,10 @@ test(G13, 'parity on the corpus: nothing the old route checks reported is lost; 
     note(G13, `new errors ${code} (${PARITY_NEW[code] || 'UNLISTED'}): ${newOnes[code].length}`);
     newOnes[code].forEach(line => note(G13, '   ' + line));
   });
+  PARITY_REWORDED.forEach(r => note(G13, 'reworded on purpose (' + r.why + '), met ' + (reworded[r.now] || 0) + ' time(s): "' + r.old +
+    '" -> "' + r.now + '"'));
+  check(PARITY_REWORDED.every(r => reworded[r.now]), 'a rewording the corpus never meets is not needed: ' +
+    JSON.stringify(PARITY_REWORDED.filter(r => !reworded[r.now]).map(r => r.now)));
   check(compared >= 150, 'the corpus is too small: ' + compared);
   check(!problems.length, problems.length + ' parity problems:\n      ' + problems.slice(0, 12).join('\n      '));
   return compared + ' drafts compared; ' + oldFlow + ' route problems the old checks reported, all still reported; ' +
@@ -2335,7 +2373,7 @@ test(G14, 'G1: a HIDDEN extra ending still ends its route: promoters end at the 
     const r = plain(M.PP_validate(m, null));
     check(r.errors.length === 0, 'a hidden ending is allowed (no error): ' + JSON.stringify(r.errors.slice(0, 2)));
     const at = screenIndex(m, direct ? 'nps' : 'promo_q');
-    const told = r.warnings.find(w => w.ref === 'screen ' + (at + 1) && /an ending that is hidden, so partners end at the main thank-you screen \(question 9/.test(w.message));
+    const told = r.warnings.find(w => w.ref === 'screen ' + (at + 1) && /an ending that is hidden, so partners end at the main thank-you screen, question 9 \(Thank-you screen\), instead/.test(w.message));
     check(told && plainMessage(told.message, m.screens[at].id), 'a warning at the question whose arrow is changed says where partners end now: ' +
       JSON.stringify(r.warnings.filter(w => w.section === 'screens')));
     lines.push(told.message);
@@ -2343,32 +2381,35 @@ test(G14, 'G1: a HIDDEN extra ending still ends its route: promoters end at the 
   return lines.join('\n      ');
 });
 
-test(G14, 'G1: a DELETED ending: a question that would run on into another route is an error until it says where it goes', () => {
+test(G14, 'G1: a DELETED ending: a question that would run on into another route is an error until it says where it goes (since 27 Oct 2026: Flow.gs\'s G5, in the route table\'s words)', () => {
   const m = branchesModel(false);
   m.screens = m.screens.filter(s => s.id !== 'promo_end');
   delete m.texts['end.promo_end.title'];
   delete m.texts['end.promo_end.body'];
   const promoQ = screenIndex(m, 'promo_q');
   let r = plain(M.PP_validate(m, null));
-  const hit = r.errors.find(e => e.ref === 'screen ' + (promoQ + 1) && /has no "usually go to", so partners who answer it go straight on to question 11 \("What went wrong\?"\), which starts another route \(question 3 jumps there\)/.test(e.message));
+  const hit = r.errors.find(e => e.ref === 'screen ' + (promoQ + 1) && /^Question 10 \("What do you like most about Valmo\?"\) has no "then go to", so partners who answer it go straight on to question 11 \("What went wrong\?"\), which starts another route: question 3 \("How likely are you to recommend Valmo to another DC owner\?"\) jumps there\. Write where it goes in its "then go to" column/.test(e.message));
   check(hit, 'the run-on is an error at question ' + (promoQ + 1) + ': ' + JSON.stringify(r.errors));
-  check(plainMessage(hit.message, 'promo_q') && /\(Its code is "promo_q"; question 11's code is "detractor_q"\.\)$/.test(hit.message), hit.message);
+  check(plainMessage(hit.message, 'promo_q') && /\(Its code is "promo_q"; the code of the row after it is "detractor_q"\.\)$/.test(hit.message), hit.message);
+  // told once (27 Oct 2026, review W8 finding 2): Flow.gs's note G5 is an error, and Model.gs keeps no copy of the rule
+  const runOns = r.errors.concat(r.warnings).filter(i => /go straight on to/.test(i.message));
+  check(runOns.length === 1 && r.errors.indexOf(runOns[0]) !== -1, 'the run-on is told exactly once, as an error: ' + JSON.stringify(runOns));
   // the fixes the message offers: an arrow to the main thank-you screen (an ending: allowed although it is above) ...
   m.screens[promoQ].next = 'thanks';
   r = plain(M.PP_validate(m, null));
-  check(r.errors.length === 0, '"usually go to" the main thank-you screen: no error: ' + JSON.stringify(r.errors.slice(0, 2)));
+  check(r.errors.length === 0, '"then go to" the main thank-you screen: no error: ' + JSON.stringify(r.errors.slice(0, 2)));
   check(!r.warnings.some(w => w.ref === 'screen ' + (promoQ + 1)), 'and no warning about an arrow back: ' + JSON.stringify(r.warnings.filter(w => w.section === 'screens')));
   eqJson(walkDoc(plain(M.PP_compile(m, null)).survey, PROMOTER), ['nps', 'promo_q', 'thanks'], 'promoters end at the main thank-you screen');
   // ... or saying that both routes carry on there
   m.screens[promoQ].next = 'detractor_q';
-  check(plain(M.PP_validate(m, null)).errors.length === 0, 'an explicit "usually go to" into the other route is allowed');
+  check(plain(M.PP_validate(m, null)).errors.length === 0, 'an explicit "then go to" into the other route is allowed');
   // running into another route's ENDING is the same mistake (promoters would read the detractors' goodbye)
   const e2 = branchesModel(true);
   e2.screens[screenIndex(e2, 'nps')].jumps = [{ when: { answer: 'nps', at_least: 9 }, goto: 'promo_q2' }, { when: { answer: 'nps', at_most: 6 }, goto: 'detractor_end' }];
   e2.screens = e2.screens.filter(s => s.id !== 'promo_end' && s.id !== 'detractor_q');
   e2.screens.splice(screenIndex(e2, 'detractor_end'), 0, newScreen({ id: 'promo_q2', type: 'free_text', text: 'q.promo_q', next: '', jumps: [], repeat: '' }));
   r = plain(M.PP_validate(e2, null));
-  check(r.errors.some(e => /, the ending of another route \(question 3 jumps there\)/.test(e.message)), 'into another route\'s ending: ' + JSON.stringify(r.errors));
+  check(r.errors.some(e => /, the ending of another route: question 3 \("How likely are you to recommend Valmo to another DC owner\?"\) jumps there\./.test(e.message)), 'into another route\'s ending: ' + JSON.stringify(r.errors));
   // a hidden ending between two routes is no run-on (the route ends at the main thank-you screen)
   const hidden = branchesModel(false);
   hidden.screens[screenIndex(hidden, 'promo_end')].active = false;
@@ -2387,7 +2428,7 @@ test(G14, 'G1: a route with a hidden ending survives the GitHub copy (export, im
   const files = { survey: JSON.parse(out['survey.json']), strings: JSON.parse(out['strings.json']),
     whats_changed: JSON.parse(out['whats_changed.json']), audio_clips: JSON.parse(out['audio_clips.json']) };
   const back = plain(M.PP_importStatic(files));
-  eqJson(back.screens[screenIndex(back, 'promo_q')].next, 'thanks', 'the GitHub copy reads back as "usually go to: the thank-you screen"');
+  eqJson(back.screens[screenIndex(back, 'promo_q')].next, 'thanks', 'the GitHub copy reads back as "then go to: the thank-you screen"');
   check(JSON.stringify(plain(M.PP_compile(back, null)).survey.flow) === JSON.stringify(graph), 'import: the same route');
   check(plain(M.PP_validate(back, null)).errors.length === 0, 'import: no errors: ' + JSON.stringify(plain(M.PP_validate(back, null)).errors.slice(0, 2)));
   check(M.PP_exportStatic(back, { apps_script_url: '' })['survey.json'] === out['survey.json'], 'export, import, export: byte-identical');
@@ -2477,7 +2518,7 @@ test(G14, 'G4: an answer of a pick-one question is never told to "hide it" (answ
     const r = plain(M.PP_validate(draft, live, everLive));
     const option = r.errors.concat(r.warnings).find(i => i.ref === 'visits/never');
     const chip = r.errors.concat(r.warnings).find(i => i.ref === 'payments/invoice_gst');
-    check(option && !/hide it/i.test(option.message) && /can't be hidden/.test(option.message) && /Put it back in the list of answers/.test(option.message),
+    check(option && !/hide it/i.test(option.message) && /can't be hidden/.test(option.message) && /Put it back in its question's "answers" cell in the route table/.test(option.message),
       'the answer\'s message: ' + JSON.stringify(option));
     check(chip && /hide it instead of deleting it/.test(chip.message), 'a problem may still be hidden: ' + JSON.stringify(chip));
     messages.push(option.message);
@@ -2509,7 +2550,7 @@ test(G14, 'G5: wording of R1, R2, R3, P1 and L1: the row\'s own code is "this qu
   one('R3 (yes/no, "maybe")', m => { m.screens[screenIndex(m, 'support_gate')].jumps = [{ when: { answer: 'support_gate', equals: 'maybe' }, goto: 'one_fix' }]; },
     'screen 6', /: this question's answer can only be "yes" or "no", so "maybe" can never match\. \(Its code is "support_gate"\.\)$/, 'support_gate');
   one('R3 (a number test on yes/no)', m => { m.screens[screenIndex(m, 'support_gate')].jumps = [{ when: { answer: 'support_gate', at_most: 1 }, goto: 'one_fix' }]; },
-    'screen 6', /"at_most" compares numbers, but this question's answer is never a number\./, 'support_gate');
+    'screen 6', /"<=" compares numbers, but this question's answer is never a number\./, 'support_gate');
   one('R3 (another question\'s answer keeps its words)', m => { m.screens[screenIndex(m, 'support')].show_if = { answer: 'support_gate', equals: 'maybe' }; },
     'screen 7', /: the yes\/no question "support_gate" can only be "yes" or "no", so "maybe" can never match\.$/);
   // R1: a rule on a later answer, and a "for each area rated low" filter above the ratings
@@ -2520,7 +2561,7 @@ test(G14, 'G5: wording of R1, R2, R3, P1 and L1: the row\'s own code is "this qu
   }, 'screen 4', /Move "fn_ratings" above this question, or test an earlier answer\. \(Its code is "early"\.\)$/, 'early');
   // R2: a rule on its own answer
   one('R2 (its own answer)', m => { m.screens[screenIndex(m, 'support_gate')].show_if = { answer: 'support_gate', equals: 'yes' }; },
-    'screen 6', /: its rule \("show only if"\) tests its own answer: a screen cannot depend on its own answer\. Test an earlier answer, or add a jump to this question instead \(After this question > Add a jump\)\. \(Its code is "support_gate"\.\)$/, 'support_gate');
+    'screen 6', /: its rule \("show only if"\) tests its own answer: a screen cannot depend on its own answer\. Test an earlier answer, or give this question a jump in its "jumps" column instead\. \(Its code is "support_gate"\.\)$/, 'support_gate');
   // P1: the language buttons moved down (no repeated kind in brackets, no "start")
   one('P1', m => { const l = m.screens.shift(); m.screens.splice(2, 0, l); },
     'screen 3', /^Question 3 \(Language buttons\) must be the first screen: otherwise partners read questions before they can choose their language\. Move it to the top\.$/);
@@ -2701,6 +2742,353 @@ test(G15, 'without PP_ADDED_TYPES_ (Model.gs before 26 Oct 2026) the same draft 
   const r = plain(MB.PP_validate(starsDraft(MB), null));
   check(r.errors.some(e => /stars_1_10/.test(e.message)), 'Publish refuses the kind: ' + JSON.stringify(errorsOf(r).slice(0, 3)));
   return errorsOf(r).filter(e => /stars_1_10/.test(e))[0];
+});
+
+// =============================================================================
+// (16) 27 Oct 2026, review W8 of "Paste a route" (the questions' route is
+//      changed only by pasting a route table now): the run-on told once
+//      (Flow.gs's note G5), a question partners answered keeps its kind, and
+//      Publish's messages in the route table's words
+// =============================================================================
+const G16 = '16. 27 Oct review W8 (route table): run-on told once (G5), a live question keeps its kind, table words';
+const LIB = M.PP_flowLib_();   // Flow.gs in the same space as Model.gs: the route code Publish runs (the panel runs the same)
+
+/* A draft's route table as "Copy the current route" makes it (tab-separated), with the survey it was made for. */
+function tableOf(model) {
+  const survey = plain(M.PP_compile(model, null).survey);
+  return { survey, text: LIB.flowPanel.toTable(model.screens, model.texts, survey) };
+}
+
+/* The table with one cell changed: the row with that code, the column with that title. */
+function withCell(text, code, title, value) {
+  const lines = text.split('\n');
+  const at = lines[0].split('\t').indexOf(title);
+  if (at < 0) throw new Error('no column ' + title);
+  let changed = 0;
+  const out = lines.map((line, i) => {
+    const cells = line.split('\t');
+    if (i === 0 || cells[0] !== code) return line;
+    changed++;
+    cells[at] = value;
+    return cells.join('\t');
+  });
+  if (changed !== 1) throw new Error('no row ' + code);
+  return out.join('\n');
+}
+
+/* The draft "Use this route" makes of a checked table: its rows, its texts merged in. */
+function usedTable(model, res) {
+  const m = plain(model);
+  m.screens = plain(res.rows);
+  Object.keys(res.texts).forEach(key => { m.texts[key] = Object.assign({}, m.texts[key] || {}, plain(res.texts[key])); });
+  return m;
+}
+
+/* The reviewer's e9b.js route: NPS 0-6 jump to detractor_q, 9-10 to promo_q. Below the thank-you screen promo_q
+   has no "then go to", so it runs on into detractor_q (which detractor_end ends): promoters would get the
+   detractors' question and goodbye. */
+function e9bModel() {
+  const m = fresh();
+  m.screens[screenIndex(m, 'nps')].jumps = [{ when: { answer: 'nps', at_most: 6 }, goto: 'detractor_q' },
+    { when: { answer: 'nps', at_least: 9 }, goto: 'promo_q' }];
+  m.screens.push(newScreen({ id: 'promo_q', type: 'free_text', text: 'q.promo_q', required: false, next: '', jumps: [], repeat: '' }),
+    newScreen({ id: 'detractor_q', type: 'free_text', text: 'q.detractor_q', required: false, next: '', jumps: [], repeat: '' }),
+    newScreen({ id: 'detractor_end', type: 'thank_you', text: 'end.detractor_end.title', body: 'end.detractor_end.body', next: '', jumps: [], repeat: '' }));
+  addText(m, 'q.promo_q', 'What do you like most?');
+  addText(m, 'q.detractor_q', 'What went wrong?');
+  addText(m, 'end.detractor_end.title', 'Thanks, we will call you');
+  addText(m, 'end.detractor_end.body', 'Our team will call within 2 days.');
+  return m;
+}
+
+test(G16, 'W8 finding 2: a route that runs on into another is told once, as an error at its row, in Flow.gs\'s words (G5); the route table\'s Check refuses it at the same row; Model.gs keeps no copy of the rule', () => {
+  const deleted = branchesModel(false);
+  deleted.screens = deleted.screens.filter(s => s.id !== 'promo_end');
+  delete deleted.texts['end.promo_end.title'];
+  delete deleted.texts['end.promo_end.body'];
+  const lines = [];
+  [['the reviewer\'s e9b.js (promoters run on into the detractors\' question)', e9bModel()],
+    ['group 14\'s deleted ending', deleted]].forEach(([label, m]) => {
+    const at = screenIndex(m, 'promo_q');
+    const r = plain(M.PP_validate(m, null));
+    const told = r.errors.concat(r.warnings).filter(i => /go straight on to/.test(i.message));
+    check(told.length === 1 && r.errors.indexOf(told[0]) !== -1 && told[0].section === 'screens' && told[0].ref === 'screen ' + (at + 1),
+      label + ': told once, as an error at question ' + (at + 1) + ': ' + JSON.stringify(told));
+    check(plainMessage(told[0].message, 'promo_q') && /has no "then go to"/.test(told[0].message), label + ': in the table\'s words: ' + told[0].message);
+    // exactly what Flow.gs said while it made the route: its note G5, level "error"
+    const notes = [];
+    M.PP_compile(m, null, notes);
+    const g5 = plain(notes).filter(n => n.code === 'G5');
+    check(g5.length === 1 && g5[0].level === 'error' && g5[0].row === at && g5[0].message === told[0].message,
+      label + ': the message is Flow.gs\'s note G5: ' + JSON.stringify(g5));
+    // the route table's Check refuses the same route, at the same row (the header is row 1), in its "then go to" column
+    const t = tableOf(m);
+    const res = plain(LIB.flowPanel.fromTable(t.text, t.survey, m.texts, { rows: m.screens }));
+    const p = res.problems.filter(x => /go straight on to/.test(x.message));
+    check(!res.ok && p.length === 1 && p[0].row === at + 2 && p[0].column === 'then go to', label + ': Check refuses it too: ' + JSON.stringify(res.problems));
+    // the fix the message offers ("then go to" an ending) passes both
+    const fixed = plain(m);
+    fixed.screens[at].next = 'thanks';
+    check(plain(M.PP_validate(fixed, null)).errors.length === 0, label + ': with "then go to" the thank-you screen, Publish has no error');
+    const t2 = tableOf(fixed);
+    const res2 = plain(LIB.flowPanel.fromTable(t2.text, t2.survey, fixed.texts, { rows: fixed.screens }));
+    check(res2.ok, label + ': and Check takes it: ' + JSON.stringify(res2.problems));
+    lines.push(told[0].message);
+  });
+  check(typeof M.PP_mdlCheckRunIntoRoutes_ === 'undefined', 'Model.gs\'s own copy of the rule (PP_mdlCheckRunIntoRoutes_) is gone');
+  check(M.PP_MDL_FLOW_ERRORS_.G5 === true, 'G5 is among the notes that block Publish');
+  return lines.join('\n      ');
+});
+
+test(G16, 'W8 finding 2: Publish blocks a Flow.gs note marked "error" whatever its code, never one marked "warning", else G2, G3, F1 and G5 (the route table\'s Check blocks the same notes: Flow.gs always marks G5 "error")', () => {
+  const notes = [
+    { code: 'G5', level: 'error', row: 0, message: 'a run-on' },
+    { code: 'Z9', level: 'error', row: 1, message: 'a note added later, marked error' },
+    { code: 'G2', row: 2, message: 'an arrow to nowhere' },
+    { code: 'G3', row: 3, message: 'an arrow back' },
+    { code: 'F1', row: 4, message: 'a setting left out' },
+    { code: 'G5', row: 5, message: 'a run-on without a level' },
+    { code: 'F1', level: 'warning', row: 6, message: 'a setting that changes nothing' },
+    { code: 'C2', row: 7, message: 'an arrow to a hidden row' },
+    { code: 'G4', row: 8, message: 'an ending\'s arrows' },
+    { code: 'G5', level: 'warning', row: 9, message: 'a G5 marked warning' }
+  ];
+  const report = M.PP_mdlNewReport_();
+  M.PP_mdlReportFlowNotes_(notes, report);
+  eqJson(plain(report.errors).map(i => i.ref + ': ' + i.message), ['screen 1: a run-on', 'screen 2: a note added later, marked error',
+    'screen 3: an arrow to nowhere', 'screen 4: an arrow back', 'screen 5: a setting left out', 'screen 6: a run-on without a level'], 'errors');
+  eqJson(plain(report.warnings).map(i => i.ref), ['screen 7', 'screen 8', 'screen 9', 'screen 10'], 'warnings');
+});
+
+test(G16, 'W8 finding 3: a question partners answered keeps its kind: voice/typing -> faces, pick one or info card stops Publish (review e13.js, e8.js), shown or hidden; built-in screens too', () => {
+  const live = M.PP_compile(fresh(), STAMP);
+  const everLive = everLiveOf(fresh());
+  const at = screenIndex(fresh(), 'one_fix');
+  const name = 'Question ' + (at + 1) + ' ("If Valmo could fix just one thing for you, what should it be?")';
+  const said = [];
+  [['faces', m => { m.screens[at].type = 'rating_1_5'; }],
+    ['pick one', m => {
+      m.screens[at].type = 'single_choice';
+      m.screens[at].options = ['ops', 'pay'];
+      addText(m, 'choice.one_fix.ops', 'Operations');
+      addText(m, 'choice.one_fix.pay', 'Payments');
+    }],
+    ['info card', m => { m.screens[at].type = 'info_card'; }]].forEach(([kind, edit]) => {
+    [true, false].forEach(shown => {
+      const m = fresh();
+      edit(m);
+      m.screens[at].active = shown;
+      const fix = shown ? 'Keep its kind in the route table (Questions > Paste a route), or write no in its "show" column and add the new ' +
+        'question in a new row with a new code.' : 'Keep its kind in the route table (Questions > Paste a route); the row can stay hidden. ' +
+        'Add the new question in a new row with a new code.';
+      const expected = name + ' is now of the kind "' + kind + '", but partners have already answered it as a question of the kind ' +
+        '"voice/typing", so its kind can\'t change: the dashboard compares rounds by its code. ' + fix + ' (Its code is "one_fix".)';
+      [everLive, null].forEach(ever => {
+        const r = plain(M.PP_validate(m, live, ever));
+        const hit = r.errors.filter(e => /its kind can't change/.test(e.message));
+        check(hit.length === 1 && hit[0].section === 'screens' && hit[0].ref === 'screen ' + (at + 1) && hit[0].message === expected,
+          kind + (shown ? '' : ' (hidden)') + ': expected\n        ' + expected + '\n      got ' + JSON.stringify(r.errors));
+        check(plainMessage(hit[0].message, 'one_fix'), 'its code only in the closing brackets: ' + hit[0].message);
+      });
+      if (shown) said.push(expected);
+      // before any real round, Publish gets no live version (Code.gs PP_liveDocForChecks_): nothing is locked yet
+      check(!plain(M.PP_validate(m, null)).errors.some(e => /its kind can't change/.test(e.message)), kind + ': no live version, no kind error');
+    });
+  });
+  // the area ratings row as a faces question (e8.js K4)
+  const k4 = fresh();
+  k4.screens[screenIndex(k4, 'fn_ratings')].type = 'rating_1_5';
+  k4.screens[screenIndex(k4, 'fn_ratings')].text = 'q.one_fix';
+  let r = plain(M.PP_validate(k4, live, everLive));
+  check(r.errors.some(e => e.ref === 'screen ' + (screenIndex(k4, 'fn_ratings') + 1) &&
+    /is now of the kind "faces", but partners have already answered it as a question of the kind "area ratings"/.test(e.message)),
+    'the area ratings keep their kind: ' + JSON.stringify(r.errors));
+  // "nps" and "support_gate": hidden, this check tells it; shown, the route check (D2) tells it, once
+  ['nps', 'support_gate'].forEach(code => {
+    const i = screenIndex(fresh(), code);
+    [false, true].forEach(shown => {
+      const m = fresh();
+      m.screens[i].type = 'rating_1_5';
+      m.screens[i].active = shown;
+      if (code === 'support_gate') m.screens[screenIndex(m, 'support')].show_if = null;
+      r = plain(M.PP_validate(m, live, everLive));
+      const about = r.errors.filter(e => e.ref === 'screen ' + (i + 1) && /kind/.test(e.message));
+      check(about.length === 1 && (shown ? /must stay of the kind/ : /its kind can't change/).test(about[0].message),
+        code + (shown ? ' shown: told once, by the data-column check' : ' hidden: told by the kind check') + ': ' + JSON.stringify(about));
+    });
+  });
+  return said.join('\n      ');
+});
+
+test(G16, 'W8 finding 3: no kind error for unchanged kinds, new words, a thank-you that gets its own words or a screen that stores no answer; the live kinds come from the old list and from graphs (immediate mode too)', () => {
+  const live = M.PP_compile(fresh(), STAMP);
+  const everLive = everLiveOf(fresh());
+  const kindErrors = m => plain(M.PP_validate(m, live, everLive)).errors.filter(e => /its kind can't change/.test(e.message));
+  check(plain(M.PP_validate(fresh(), live, everLive)).errors.length === 0, 'the unchanged draft has no error at all');
+  const reworded = fresh();
+  reworded.texts['q.one_fix'].en = 'What one thing should Valmo fix first?';
+  eqJson(kindErrors(reworded), [], 'new words only');
+  const ending = fresh();
+  ending.screens[screenIndex(ending, 'thanks')].text = 'q.one_fix';   // still a thank-you screen, now with its own words
+  eqJson(kindErrors(ending), [], 'a thank-you screen with its own words');
+  const card = fresh();   // the language buttons store no answer: another kind there is not this check's business
+  card.screens[0].type = 'info_card';
+  card.screens[0].text = 'q.one_fix';
+  card.screens[0].skip_if = '';
+  eqJson(kindErrors(card), [], 'a screen that stores no answer');
+  const kinds = plain(M.PP_mdlLiveKinds_(live));
+  eqJson(kinds, { language: 'language_picker', whats_changed: 'whats_changed', nps: 'nps_0_10', fn_ratings: 'function_ratings',
+    fn_deep_dives: 'function_deep_dives', support_gate: 'yes_no', support: 'support_block', one_fix: 'free_text', thanks: 'thank_you' }, 'the graph');
+  const listDoc = plain(live);
+  listDoc.survey.flow = plain(LEGACY_LIST);
+  eqJson(plain(M.PP_mdlLiveKinds_(listDoc)), kinds, 'the same route published as the old list');
+  const imm = fresh();
+  imm.settings['deep_dive.when'] = 'immediate';
+  const immDoc = M.PP_compile(imm, STAMP);
+  check(plain(immDoc).survey.flow.nodes.some(n => n.type === 'group'), 'immediate mode publishes a group');
+  eqJson(plain(M.PP_mdlLiveKinds_(immDoc)), kinds, 'immediate mode: the group\'s screens, never the group');
+  eqJson(plain(M.PP_mdlLiveKinds_(null)), {}, 'no live version');
+  const k = plain(imm);
+  k.screens[screenIndex(k, 'fn_ratings')].type = 'rating_1_5';
+  k.screens[screenIndex(k, 'fn_ratings')].text = 'q.one_fix';
+  check(plain(M.PP_validate(k, immDoc, everLiveOf(imm))).errors.some(e => /as a question of the kind "area ratings"/.test(e.message)),
+    'a live version in immediate mode still locks the area ratings\' kind');
+});
+
+test(G16, 'W8 finding 3: the route table\'s Check and Publish agree on a live question\'s kind (Check gets PP_mdlLiveKinds_ as its liveKinds)', () => {
+  const base = fresh();
+  const live = M.PP_compile(base, STAMP);
+  const everLive = everLiveOf(base);
+  const liveKinds = plain(M.PP_mdlLiveKinds_(live));
+  const t = tableOf(base);
+  const at = screenIndex(base, 'one_fix');
+  const said = [];
+  [['faces', text => withCell(text, 'one_fix', 'kind', 'faces')],
+    ['pick one', text => withCell(withCell(text, 'one_fix', 'kind', 'pick one'), 'one_fix', 'answers', 'ops: Operations; pay: Payments')],
+    ['info card', text => withCell(text, 'one_fix', 'kind', 'info card')]].forEach(([kind, edit]) => {
+    const text = edit(t.text);
+    const refused = plain(LIB.flowPanel.fromTable(text, t.survey, base.texts, { rows: base.screens, liveKinds }));
+    const p = refused.problems.filter(x => x.column === 'kind' && /can't change/.test(x.message));
+    check(!refused.ok && p.length === 1 && p[0].row === at + 2, kind + ': Check refuses it at row ' + (at + 2) + ': ' + JSON.stringify(refused.problems));
+    const taken = plain(LIB.flowPanel.fromTable(text, t.survey, base.texts, { rows: base.screens }));
+    check(taken.ok, kind + ': without the live kinds Check takes it: ' + JSON.stringify(taken.problems));
+    const r = plain(M.PP_validate(usedTable(base, taken), live, everLive));
+    const hit = r.errors.find(e => e.ref === 'screen ' + (at + 1) && e.message.indexOf('is now of the kind "' + kind + '"') !== -1);
+    check(hit, kind + ': Publish refuses it at question ' + (at + 1) + ': ' + JSON.stringify(r.errors));
+    said.push('Check: ' + p[0].message + '\n      Publish: ' + hit.message);
+  });
+  const same = plain(LIB.flowPanel.fromTable(t.text, t.survey, base.texts, { rows: base.screens, liveKinds }));
+  check(same.ok, 'the unchanged table passes Check: ' + JSON.stringify(same.problems));
+  check(plain(M.PP_validate(usedTable(base, same), live, everLive)).errors.length === 0, 'and Publish');
+  return said.join('\n      ');
+});
+
+test(G16, 'the kinds as the route table names them: Model.gs names each row exactly as web/js/flow-panel.js writes it (toTable) and lists the same kinds, in the same order (KINDS)', () => {
+  const rows = plain(M.PP_SCREEN_TYPES).map((entry, i) => newScreen({ id: 'kind_' + i, type: entry.type, next: '', jumps: [], repeat: '' }));
+  rows.push(newScreen({ id: 'nps', type: 'nps_0_10' }), newScreen({ id: 'support_gate', type: 'yes_no' }),
+    newScreen({ id: 'own_end', type: 'thank_you', text: 'end.own_end.title' }), newScreen({ id: 'own_end_2', type: 'thank_you', body: 'end.own_end_2.body' }),
+    newScreen({ id: 'odd', type: 'free_txt' }));
+  const lines = LIB.flowPanel.toTable(rows, {}, plain(M.PP_compile(fresh(), null).survey)).split('\n');
+  const kindAt = lines[0].split('\t').indexOf('kind');
+  check(kindAt > 0 && lines.length === rows.length + 1, 'the table has a "kind" column and one line per row: ' + lines.length);
+  eqJson(rows.map(row => M.PP_mdlTableKind_(row)), lines.slice(1).map(line => line.split('\t')[kindAt]), 'each row\'s kind');
+  const source = fs.readFileSync(path.join(ROOT, 'web/js/flow-panel.js'), 'utf8');
+  const block = /\n  var KINDS = \[([\s\S]*?)\n  \];/.exec(source);
+  check(block, 'web/js/flow-panel.js still has its list KINDS');
+  const names = [];
+  block[1].replace(/\{ name: '([^']+)'/g, (all, kindName) => { names.push(kindName); return all; });
+  check(names.length >= 15, 'kinds found: ' + names.join(', '));
+  eqJson(plain(M.PP_mdlTableKindNames_()), names, 'the kinds, in order');
+  // the unknown kind's message names them so, and suggests the nearest by its name in the table
+  const m = fresh();
+  m.screens[screenIndex(m, 'one_fix')].type = 'free_txt';
+  const hit = plain(M.PP_validate(m, null)).errors.find(e => /does not know/.test(e.message));
+  check(hit && hit.message.indexOf('Did you mean "voice/typing"? The kinds: ' + names.join(', ') + '.)') !== -1, 'the unknown kind: ' + JSON.stringify(hit));
+  return names.join(', ');
+});
+
+test(G16, 'W8 findings 10 and 14: no Publish message names the removed question editor, and Model.gs has no such words left in its texts', () => {
+  const EDITOR = /Edit it|Edit this|After this question|Usually go to|usually go to|Add a question|Add an ending|Ask this question|Only show it if|Show this question only if|rule builder|build the rule|Open this question|Add a jump|jump builder|Put it after/;
+  const bad = [];
+  let count = 0;
+  const look = (label, result) => result.errors.concat(result.warnings).forEach(i => {
+    count++;
+    if (EDITOR.test(i.message)) bad.push(label + ': ' + i.message);
+  });
+  check(CORPUS_NOW.length >= 150, 'group 13\'s corpus (every breakage and warning of group 4, the flow cases and the audit\'s variants) ran: ' + CORPUS_NOW.length);
+  CORPUS_NOW.forEach(item => look(item.name, item.result));
+  // and this group's cases: a run-on, a live question re-typed, deleted (live today only, or answered), a live answer removed
+  const live = M.PP_compile(fresh(), STAMP);
+  const everLive = everLiveOf(fresh());
+  look('run-on', plain(M.PP_validate(e9bModel(), null)));
+  const retyped = fresh();
+  retyped.screens[screenIndex(retyped, 'one_fix')].type = 'rating_1_5';
+  look('a live question re-typed', plain(M.PP_validate(retyped, live, everLive)));
+  const gone = fresh();
+  gone.screens = gone.screens.filter(s => s.id !== 'one_fix');
+  look('a live question deleted', plain(M.PP_validate(gone, live, everLive)));
+  look('a live question deleted (live today only)', plain(M.PP_validate(gone, live, null)));
+  const pick = fresh();
+  addScreenBefore(pick, 'one_fix', { id: 'visits', type: 'single_choice', text: 'q.visits', options: ['often', 'rarely'] });
+  addText(pick, 'q.visits', 'How often does a Valmo person visit?');
+  ['often', 'rarely'].forEach(o => addText(pick, 'choice.visits.' + o, o));
+  const pickLive = M.PP_compile(pick, STAMP);
+  const lessPick = plain(pick);
+  lessPick.screens[screenIndex(lessPick, 'visits')].options = ['often'];
+  look('a live answer removed', plain(M.PP_validate(lessPick, pickLive, everLiveOf(pick))));
+  check(!bad.length, bad.length + ' messages name the removed editor:\n      ' + bad.slice(0, 8).join('\n      '));
+  // every text in Model.gs (string and template pieces, read with acorn: comments and regular expressions are not texts)
+  let acorn = null;
+  try { acorn = require('acorn'); } catch (err) { acorn = null; }
+  if (!acorn) {
+    note(G16, 'acorn is not installed (cd tests && npm install): the scan of Model.gs\'s texts was skipped');
+    return count + ' messages read';
+  }
+  const tokens = [];
+  acorn.parse(fs.readFileSync(MODEL_FILE, 'utf8'), { ecmaVersion: 'latest', onToken: tokens });
+  const texts = tokens.filter(tk => tk.type === acorn.tokTypes.string || tk.type === acorn.tokTypes.template).map(tk => String(tk.value));
+  const left = texts.filter(text => EDITOR.test(text));
+  check(texts.length > 500 && !left.length, texts.length + ' texts read; naming the removed editor: ' + JSON.stringify(left.slice(0, 5)));
+  return count + ' messages read, ' + texts.length + ' texts of Model.gs scanned';
+});
+
+test(G16, 'W8 finding 14: the checker\'s words become the route table\'s, as in the table\'s own Check (operators, the parts of a rule, "ask for", "then go to", a jump in its column)', () => {
+  const cases = [
+    ['its rule ("show only if") > all > rule 2 tests "x", which is this screen\'s own answer: a screen cannot depend on its own answer. Test an earlier answer, or use a jump ("next") on this screen.',
+      'the 2nd part of its rule ("show only if") tests "x", which is this screen\'s own answer: a screen cannot depend on its own answer. Test an earlier answer, or give this question a jump in its "jumps" column instead.'],
+    ['its rule ("show only if") > any > rule 1 > all > rule 3: the 0-10 question "nps" is between 0 and 10, so with "at_least": 0 every answer passes.',
+      'the 3rd part of the 1st part of its rule ("show only if"): the 0-10 question "nps" is between 0 and 10, so with >= 0 every answer passes.'],
+    ['its "repeat for" filter ("where") tests "fn_rating:losses"', 'its "ask for" tests "fn_rating:losses"'],
+    ['"at_most" compares numbers, but this question\'s answer is never a number. Use "equals", "not_equals" or "in" instead.',
+      '"<=" compares numbers, but this question\'s answer is never a number. Use "=", "!=" or "in" instead.'],
+    ['"at_mostt" is not a test the form knows. Did you mean "at_most"?', '"at_mostt" is not a test the form knows. Did you mean "at_most"?'],
+    ['is typed or spoken text, so it can only be tested with "answered": true or false.', 'is typed or spoken text, so it can only be tested with "answered" or "not answered".'],
+    ['can never be reached: no arrow leads to it from the start. Point the "next" of an earlier screen at it, or remove it.',
+      'can never be reached: no arrow leads to it from the start. Point the "then go to" of an earlier screen at it, or remove it.'],
+    ['has a "show_if", and its jump to "x" does not test its own answer. Whenever the screen is skipped, its jumps are ignored and its default is followed.',
+      'has a "show only if", and its jump to "x" does not test its own answer. Whenever the screen is skipped, its jumps are ignored and its "then go to" is followed.'],
+    ['no route reaches an ending (thank_you), so partners could never send their answers.', 'no route reaches an ending (a thank-you row), so partners could never send their answers.'],
+    ['a text in strings.json', 'a text in Texts & translations'],
+    ['what answers it is hidden (switched off), so there is never an answer. Switch it on again, or change the rule.',
+      'what answers it is hidden (switched off), so there is never an answer. Switch it on again, or change the rule.']
+  ];
+  cases.forEach(([from, to]) => {
+    const got = M.PP_mdlPanelWords_(from);
+    check(got === to, 'from\n        ' + from + '\n      expected\n        ' + to + '\n      got\n        ' + got);
+  });
+  // a real draft: the same words in Publish and in the route table's Check
+  const m = fresh();
+  const at = screenIndex(m, 'one_fix');
+  m.screens[at].show_if = { all: [{ answer: 'nps', at_least: 0 }, { answer: 'one_fix', answered: true }] };
+  const r = plain(M.PP_validate(m, null));
+  const published = r.errors.concat(r.warnings).filter(i => i.ref === 'screen ' + (at + 1)).map(i => i.message).join('\n');
+  const t = tableOf(m);
+  const res = plain(LIB.flowPanel.fromTable(t.text, t.survey, m.texts, { rows: m.screens }));
+  const checked = res.problems.concat(res.warnings).filter(i => i.row === at + 2).map(i => i.message).join('\n');
+  ['the 2nd part of its rule ("show only if") tests', 'the 1st part of its rule ("show only if"): the 0-10 question "nps" is between 0 and 10, so with >= 0 every answer passes.']
+    .forEach(words => check(published.indexOf(words) !== -1 && checked.indexOf(words) !== -1,
+      'both say "' + words + '":\n      Publish ' + published + '\n      Check ' + checked));
+  return published;
 });
 
 // =============================================================================

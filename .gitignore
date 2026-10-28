@@ -28,6 +28,10 @@ dashboard/cache/
 *.parquet
 *.sqlite
 *.db
+# ...except the fake test tables of "Paste a route" (made-up questions, no partner data;
+# tests/flow/route_table_test.js needs them).
+!tests/flow/fixtures/route-table/*.csv
+!tests/flow/fixtures/route-table/*.tsv
 
 # --- Voice recordings (partner voices are personal data) -------------------
 # Note: web/audio/*.mp3 (our own pre-recorded question clips) is NOT ignored.

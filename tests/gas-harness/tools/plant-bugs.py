@@ -23,13 +23,16 @@ HOW TO RUN IT (Terminal, in the tests/gas-harness folder of the project)
   python3 tools/plant-bugs.py
 
   It takes about 30 seconds (no browser). The last line says how many
-  mistakes were caught (83 since 26 Oct 2026: 63 when the panel's route
+  mistakes were caught (85 since 27 Oct 2026: 63 when the panel's route
   checks became the one flow checker's, then 7 for config_version, the last
   column of the pings tab, then 8 for the reviewers' fixes: hidden and
   deleted endings, the codes lock per area and per question, Publish during
   a Drive hiccup, set-up's notes and docs/flow.md in the GitHub copy; then 5
   for Panel.html's one exception, the Map's drawing library: its integrity
-  hash, its pinned version, its frame's sandbox, and no second library).
+  hash, its pinned version, its frame's sandbox, and no second library; then
+  2 for review W8 of "Paste a route": Flow.gs's run-on note treated as a
+  warning, and a live question's kind change not checked. The run-on
+  mistake itself moved to Flow.gs that day, where the rule now lives).
   Exit code 0 = every mistake was planted and caught and the baseline had no
   failure; 1 = anything else.
 
@@ -231,8 +234,13 @@ MUTANTS = [
    'a question above a hidden ending runs on into the next route (promoters into the detractors\' questions)'),
   ('jump-to-hidden-ending-runs-on', 'Flow.gs', "      if (hiddenEnding(j) && mainEnd) return { id: mainEnd.node.id, at: mainEnd.at, via: passed, ending: j };\n", "", 'G12',
    'a jump to a hidden ending goes on into the next route instead of ending at the main thank-you screen'),
-  ('run-on-not-checked', 'Model.gs', "  PP_mdlCheckRunIntoRoutes_(tidy, report);\n", "", 'G12',
-   'after an ending is deleted, a route that runs on into another one is published without a word'),
+  # moved 27 Oct 2026 (review W8 finding 2): the run-on rule's only home is Flow.gs's note G5 (Model.gs's copy,
+  # PP_mdlCheckRunIntoRoutes_, was removed), so the mistake is planted there; the text ends with a real line break,
+  # so it matches the running code and not its escaped copy in PP_FLOW_SOURCE_
+  ('run-on-not-checked', 'Flow.gs',
+   "        warnings.push({ code: 'G5', level: 'error', node: trim(row.id), row: i, message: capital(name(i)) + ' has no ' +\n",
+   "        if (false) warnings.push({ code: 'G5', level: 'error', node: trim(row.id), row: i, message: capital(name(i)) + ' has no ' +\n",
+   'G12', 'after an ending is deleted, a route that runs on into another one is published without a word (Flow.gs\'s note G5 gone)'),
   ('codes-lock-bare-chip-codes', 'Model.gs', "      const found = model.chips.some(chip => chip.area === area && chip.code === code);   // hidden or not: kept",
    "      const found = model.chips.some(chip => chip.code === code);", 'G12',
    'the codes lock looks for a problem code in every area: one deleted from Payments passes when Line haul has the same code'),
@@ -246,6 +254,13 @@ MUTANTS = [
    'set-up\'s closing notes no longer say what Publish wants checked (it is only in the log)'),
   ('export-without-flow-map', 'Model.gs', "  files['flow.md'] = PP_mdlFlowMapText_(files['survey.json'], files['strings.json']);\n", "", 'B8,G12',
    'the GitHub copy no longer brings docs/flow.md, so the map in GitHub goes out of date'),
+  # ---- 27 Oct 2026: review W8 of "Paste a route" (Model.gs; scenario G12) ----
+  ('run-on-only-a-warning', 'Model.gs',
+   "    const isError = note.level === 'error' || (note.level !== 'warning' && PP_mdlHas_(PP_MDL_FLOW_ERRORS_, note.code));",
+   "    const isError = note.level !== 'warning' && PP_mdlHas_({ G2: true, G3: true, F1: true }, note.code);", 'G12',
+   'Publish treats Flow.gs\'s run-on note (G5, marked "error") as a warning again, so the route is published'),
+  ('live-kind-change-unchecked', 'Model.gs', "  PP_mdlCheckLiveKinds_(tidy, liveDoc, report);\n", "", 'G12',
+   'a question partners answered can change its kind (voice/typing to faces) and Publish goes ahead'),
   # ---- 26 Oct 2026: Panel.html's one exception, the Map's drawing library (lib/static-checks.js mapException) ----
   ('map-without-sri', 'Panel.html',
    "'s.src = ' + scriptString(MERMAID_URL) + '; s.integrity = ' + scriptString(MERMAID_SRI) + '; s.crossOrigin = \"anonymous\";'",

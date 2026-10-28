@@ -27,10 +27,14 @@
      And G12, the reviewers' fixes of 26 Oct 2026 (Google side and panel):
        - a hidden extra ending still ends its route (partners end at the main
          thank-you screen, never in another route's questions); a deleted
-         ending that would let one route run on into another stops Publish;
+         ending that would let one route run on into another stops Publish
+         (since 27 Oct 2026 told once, in the route table's words: Flow.gs's
+         note G5);
        - the codes lock compares codes kind by kind: a problem code another
          area shares, or an answer code another question shares, deleted in
-         one place, stops Publish;
+         one place, stops Publish; and (27 Oct 2026, review W8 finding 3) a
+         question partners answered can't change its kind (a voice/typing
+         question made a faces question stops Publish, at its row);
        - while Google Drive can't read the live version, Publish (codes
          locked) refuses in plain English and publishes nothing;
        - set-up's closing notes carry Publish's warnings (the form on GitHub
@@ -274,7 +278,7 @@ module.exports = function register(add) {
     branches.screens[idx(branches, 'promo_end')].active = false;          // the promoters' ending, hidden
     let sv = P(h, s, 'panelSave', [L.revision, branches], { need: true });
     const v1 = P(h, s, 'panelValidate', [branches]) || { errors: [], warnings: [] };
-    s.ok(v1.errors.length === 0 && v1.warnings.some((w) => /an ending that is hidden, so partners end at the main thank-you screen \(question \d+\)/.test(w.message)),
+    s.ok(v1.errors.length === 0 && v1.warnings.some((w) => /an ending that is hidden, so partners end at the main thank-you screen, question \d+ \(Thank-you screen\), instead/.test(w.message)),
       'a hidden ending is allowed, and a warning says partners end at the main thank-you screen instead', K.show(v1.errors.concat(v1.warnings).filter((i) => i.section === 'screens')));
     const pub1 = P(h, s, 'panelPublish', [sv.revision, 'promoters\' ending hidden'], { need: true });
     s.ok(pub1 && pub1.ok === true, 'Publish goes ahead', K.show(pub1));
@@ -293,9 +297,11 @@ module.exports = function register(add) {
     const liveBefore = props.get('LIVE_VERSION');
     const historyBefore = history();
     const refused = P(h, s, 'panelPublish', [sv.revision, 'promoters\' ending deleted'], { need: true });
-    const runOn = refused && (refused.errors || []).find((e) => /go straight on to question \d+ \("What went wrong\?"\), which starts another route \(question 3 jumps there\)/.test(e.message));
-    s.ok(refused && refused.ok === false && runOn && H.plainEnglish(runOn.message),
-      'deleted: promoters would run on into the detractors\' question, so Publish refuses, saying which question needs a "usually go to"', K.show(refused));
+    // since 27 Oct 2026 (review W8 finding 2) told once, in the route table's words: Flow.gs's note G5
+    const runOns = refused ? (refused.errors || []).filter((e) => /go straight on to/.test(e.message)) : [];
+    const runOn = runOns.find((e) => /has no "then go to", so partners who answer it go straight on to question \d+ \("What went wrong\?"\), which starts another route: question 3 \("[^"]*"\) jumps there\. Write where it goes in its "then go to" column/.test(e.message));
+    s.ok(refused && refused.ok === false && runOn && runOns.length === 1 && H.plainEnglish(runOn.message),
+      'deleted: promoters would run on into the detractors\' question, so Publish refuses, once, saying which question needs a "then go to"', K.show(refused));
     s.ok(props.get('LIVE_VERSION') === liveBefore && history() === historyBefore, 'and nothing goes live', K.show([props.get('LIVE_VERSION'), liveBefore]));
     L = P(h, s, 'panelLoad', [], { need: true });
     const fixed = H.clone(L.model);
@@ -303,7 +309,7 @@ module.exports = function register(add) {
     sv = P(h, s, 'panelSave', [L.revision, fixed], { need: true });
     const pub2 = P(h, s, 'panelPublish', [sv.revision, 'promoters end at the main thank-you'], { need: true });
     s.ok(pub2 && pub2.ok === true && K.deepEqual(walk(liveDoc().survey, { nps: 10 }), ['nps', 'promo_q', 'thanks']),
-      'with "usually go to: the thank-you screen" (an ending above it is allowed) Publish works and promoters end there', K.show(pub2));
+      'with "then go to: the thank-you screen" (an ending above it is allowed) Publish works and promoters end there', K.show(pub2));
 
     // ---- 2. the codes lock, kind by kind (review finding 2) ---------------------------------------------
     P(h, s, 'panelSetRoundStatus', ['2026-R1', 'open'], { need: true });
@@ -339,6 +345,19 @@ module.exports = function register(add) {
     const refused2 = P(h, s, 'panelPublish', [sv.revision, 'shared codes deleted'], { need: true });
     s.ok(refused2 && refused2.ok === false && (refused2.errors || []).some((e) => e.ref === 'payments/payout_delayed') &&
       (refused2.errors || []).some((e) => e.ref === 'visits/rarely'), 'and Publish refuses both', K.show(refused2));
+    // a question partners answered keeps its kind (27 Oct 2026, review W8 finding 3): in the route table that is one cell
+    L = P(h, s, 'panelLoad', [], { need: true });
+    const kinded = H.clone(shared);
+    kinded.screens[idx(kinded, 'one_fix')].type = 'rating_1_5';             // voice/typing -> faces
+    const v3 = P(h, s, 'panelValidate', [kinded]) || { errors: [] };
+    const kindErr = v3.errors.find((e) => e.section === 'screens' && e.ref === 'screen ' + (idx(kinded, 'one_fix') + 1) && /its kind can't change/.test(e.message));
+    s.ok(kindErr && /is now of the kind "faces", but partners have already answered it as a question of the kind "voice\/typing"/.test(kindErr.message) &&
+      H.plainEnglish(kindErr.message), 'a live voice/typing question made a faces question is an error at its row, naming both kinds as the route table does', K.show(v3.errors));
+    sv = P(h, s, 'panelSave', [L.revision, kinded], { need: true });
+    const liveBefore3 = props.get('LIVE_VERSION');
+    const refused3 = P(h, s, 'panelPublish', [sv.revision, 'one_fix re-typed'], { need: true });
+    s.ok(refused3 && refused3.ok === false && (refused3.errors || []).some((e) => /its kind can't change/.test(e.message)) &&
+      props.get('LIVE_VERSION') === liveBefore3, 'and Publish refuses it: nothing goes live', K.show(refused3));
 
     // ---- 3. Google Drive can't read the live version: Publish waits (review finding 9) -----------------
     L = P(h, s, 'panelLoad', [], { need: true });

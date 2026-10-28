@@ -37,10 +37,12 @@
        G12        the reviewers' fixes of 26 Oct: hidden and deleted endings,
                   the codes lock per area and per question, Publish during a
                   Google Drive hiccup, Publish's warnings in set-up's notes,
-                  docs/flow.md in the GitHub copy
+                  docs/flow.md in the GitHub copy; since 27 Oct (review W8)
+                  the run-on told once (Flow.gs's note G5) and a live
+                  question's kind locked
        E1-E4      the real form in headless Chrome, end to end
        F          the control panel page in Chrome (smoke test)
-     tools/plant-bugs.py checks these tests themselves: it plants 83 known
+     tools/plant-bugs.py checks these tests themselves: it plants 85 known
      mistakes, one at a time, in copies of the code and expects each to be
      caught.
 

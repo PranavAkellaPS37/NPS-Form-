@@ -5,10 +5,13 @@ docs/control-panel.md: user guide for the Partner Pulse control panel
 What this file is for
   How to use the control panel inside the Google Sheet "Valmo Partner Pulse -
   Control": change the questionnaire, translate, run rounds, make links,
-  publish, and undo. Also the route through the questionnaire: where each
-  question leads ("Usually go to"), jumps, questions asked once per area,
-  extra endings, the Map and Try a path. Each task is a recipe with exact
-  clicks.
+  publish, and undo. Since 27 Oct 2026 the questions and their route (which
+  screen comes after which: rules, jumps, questions asked once per area,
+  extra endings) are changed as ONE TABLE with "Paste a route": copy the
+  current route into Excel (or have Claude/ChatGPT write the table), change
+  it, paste it back, Check, Use this route. The Map and Try a path show and
+  test it. Each task is a recipe with exact clicks; the table's columns and
+  rule words, and every message the Check can show, are listed here too.
 
 Who it is for
   Valmo ops colleagues with Editor access to the Sheet. No coding needed.
@@ -34,6 +37,8 @@ Safety
 The **control panel** is where you run Valmo Partner Pulse: the questions, the texts in six languages, the rounds, the partners' links, and publishing. It lives inside a Google Sheet, so there is nothing to install.
 
 You never need to edit code or files. If the panel was not set up yet, the admin follows [apps-script/README.md](../apps-script/README.md) first.
+
+**New since 27 Oct 2026:** the questions and their route are no longer made one by one. You copy the whole route as a table, change it in Excel (or let Claude or ChatGPT write it), and paste it back: [Recipe 2: Paste a route](#recipe-2-change-the-questions-paste-a-route).
 
 ## On this page
 
@@ -136,9 +141,9 @@ It is simplest to agree that one person edits at a time.
 
 1. **Partners only see what you Publish.** Save keeps your work in the draft; it does not change anything for partners.
 2. **Always Preview before you Publish.** Go through the screens you changed, on your phone if you can.
-3. **Never rename or delete codes during a round.** Every question, area, problem chip, option and support item has a **code** (such as `payments` or `payout_delayed`). Answers are saved under these codes, and the dashboard compares rounds by them. To change what partners read, change the **wording** instead: that is always safe. To stop asking something, **Hide** it instead of deleting it. The panel helps: once the first real round has opened, anything live shows a **lock icon** 🔒 next to its code, has no **Change code** button, and cannot be deleted, only hidden. Before that, nothing is locked, and a note at the top of **Questions** and **Areas & problems** says so: that is the time to replace the placeholder questionnaire. Test rounds, whose name starts with SMOKE, DEMO or TEST, never lock anything. Two questions are protected from the start: the 0–10 question (code `nps`) and "Did you contact Valmo support?" (code `support_gate`) fill their own columns in every round's answers sheet, so they can be hidden but never deleted or given a new code.
+3. **Never rename or delete codes during a round.** Every question, area, problem chip, answer option and support item has a **code** (such as `payments` or `payout_delayed`). Answers are saved under these codes, and the dashboard compares rounds by them. To change what partners read, change the **wording** instead: that is always safe. To stop asking something, **hide** it instead of deleting it: a question is hidden by writing `no` in the **show** column of the route table ([Paste a route](#recipe-2-change-the-questions-paste-a-route)); an area, problem or support item with its **Shown / Hidden** switch. The panel helps: once the first real round has opened, anything live shows a **lock icon** 🔒 next to its code. Areas, problems and support items then have no **Change code** button and can't be deleted, only hidden; and **Check** refuses a pasted route table that leaves out a live question or a live answer, or changes its code. Before that, nothing is locked, and a note at the top of **Questions** and **Areas & problems** says so: that is the time to replace the placeholder questionnaire. Test rounds, whose name starts with SMOKE, DEMO or TEST, never lock anything. Two questions are protected from the start: the 0–10 question (code `nps`) and "Did you contact Valmo support?" (code `support_gate`) fill their own columns in every round's answers sheet, so they can be hidden but never deleted or given a new code: a route table without them is refused.
    - **A code partners answered stays locked for good.** Once the first real round has opened, every **Publish** remembers for good the codes of the version partners had until then and of the new one. A remembered code stays locked, even after you hide its question (or area, problem or support item) and publish again. If it ever goes missing from the draft (for example after typing in the tabs, or an **Import from GitHub**), **Check for problems** shows an **error** and Publish waits until it is back ([what the errors mean](#what-the-errors-and-warnings-mean)).
-   - **An answer of a "Pick one answer" question can't be hidden.** Once partners picked it in a real round, it must stay on its question: reword it instead ([live answers](#a-live-answer-of-a-pick-one-question)).
+   - **An answer of a "Pick one answer" question can't be hidden or removed.** Once partners picked it in a real round, it must stay on its question in the table: reword it instead ([live answers](#a-live-answer-of-a-pick-one-question)).
 4. **Never put partner data or secrets in texts or settings.** The published questionnaire is public: anyone with the web app address can read it.
 5. **Open and close rounds only with the panel's buttons.** Typing a status into the **Rounds** tab does not change anything for partners.
 6. **Close the panel before you type in the tabs directly**, and open it again afterwards. The panel works on its own copy while it is open, and its **Save** would overwrite what you typed.
@@ -157,14 +162,14 @@ A banner appears when the draft is different from the live version ("Partners st
 
 **If the window closes before you save** (or the browser crashes), your unsaved changes stay on this computer. The next time you open the panel it asks **Bring back your unsaved changes?**: click **Bring them back**, then **Save**, or **Throw them away**. If a colleague saved the draft in the meantime, they are dropped instead, with a short message.
 
-**After a delete**, a short message offers **Undo** for a few seconds.
+**After a delete, or after Use this route**, a short message offers **Undo** for a few seconds (until you change something else).
 
 **The sections** (left-hand list):
 
 | Section | What you do there |
 |---|---|
 | **Home** | The live version, whether the draft differs from it, "What to do next" hints, every round with its status and numbers, and quick links (the Sheet, the Drive folder, the form, and the web app address). Until someone records the web app address, its box is empty: the admin pastes it there and clicks **Check and save** ([setup guide, step 10](../apps-script/README.md#step-10-copy-the-web-app-address-and-record-it-in-the-control-panel)). A red banner shows here if the form on GitHub runs different route code from the panel ([what to do](#if-something-goes-wrong)). |
-| **Questions** | The screens of the survey, in order: change wording, add questions, set "Only show it if…" rules, hide, reorder. Also the **route**: where partners go after each question (**After this question**: "Usually go to" and jumps), questions asked once per area, extra endings (**Other routes and endings**), the **Map** and **Try a path** ([Recipes 13 to 20](#how-the-route-works)). |
+| **Questions** | The questions and their **route** (which screen comes after which), changed as **one table**: **1. Get the route as a table** (copy it, download the Excel template, or copy the instruction for Claude/ChatGPT) and **2. Paste a route** (paste the table back, **Check**, **Use this route**) ([Recipe 2](#recipe-2-change-the-questions-paste-a-route)). Below them, **The route now**: every screen in order, read only, with its badges and its row number in the table. Also the **Map** and **Try a path** ([How the route works](#how-the-route-works)). |
 | **Areas & problems** | The areas partners rate (such as Payments / Payouts) and each area's problem chips. |
 | **Support questions** | The support items rated after "Did you contact Valmo support?", and the optional comment. |
 | **Texts & translations** | Every text in every language, translation progress, and notes for translators. |
@@ -218,8 +223,14 @@ Partners get the new version the next time they open their link. A partner who h
 
 Each recipe ends with the [everyday loop](#the-everyday-loop-save-preview-publish), unless it says otherwise.
 
-- [Recipe 1: Change a question's wording](#recipe-1-change-a-questions-wording)
-- [Recipe 2: Add a question only for low scorers (0–6)](#recipe-2-add-a-question-only-for-low-scorers-06)
+**The questions** (since 27 Oct 2026 they are changed as one table, "Paste a route"):
+
+- [Recipe 1: Change a question's wording (fix a typo)](#recipe-1-change-a-questions-wording)
+- [Recipe 2: Change the questions: Paste a route](#recipe-2-change-the-questions-paste-a-route) (add, remove, move, hide, rules, jumps, endings)
+- [Examples in the route table](#examples-in-the-route-table): a question only for low scorers, a jump, a question for each area, an extra ending, a question in one language or one round
+
+**Everything else:**
+
 - [Recipe 3: Add or hide a problem chip](#recipe-3-add-or-hide-a-problem-chip)
 - [Recipe 4: Add an area](#recipe-4-add-an-area)
 - [Recipe 5: Translate a language](#recipe-5-translate-a-language)
@@ -233,68 +244,107 @@ Each recipe ends with the [everyday loop](#the-everyday-loop-save-preview-publis
 
 **The route** (which screen comes after which): start with [How the route works](#how-the-route-works).
 
-- [Recipe 13: Change where a question usually goes](#recipe-13-change-where-a-question-usually-goes)
-- [Recipe 14: Add a jump (promoters skip the area questions)](#recipe-14-add-a-jump-promoters-skip-the-area-questions)
-- [Recipe 15: Ask a question for each area](#recipe-15-ask-a-question-for-each-area)
+- [The route table: columns, kinds and rules](#the-route-table-columns-kinds-and-rules) (the reference for Recipe 2)
 - [Recipe 16: Choose where the problem screens go](#recipe-16-choose-where-the-problem-screens-go)
-- [Recipe 17: Add an ending, or hide or delete one](#recipe-17-add-an-ending-or-hide-or-delete-one)
-- [Recipe 18: Show a question only in one language or one round](#recipe-18-show-a-question-only-in-one-language-or-one-round)
 - [Recipe 19: See the whole route on the Map](#recipe-19-see-the-whole-route-on-the-map)
 - [Recipe 20: Try a path](#recipe-20-try-a-path)
 - [A live answer of a pick-one question](#a-live-answer-of-a-pick-one-question)
 
+(Recipes 13, 14, 15, 17 and 18 used the question editor, which was removed on 27 Oct 2026. What they did is now written in the table: see the [examples](#examples-in-the-route-table). Old links to them land on the matching example.)
+
 ### Recipe 1: Change a question's wording
 
-Always safe, even during a round: the question's code stays the same.
+For a typo, or a better wording. Always safe, even during a round: the question's **code** stays the same. The way is **copy, fix, paste back** ([Recipe 2](#recipe-2-change-the-questions-paste-a-route) explains each step in more detail):
 
-1. **Questions**. Each card shows the question in English with the Hindi underneath.
-2. On the question's card, click **Edit**.
-3. Under **Question**, change the English text. If you can, change the Hindi too, and any other language. Each language has its own box, labelled with the language's name. A language that is not translated yet has an empty box marked **To translate**: partners see the English there.
-4. Do the [everyday loop](#the-everyday-loop-save-preview-publish).
+1. **Questions**. In the card **1. Get the route as a table**, click **Copy the current route**. **You should see** the message "The current route copied. Paste it into Excel or Google Sheets (… rows and the header)."
+2. Open a new, empty Excel sheet or Google Sheet, click cell **A1** and paste (**Cmd+V**). Row 1 holds the column names; every row below is one screen.
+3. Find the question's row. (In the panel, each card under **The route now** says which row it is, for example "row 4 in the table".) Fix the words in its **question (English)** cell, and in **question (Hindi)** if you have the Hindi. Change nothing else, and above all not the **code**.
+4. Click any cell of the table, press **Cmd+A** (select all) and copy (**Cmd+C**).
+5. In the panel, click in the big box under **2. Paste a route**, paste (**Cmd+V**) and click **Check**.
+6. **You should see** "✔ No problems." and "Compared with your draft: 1 text new or reworded." Click **Use this route**.
+7. Do the [everyday loop](#the-everyday-loop-save-preview-publish).
 
-**What happens to the other languages when you save:**
+**Only the words? There is a shortcut:** **Texts & translations** > **Find and edit texts**: type a few words of the question in the search box, then change its English box (and the other languages). That changes the words only; the route stays as it is.
+
+**What happens to the other languages:**
 
 - a language that was never translated (still `[TRANSLATE]`) follows the new English automatically;
-- a language that has a real translation keeps it, and gets a note for the translator: "English changed on (date): please re-check the translations." The note shows in **Texts & translations**. Once the translation is checked, click **Checked** next to the note to clear it.
+- a language that has a real translation keeps it (the **Check** of a pasted table already warns: "the English changed but the Tamil did not: check it in Texts & translations"), and when you save it gets a note for the translator: "English changed on (date): please re-check the translations." The note shows in **Texts & translations**. Once the translation is checked, click **Checked** next to the note to clear it.
 
 To reword an area name, a problem chip or a support item, use **Areas & problems** or **Support questions**, or find the text in **Texts & translations**.
 
-### Recipe 2: Add a question only for low scorers (0–6)
+### Recipe 2: Change the questions: Paste a route
 
-Partners who score 0 to 6 on "How likely are you to recommend…" are *detractors*. This recipe asks them one extra question, for example "What is the main reason for your score?".
+Everything about the questions is changed here: add, remove, move, hide or reword a question, its answers, its rule ("show only if"), where partners go next, jumps, questions asked for each area, and extra endings. The whole **route** (which screen comes after which) is **one table**, one row per screen, in the order partners see them. You change the table outside the panel, in Excel or Google Sheets, or let Claude or ChatGPT write it, and paste it back.
 
-Best done **between rounds**, so that every partner in a round sees the same questions.
+**Nothing changes in your draft until you click Use this route**, and partners see nothing until you **Publish**. Best done **between rounds**, so that every partner in a round sees the same questions.
 
-1. **Questions > Add a question**. A window **Add a question** opens.
-2. Under **1. What kind of question?**, pick a kind. Each one has a plain description. For example:
-   - **Voice note or typing**: the partner records a voice note or types an answer;
-   - **Pick one answer**: the partner taps one of your answers;
-   - **Yes / No question**: two big buttons.
+| Way in | Good for | Start with (Questions, card **1. Get the route as a table**) |
+|---|---|---|
+| **A. Excel or Google Sheets** (no AI) | A typo, a new question, a rule, hiding a question, a jump | **Copy the current route** (or **Download the Excel template**) |
+| **B. Claude or ChatGPT** | A bigger change, or when you have notes, an Excel sheet of planned questions, or a flowchart picture | **Copy the instruction for Claude/ChatGPT** |
 
-   (The others are **0 to 10 question**, **Faces question (1 to 5)** and **Information card**.)
-3. Under **2. The question**, **Write the question in English**. Below it, the panel shows the **code** it will use ("Code in the data: …").
-4. In **Put it after**, choose the 0–10 question (**3. How likely are you to recommend Valmo to another DC owner?**). A rule can only look at answers given **earlier** in the survey, or at the partner's language and the round ([Recipe 18](#recipe-18-show-a-question-only-in-one-language-or-one-round)). (You can move a question later with the **↑** and **↓** arrows on its card.)
-5. Click **Add question**. The question's editor opens.
-6. Under **Question**, add the Hindi and any other language you can. Languages you leave empty show the English until they are translated.
-7. Under **Answers**, **Partners must answer**: **Yes, required**, or **No: a Skip button is shown**. For a voice note or typing question, No is kinder (it is also the standard for that kind).
-8. For a **Pick one answer** question: under **Answers partners can pick**, click **Add an answer** for each answer (type it in English, click **Add answer**), add the other languages in its boxes, and order them with **↑** and **↓**. Add at least two.
-9. Under **When to show this question**, choose **Only show it if…**. The panel suggests a condition; make it read:
-   - the earlier answer: **How likely are you to recommend Valmo to…**;
-   - the test: **is at most**;
-   - the value: **6**.
+#### Way A: in Excel or Google Sheets
 
-   The builder shows the rule as a sentence: "Partners see this question only if the answer to "How likely are you to recommend Valmo to…" is 6 or lower." Check that it reads the way you mean.
-10. Save and **Preview twice**: once scoring 5 (the question must appear) and once scoring 9 (it must not). Use **Start again** at the end of the preview between the two tries.
-11. Publish.
+1. **Questions**. In the card **1. Get the route as a table**, click **Copy the current route**. **You should see** "The current route copied. Paste it into Excel or Google Sheets (… rows and the header)." It copies your draft as it is in the window, unsaved changes included. (If the browser does not allow copying, a window **Copy by hand** opens with the table selected: press **Cmd+C**, then **Close**.)
 
-**Good to know:**
+   Or click **Download the Excel template**: the file `partner-pulse-route.csv` lands in your Downloads folder. It holds the same table (the header, and your draft's route as example rows) and opens in Excel with the Hindi intact.
+2. In a new, empty Excel sheet or Google Sheet, click cell **A1** and paste (**Cmd+V**), or open the template file. Row 1 holds the column names (the header); every row below is one screen, in the order partners see them.
+3. Change what you need. The columns are explained in [The route table](#the-route-table-columns-kinds-and-rules), with [examples](#examples-in-the-route-table):
+   - **reword:** the **question (English)** and **question (Hindi)** cells;
+   - **add a question:** insert a row where partners should see it, with a new **code**, its **kind** and its words;
+   - **move a question:** move its whole row;
+   - **hide a question:** write `no` in its **show** cell (never delete a row partners answered);
+   - **rules and the route:** **show only if**, **then go to**, **jumps** and **ask for**.
 
-- The panel makes the new question's **code** from its English words, and shows it on the card. You can change it with **Change code** in the editor until it locks, which happens once the question is published **and** the first real round has opened. Then the code gets a lock icon and never changes, even if you reword the question.
-- **Add another condition** adds a second test. With two or more, choose **Show it when**: **all of these are true** (every condition must match) or **any of these is true** (one is enough). The **✕** next to a condition removes it.
-- **Always show it** shows the question to everyone again. (The panel remembers the rule, so switching back to **Only show it if…** brings it back.)
-- If a rule tests a question that is later in the list, or hidden, the card shows a red badge "⚠ The rule tests a later or hidden answer: edit it", and **Check for problems** reports an error.
-- The answers appear in the round's data spreadsheet: spoken and typed answers in the **free_text** tab, the others in the **responses** tab.
-- **"Only show it if…" or a jump?** A rule shows or skips this one question. To send some partners past several questions, or to a screen of their own, use a jump instead ([Recipe 14](#recipe-14-add-a-jump-promoters-skip-the-area-questions)).
+   Keep the header row, and keep every row's **code**: answers are saved under it.
+4. Copy the whole table, **header row included**: click any cell of it, press **Cmd+A**, then **Cmd+C**.
+5. Back in the panel, click in the big box under **2. Paste a route**, paste (**Cmd+V**) and click **Check** (or press **Ctrl+Enter** in the box; **Cmd+Enter** on a Mac).
+6. Read the result ([Reading the Check](#reading-the-check), below). If it lists problems, fix them in Excel, copy the table again, click **Clear**, paste and **Check** again.
+7. When it says **✔ No problems**, look before you use it: **Map of the pasted route** and **Try a path on it** show the pasted route and change nothing ([Recipe 19](#recipe-19-see-the-whole-route-on-the-map), [Recipe 20](#recipe-20-try-a-path)). **← All questions** brings you back.
+8. Click **Use this route**. **You should see** "This route is now your draft (… screens). It is not saved yet: press Save, then Preview and Publish as usual.", the message "Route used: your questions were replaced." with an **Undo** button, and the new route in the list **The route now**.
+9. Do the [everyday loop](#the-everyday-loop-save-preview-publish): **Save**, **Preview**, **Publish**.
+
+#### Way B: with Claude or ChatGPT
+
+1. **Questions** > **Copy the instruction for Claude/ChatGPT**. **You should see** "The instruction copied. Paste it into Claude or ChatGPT, then add your notes, your Excel sheet or a picture of your flowchart."
+2. In Claude or ChatGPT, start a new chat and paste the instruction. Then add what you want, in the same message or the next: your notes, your Excel sheet, a photo of a flowchart, or simply a sentence such as "After nps, add a question for partners who scored 6 or less: What is the main reason for your score?".
+   - The instruction tells the AI the table's exact format, every kind and rule word, today's area and problem codes, support questions, languages and today's route, and to answer with **only the table**.
+   - A picture of a flowchart is read less reliably than notes: check the AI's table carefully, and look at it on the Map before you use it.
+   - The instruction holds only the questionnaire (its wording and codes, which are public anyway). **Never paste partner data into the chat** (DC names or ids, links, answers).
+3. **Check the Hindi columns before you paste.** The instruction tells the AI to copy only the Hindi you give it and **never to translate**. **question (Hindi)**, **answers (Hindi)** and **message (Hindi)** must hold only Hindi you wrote. If the AI made up Hindi of its own, ask it to leave those cells empty: an empty cell keeps the words the questionnaire already has, and a new text waits for a translator, marked `[TRANSLATE]`. The **Check** also warns at every Hindi cell the table adds or changes ("new Hindi words: …", "the Hindi words change: … -> …"), so you see each one before you use the table.
+4. Copy the AI's table (the copy button under its answer is fine: words around the table are left out, with a warning).
+5. Paste it into **2. Paste a route**, click **Check**, and go on as in Way A, steps 6 to 9. If the Check lists problems, you can paste them back into the chat and ask the AI to fix the table.
+
+#### Reading the Check
+
+- **Problems (red)** block the route: "… problems to fix before this route can be used. Nothing has changed in your draft. Fix them in your table (or ask the AI to), paste it again and press Check." Each problem starts with where it is: **Row 5 · jumps** means row 5 of your table, as Excel numbers it (the header is row 1), in the column **jumps**. A problem about the whole table says **The whole table**; one about a column name says **Column "…"**. Every message is explained in [When you Check a pasted route](#when-you-check-a-pasted-route).
+- **Warnings (yellow)**, under "… warnings: worth reading, they don't stop you", for example a row your table leaves out ("using the table removes it"), or a code the panel made for you. Read them.
+- **No problems (green):** "✔ No problems. The route has … screens (… shown). Nothing has changed in your draft yet.", then what would change, for example "Compared with your draft: 1 screen added (main_reason) and 1 text new or reworded.", or "This is the same route as your draft: using it changes nothing." Under it, the fold-out **The texts that would change (…)** lists each changed text as its key and language, old → new. It opens by itself ("translations too: check them") when a real translation would change.
+- **"…press Check again."** If you change the box, or anything in the panel, after a check, the result says so and its buttons wait for a new **Check**.
+- **The same rules as Publish.** Check runs the same route checks as **Check for problems** in Publish, including a route that runs on into another one and a question whose kind may no longer change. Publish also checks the texts, the settings and the rest of the questionnaire ([errors](#what-the-errors-and-warnings-mean)), so do the everyday loop as always.
+
+#### Use this route, and Undo
+
+- **Use this route** checks the table once more against your draft as it is now. If that finds problems, nothing changes ("The table was checked once more and now has problems (see the list), so nothing was changed.").
+- **It replaces** the questions (every row of **The route now**) and their texts. **It keeps** everything else: areas and problems, support questions, other texts and translations, look & feel, settings, languages and rounds.
+- **Texts of a removed question go with it** when they are named after its code (its question, its answers, an ending's title and message) and nothing else uses them. The message then adds "… texts that only the removed screens or answers used were removed too." The standard texts of the built-in screens always stay.
+- **Undo**: click **Undo** in the message (it shows for a few seconds) to put the whole draft back as it was. It works until you change something else; after that it says "Undo is no longer possible: you changed other things since." **Discard** in the top bar also goes back to the last saved draft, but it throws away all your other unsaved changes too.
+- The warnings of the check stay visible under the box after **Use this route**.
+
+#### Good to know
+
+- **Codes.** Every row's **code** is permanent once partners have answered. Keep the codes when you edit. A new question needs a new code: small letters, digits and `_`, starting with a letter, at most 60 characters, for example `main_reason`. If you leave it empty, the panel makes one from the English words and warns you to keep it.
+- **Changing a code is removing a question and adding a new one.** Before the first real round that is allowed, but the new code starts with the words in the table only (English, and the Hindi you give): translations in other languages stayed with the old code and are removed with it. So settle the codes before translating. Once partners have answered under a code, **Check** refuses to let it go.
+- **A question partners answered keeps its kind.** **Check** (and Publish) refuse, for example, `faces` for a question partners answered by voice or typing: their answers would mean something else from one round to the next. Hide it (`no` in **show**) and add the new question in a new row with a new code.
+- **Hiding.** Write `no` in **show**: the row stays, with its code, and its card says "Hidden: partners don't see it". Write `yes` to show it again.
+- **Empty means keep.** An empty text cell keeps the words that are there. A cell holding only a placeholder, such as `NA`, `N/A`, `-`, `—`, `TBD` or `(to be translated)`, counts as empty too, with a warning, so it can never wipe real words.
+- **One thank-you row.** The first `thank you` row is the main thank-you screen. Every other end of a route is an `ending` row below it, with its own words. (A later `thank you` row with its own words is read as an `ending`, with a warning.)
+- **Removing.** A row you leave out of the table is removed from the draft (the check warns: "The current questionnaire has a row … that this table does not have: using the table removes it."). Rows partners answered can't be left out, and `nps`, `support_gate` and the first thank-you row never ([golden rule 3](#the-golden-rules)).
+- **Built-in screens** (language, what changed, nps, area ratings, problem screens, support question, support ratings, thank you) keep their standard codes. Leave their **question (English)** cell empty to keep today's words. The areas and their problems are changed in **Areas & problems**, the support items in **Support questions**.
+- **Languages.** Every text the table adds or changes gets your English and the Hindi you wrote. A language that already has a real translation keeps it; every other language shows the English, marked `[TRANSLATE]`, until someone translates it ([Recipe 5](#recipe-5-translate-a-language)). Nothing is ever machine-translated. An empty text cell keeps the words that are there.
+- **One person at a time** (see [Two people at once](#two-people-at-once)): **Use this route** replaces the questions of the draft in your window.
+- **If the panel window can't run the route tools**, pasting still works: **Check**, **Use this route** and the three table buttons ask Google to run the same code (a few seconds slower, with a box such as "Google is checking the table…"). Only the **Map**, **Try a path** and the badges are off. If Google can't either (usually an old or missing `Flow` file), the buttons of both cards look switched off and say why when clicked ([If something goes wrong](#if-something-goes-wrong)).
 
 ### Recipe 3: Add or hide a problem chip
 
@@ -473,7 +523,7 @@ The restored content is published as a **new** version number (for example 9). V
 
 **What Restore replaces, keeps and drops:**
 
-- **Replaced with version 7:** the questions (with their route: "Usually go to", jumps, "Ask this question" and extra endings), areas, problems, support questions, languages, texts, colours and settings, the read-aloud clips (the **Audio clips** tab), and the "What changed" bullets.
+- **Replaced with version 7:** the questions (with their route: "then go to", jumps, "ask for" and extra endings), areas, problems, support questions, languages, texts, colours and settings, the read-aloud clips (the **Audio clips** tab), and the "What changed" bullets.
 - **Kept as they are:** your rounds, the form address, any setting version 7 did not have yet, and the notes for translators.
 - **Kept, but hidden:** anything your draft has that version 7 does not (a question, area, problem, support question or language, including things that were already hidden). It stays in its place, switched to **Hidden**, with its texts, translations and clips, so partners see exactly version 7 until you switch it on again and publish. An area that comes back this way brings its problems back hidden too: if you switch the area on, switch its problems on as well.
 - **Dropped:** the "What changed" bullets of every round that version 7 did not have. The rounds stay, but those bullets are deleted. Copy them somewhere before you restore, and add them again afterwards ([Recipe 7](#recipe-7-start-a-new-round-with-its-what-changed-bullets)).
@@ -531,151 +581,224 @@ The copy has a fifth file, `docs/flow.md`: the **map of the route**, as a diagra
 
 ### How the route works
 
-The **route** is which screen comes after which. Recipes 13 to 20 change it, look at it and test it.
+The **route** is which screen comes after which. Since 27 Oct 2026 you change it in the route table ([Recipe 2](#recipe-2-change-the-questions-paste-a-route)), and you look at it and test it with the [Map](#recipe-19-see-the-whole-route-on-the-map) and [Try a path](#recipe-20-try-a-path).
 
-- **The Questions list is the route, from top to bottom.** After each question, partners go to the next one in the list, unless you say otherwise.
-- **The main thank-you screen ends the main route.** Partners stop there and their answers are sent.
-- **Below it**, under **Other routes and endings**, you can add questions and extra endings. Partners reach them **only through a jump** from an earlier question.
-- **Arrows only go down the list**: to a later question, or to any ending. So a route can never go round in circles. A question below the main thank-you screen can't send partners back up into the main route: end its route with an ending of its own, or with the main thank-you screen.
-- **The badges on each card show the route**, for example "↪ goes to question 6 when … ≥ 9" (a jump), "↪ then goes to question 8" (a "Usually go to"), "Repeats for each area rated low" and "Ends the survey". A badge with ⚠ points at a problem ([If something goes wrong](#if-something-goes-wrong)).
-- **Route changes are content**, like wording: partners get them after **Save** and **Publish**. **Check for problems** checks the whole route with the same route code the phones run.
-- **The route tools** (the Map, Try a path, the **After this question** and **Ask this question** cards, and extra endings) run that route code inside the panel window. While they load, Questions says "Loading the route tools (map, Try a path, jumps)…". If they can't start, everything else still works ([If something goes wrong](#if-something-goes-wrong)).
+- **The table is the route, from top to bottom.** After each row, partners go to the next row, unless that row's **then go to** or one of its **jumps** says otherwise.
+- **The first thank-you row ends the main route.** Partners stop there and their answers are sent.
+- **Rows below it are other routes and endings.** Partners reach them **only through a jump** (or a **then go to**) from an earlier row. In the panel they show under **Other routes and endings**. Each of these routes must end: give its last row a **then go to** (an ending, or `end`), or put its own ending row right after it. Otherwise its partners would run on into the next route, and **Check** refuses the table.
+- **Arrows only go down the table**: to a later row, or to any ending (a thank-you row). So a route can never go round in circles. A row below the main thank-you can't send partners back up into the main route: end its route with an ending of its own, or with the main thank-you (`end` in **then go to**).
+- **The list "The route now" shows the route**, read only, with badges such as "↪ goes to question 6 when … ≥ 9" (a jump), "↪ then goes to question 8" (a **then go to**), "Repeats for each area rated low", "Ends the survey" and "Hidden: partners don't see it". A badge with ⚠ points at a problem, and the explanation is written under the card ([If something goes wrong](#if-something-goes-wrong)).
+- **Question numbers and row numbers.** The list numbers the screens 1, 2, 3 …; in the table the same screen is one row lower, because the header is row 1. Each card says it: question 6 shows "row 7 in the table".
+- **Route changes are content**, like wording: partners get them after **Save** and **Publish**. **Check** (in **Paste a route**) and **Check for problems** (in **Publish**) check the whole route with the same route code the phones run.
+- **The route tools** (pasting a route, the Map and Try a path) run that route code inside the panel window. While they load, Questions says "Loading the route tools (pasting a route, the map, Try a path)…". If they can't start there, pasting a route still works through Google, and everything else works too; only the Map, Try a path and the badges are off ([If something goes wrong](#if-something-goes-wrong)).
 
-### Recipe 13: Change where a question usually goes
+### The route table: columns, kinds and rules
 
-Normally partners go from a question to the next one in the list. You can choose another place for everyone who answers it.
+**The columns** are the table's header row. **Copy the current route** writes them in this order. You may put them in any order, and capitals and brackets don't matter: `Question (English)`, `question_en` and `English` are the same column. A column the panel doesn't know is left out with a warning, except your own note columns (such as **Notes**, **Comments**, **No.** or **Step**), which are left out without a word. Column names in Hindi script work too (for example `प्रश्न (हिंदी)` or just `हिंदी`), and so does `Hindi translation`.
 
-1. **Questions**, then **Edit** on the question.
-2. Find the card **After this question**. Under **Usually go to**, the first choice is the standard: **The next one in the list:** followed by its name. Pick another place instead. The list offers:
-   - **Later questions** (below this one);
-   - **Other routes (below the thank-you screen)**;
-   - **Endings (send the answers)**: the main thank-you screen, or another ending.
-3. Read the sentence under the card, for example: "After this question, partners go to question 8 (“If Valmo could fix just one thing for…”)."
-4. Do the [everyday loop](#the-everyday-loop-save-preview-publish). In Preview, or with [Try a path](#recipe-20-try-a-path), check that the screens in between are skipped.
+| Column | What to write | An empty cell means |
+|---|---|---|
+| **code** | The row's permanent code: small letters, digits and `_`, starting with a letter, at most 60 characters, for example `main_reason`. Built-in screens have fixed codes ([the kinds](#the-kinds)). | A built-in gets its standard code; a question gets one made from its English words, with a warning to keep it. |
+| **kind** | What the row is: one of [the kinds](#the-kinds). The only column a table must have. | A problem (unless the code is a built-in's, such as `nps`). |
+| **question (English)** | The words partners read. For an ending or an info card: its title. | Keep the words it has. A new question needs them. |
+| **question (Hindi)** | Your Hindi for the same words. Never machine-translated. | Keep the Hindi it has. |
+| **answers** | Only for **pick one**: at least 2 answers, each as `code: English words`, separated by `;`, for example `phone: Phone call; app: In the app; visit: A visit`. Commas and slashes don't separate answers. A label that contains `;` goes in double quotes: `b: "Yes; always"`. List marks (`-`, `1.`) and an AI's formatting (`` `code` ``, `**bold**`) are removed. | Keep the answers it has. A new pick one needs them. |
+| **answers (Hindi)** | The same answers in Hindi, with the same codes: `phone: …; app: …`. | Keep. |
+| **message (English)** | The longer text of an **info card** or an **ending**, under its title. | Keep. |
+| **message (Hindi)** | Its Hindi. | Keep. |
+| **required** | `yes` (partners must answer) or `no` (a **Skip** button is shown). | The usual for that kind. |
+| **show only if** | A [rule](#rules-show-only-if-and-jumps): the row is shown only when it is true, for example `nps <= 6`. | Everyone sees it. |
+| **then go to** | Where partners go after this row: the code of a **later** row, or of any ending. `end` means the main thank-you screen. | The next row. |
+| **jumps** | Exceptions, checked first, for example `if nps >= 9 go to support_gate`. Several are separated by `;` and checked in order. | No jumps. |
+| **ask for** | `once`, `each area` or `each area rated low`: ask it once for each area, with the area's name above it. Only for 0 to 10, faces, yes/no, pick one, voice/typing and info card. | Once. |
+| **show** | `yes`, or `no` to hide the row (it keeps its code). | Shown. |
 
-**Good to know:**
+- **Optional, for a 0 to 10 question:** **left end**, **right end** and **hint** (and the same with `(Hindi)`): the words under 0 and under 10, and a line under the buttons. Without them a new question gets the standard words ("Not at all likely" / "Extremely likely"), and an existing one keeps its own. **Copy the current route** doesn't write these columns.
+- **Other languages:** a column such as **question (Tamil)** is read too, for words a translator wrote, if the questionnaire has that language (**Settings > Languages**).
+- **A column you leave out** keeps what the draft has: for example, a table without a **jumps** column keeps every row's jumps as they are.
 
-- **Everything in between is skipped for everyone**, unless a jump leads there. A screen that nothing leads to any more is an error in **Check for problems** ("… can never be reached: no arrow leads to it from the start"). So is a rule that tests a skipped question's answer.
-- **Only screens below the question are offered**, plus every ending. Hidden screens are not offered.
-- **If you later hide the screen it goes to**, partners go where that screen would have gone. **Check for problems** warns about it.
-- An ending has no **After this question**: partners stop there.
+#### The kinds
 
-### Recipe 14: Add a jump (promoters skip the area questions)
+| kind | What partners see | Code |
+|---|---|---|
+| `language` | The language buttons. Skipped when the link already says the language. | `language` |
+| `what changed` | The "What changed since your last feedback" card. Skipped when the round has no bullets (**Rounds > What changed**). | `whats_changed` |
+| `nps` | "How likely are you to recommend Valmo to another DC owner?", 0 to 10. | must be `nps` |
+| `area ratings` | One screen of five faces for each area shown in **Areas & problems**. | `fn_ratings` |
+| `problem screens` | "What is the main problem?" for each area rated low, with that area's problems. Comes after the area ratings. | `fn_deep_dives` |
+| `support question` | "In the last 30 days, did you contact Valmo support?", yes or no. | must be `support_gate` |
+| `support ratings` | The support questions (**Support questions** section) on one screen; usually with `show only if` = `support_gate = yes`. | `support` |
+| `thank you` | Says thank you and sends the answers. Write one: it ends the main route and must be shown. (A later `thank you` row with its own words is read as an `ending`.) | `thanks` |
+| `ending` | Another thank-you screen with its own title (**question**) and **message**, for another route, **below** the `thank you` row. It sends the answers too, and can't have a **show only if** (partners reach it through a jump or a **then go to**). | your own |
+| `0 to 10` | Eleven buttons, 0 to 10. | your own |
+| `faces` | Five faces, from 1 (very bad) to 5 (very good). | your own |
+| `yes/no` | Two buttons, Yes and No. | your own |
+| `pick one` | Your **answers**; the partner taps one. | your own |
+| `voice/typing` | The partner records a voice note or types an answer. | your own |
+| `info card` | A title and an optional **message**, with nothing to answer. | your own |
 
-A **jump** sends **some** partners somewhere else, depending on an answer. The example: partners who score 9 or 10 (promoters) skip the area ratings and their problem screens, and go straight to "Did you contact Valmo support?".
+- Each built-in screen appears once at most (thank-you screens excepted). Leave its **question (English)** empty to keep today's words.
+- Write `0 to 10` and `faces`, not "0-10" or "1-5": Excel turns those into dates. (If it already did, the Check says the kind is unknown.)
+- Other spellings work too, such as "Yes or No", "Pick one answer", "Voice note or typing", "Information card" or "Thanks"; `end` means `ending`. A kind a developer added (in `web/js/types/`) is written with its code.
 
-1. **Questions**, then **Edit** on the 0–10 question (**3. How likely are you to recommend Valmo to another DC owner?**).
-2. In the card **After this question**, click **Add a jump**. A box **Jump 1** appears with a suggested condition (it starts from the question's own answer).
-3. Make it read:
-   - **If**: **How likely are you to recommend Valmo to…**, **is at least**, **9**;
-   - **→ go to**: **6. In the last 30 days, did you contact Valmo support?**
-4. Read the sentence under the card. It must say: "After this question, partners go to question 4 (Area ratings). Except: if the answer to “How likely are you to recommend Valmo to…” is 9 or higher, they go to question 6 (“In the last 30 days, did you contact…”)."
-5. Do the [everyday loop](#the-everyday-loop-save-preview-publish). Preview twice: score 10 (the next screen must be the support question) and score 5 (the area ratings must come). Use **Start again** between the two tries.
+#### Rules: "show only if" and jumps
 
-**You should see** on the question's card the badge "↪ goes to question 6 when “How likely are you to…” ≥ 9" (the panel shortens long names).
+A rule is a short sentence: an answer, a test and a value.
 
-**Good to know:**
+| You write | True when… |
+|---|---|
+| `nps <= 6` | the 0–10 score is 6 or lower (detractors) |
+| `nps >= 9` | the score is 9 or 10 (promoters) |
+| `support_gate = yes` | they answered Yes to "Did you contact Valmo support?" |
+| `support_gate != yes` | they didn't answer Yes (No, or no answer) |
+| `fn_rating:payments <= 2` | they rated the area with the code `payments` 2 or lower |
+| `fn_rating:payments in (1, 2)` | they rated it 1 or 2 |
+| `fn_deep_dive:payments = payout_delayed` | they picked the problem `payout_delayed` for that area |
+| `contact_way = phone` | they picked the answer `phone` of the pick-one question `contact_way` |
+| `one_fix answered` | they typed or recorded something for `one_fix` (`one_fix not answered`: nothing) |
+| `language = hi` | the survey is in Hindi at that moment (`language = Hindi` works too) |
+| `round = 2026-R2` | the partner's link is for round `2026-R2` (the round's code exactly, capitals included: the Check warns about a round that doesn't exist, with "Did you mean …?") |
+| `nps <= 6 and language = hi` | both are true |
+| `nps <= 6 or support_gate = no` | at least one is true |
+| `(nps <= 6 or support_gate = no) and language = hi` | brackets: needed whenever you mix `and` and `or` |
+| `not (language = hi)` | the opposite |
 
+- **What each answer can be tested for:** `nps` and any 0 to 10 question: 0 to 10. A faces question: 1 to 5. A yes/no question: `yes` or `no`. A pick-one question: its answer codes. A voice/typing question: only `answered` or `not answered`. An area's rating: `fn_rating:<area code>`, 1 to 5 (or `na`, "I don't handle this", which never counts as low). The problem picked for an area: `fn_deep_dive:<area code>` = a problem code (or `other`). A support rating: `support:<support code>`, 1 to 5. A question asked for each area: `<its code>:<area code>`. The area, problem and support codes are in **Areas & problems** and **Support questions**; the instruction for Claude/ChatGPT lists them too.
+- **Only earlier answers.** A rule may test only answers given **before** its row (a jump may also test its own row's answer), plus the language and the round.
+- **The tests:** `=`, `!=`, `<=`, `>=`, `in (a, b)`, `answered` and `not answered`. Also understood: `==`, `<>`, `≤`, `≥`, `≠`, `is`, `is not`, `&&`, `||`, and `<` or `>` with whole numbers (`nps < 7` is the same as `nps <= 6`).
+- **Values** are what the answers store: `yes`, `hi`, answer codes, numbers. Capitals don't matter (`Yes` is read as `yes`), except in a round's code.
+
+**Jumps** are written `if <rule> go to <code>`, for example `if nps >= 9 go to support_gate`. Several jumps are separated by `;` (or each put on its own line in the cell); they are checked in order, and the first one that is true wins. A jump goes only down the table, or to an ending; `go to end` means the main thank-you screen.
+
+**A rule or a jump?** A rule (**show only if**) shows or skips this one row. A jump moves partners past several rows at once, or to a route of their own.
+
+### Examples in the route table
+
+Each example shows only the columns that matter: leave the others as they are. After each one: **Check**, **Use this route**, then the [everyday loop](#the-everyday-loop-save-preview-publish). Codes such as `main_reason` are examples: choose your own, short and clear.
+
+<a id="recipe-2-add-a-question-only-for-low-scorers-06"></a>
+
+#### A question only for low scorers (0–6)
+
+Partners who score 0 to 6 on "How likely are you to recommend…" are *detractors*. To ask them one extra question, insert a row **right after the `nps` row** (a rule can only look at earlier answers):
+
+| code | kind | question (English) | required | show only if |
+|---|---|---|---|---|
+| `main_reason` | `voice/typing` | What is the main reason for your score? | `no` | `nps <= 6` |
+
+- For a voice/typing question, `no` (a **Skip** button) is kinder; it is also the usual for that kind.
+- For a **pick one** question instead, also fill **answers**, for example `phone: Phone call; app: In the app`. Give it at least two.
+- **Try it** with [Try a path](#recipe-20-try-a-path) (the 0–10 answer at 5, then at 9), or Save and **Preview twice**: score 5 (the question must appear) and score 9 (it must not), with **Start again** at the end of the preview between the two tries.
+- **You should see** on its card the badge "Only if …" with the rule in words.
+- The answers appear in the round's data spreadsheet: spoken and typed answers in the **free_text** tab, the others in the **responses** tab.
+
+<a id="recipe-13-change-where-a-question-usually-goes"></a>
+
+#### Where a question goes next ("then go to")
+
+After a row, partners normally go to the next row. To send **everyone** who answers it somewhere else, write in its **then go to** the code of a later row, or of an ending (for example `one_fix`, or `end` for the main thank-you screen). Everything in between is skipped for everyone, unless a jump leads there.
+
+- A row that nothing leads to any more is an error ("… can never be reached: no arrow leads to it from the start"). So is a rule that tests the answer of a row everyone skips.
+- If the row it goes to is hidden (`no` in **show**), partners go where that row would have gone; the Check warns about it.
+- A thank-you row or an ending has no **then go to**: partners stop there.
+- **You should see** on its card the badge "↪ then goes to question …".
+
+<a id="recipe-14-add-a-jump-promoters-skip-the-area-questions"></a>
+
+#### A jump: promoters skip the area questions
+
+A **jump** sends **some** partners somewhere else, depending on an answer. Here, partners who score 9 or 10 (promoters) skip the area ratings and their problem screens, and go straight to "Did you contact Valmo support?". On the **nps** row:
+
+| code | kind | jumps |
+|---|---|---|
+| `nps` | `nps` | `if nps >= 9 go to support_gate` |
+
+- **Try it** with Try a path, or Preview twice: score 10 (the next screen must be the support question) and score 5 (the area ratings must come).
+- **You should see** on the 0–10 question's card the badge "↪ goes to question 6 when “How likely are you to…” ≥ 9" (with today's questionnaire; the panel shortens long names).
 - **Skipped screens send nothing.** In this example promoters send no area ratings, so the dashboard has fewer area scores from promoters.
-- **A jump can test** this question's own answer, any earlier answer, the partner's language or the round ([Recipe 18](#recipe-18-show-a-question-only-in-one-language-or-one-round)). **Add another condition** adds a second test, with **all of these are true** or **any of these is true**.
-- **Several jumps:** **Jump 1** is checked first, then the next ("checked if the jumps above don’t apply"). The first one that applies wins. Change the order with **↑** and **↓**; **Remove** deletes a jump.
-- **Where a jump can go:** a later question, a question below the thank-you screen (another route), or any ending ([Recipe 17](#recipe-17-add-an-ending-or-hide-or-delete-one)). Never up the list.
-- **"⚠ this jump can never happen"** on a card means the jump is not used, for example because the screen it goes to is hidden or above it, or its condition can't be true. Open the question: the jump's box says why.
-- **A jump or a rule?** "Only show it if…" shows or skips one question ([Recipe 2](#recipe-2-add-a-question-only-for-low-scorers-06)). A jump moves partners past several screens at once, or to a route of their own.
-- **Moving a question** so that a jump would point up the list leaves that jump out: the panel says "Question … now has an arrow back up to question …". Move it back, or change the jump.
+- **Several jumps** are checked in order, and the first one that is true wins: `if nps >= 9 go to support_gate; if nps <= 3 go to why_low`.
+- **Where a jump can go:** a later row, a row below the thank-you screen (another route), or any ending. Never up the table: the Check says "… goes back up to row …".
+- **"⚠ this jump can never happen"** on a card means the jump is not used, for example because the row it goes to is hidden or above it, or its rule can't be true. The reason is written under the card.
 
-### Recipe 15: Ask a question for each area
+<a id="recipe-15-ask-a-question-for-each-area"></a>
 
-An ordinary question (**0 to 10 question**, **Faces question (1 to 5)**, **Yes / No question**, **Pick one answer**, **Voice note or typing** or **Information card**) can be asked once per area, with the area's name above it. Or only for the areas the partner rated low: for example "Should our team call you about this?".
+#### A question for each area
 
-1. Add the question ([Recipe 2](#recipe-2-add-a-question-only-for-low-scorers-06), steps 1 to 8). To ask it for the areas rated low, put it **below the area ratings**, for example after **5. Problem screens (one screen per area rated low)**.
-2. In its editor, in the card **Ask this question**, pick one:
-   - **Once** (the standard);
-   - **For each area**: one screen per area that is shown in **Areas & problems**, in that order;
-   - **For each area rated low (at or below its limit)**: only the areas the partner rated at or below the area's limit (**Ask about problems when rated** in **Areas & problems**: 3 unless you changed it). "I don't handle this" never counts as low.
-3. The line under it says how the answers are stored: the question's code, a colon and the area's code, for example `callback:payments`.
-4. Do the [everyday loop](#the-everyday-loop-save-preview-publish). In Preview, rate one area low to see it.
+An ordinary question (0 to 10, faces, yes/no, pick one, voice/typing or info card) can be asked once for each area, with the area's name above it, or only for the areas the partner rated low. For example, after the problem screens:
 
-**You should see** the badge **Repeats for each area** or **Repeats for each area rated low** on its card.
+| code | kind | question (English) | ask for |
+|---|---|---|---|
+| `callback` | `yes/no` | Should someone from Valmo call you about this? | `each area rated low` |
 
-**Good to know:**
+- `each area`: one screen per area shown in **Areas & problems**, in that order. `each area rated low`: only the areas the partner rated at or below the area's limit (**Ask about problems when rated** in **Areas & problems**: 3 unless you changed it). "I don't handle this" never counts as low.
+- The answers are stored as the code, a colon and the area's code, for example `callback:payments`, and a rule tests them the same way: `callback:payments = yes`.
+- **"each area rated low" must come after the area ratings.** Above them the Check refuses it, in the column **ask for**.
+- `nps` and `support_gate` are always asked once: they fill their own columns of the answers sheet.
+- **A live question asked for each area gets new answer names** (`callback:payments` instead of `callback`), so earlier rounds can't be compared with it directly.
+- **You should see** the badge **Repeats for each area rated low** (or **Repeats for each area**) on its card. Every repeated screen adds time for the partner: keep the survey short.
 
-- **"For each area rated low" must come after the area ratings.** Above them it is an error: "… its "repeat for" filter ("where") tests "fn_rating:…", which question … (Area ratings) answers, but that screen never comes before this point …". Move the question below the area ratings.
-- The 0–10 question and "Did you contact Valmo support?" are always asked once: they fill their own columns of the answers sheet.
-- **A live question asked per area gets new answer names** (`callback:payments` instead of `callback`), so earlier rounds can't be compared with it directly. The card warns you.
-- Every repeated screen adds time for the partner: keep the survey short.
+<a id="recipe-17-add-an-ending-or-hide-or-delete-one"></a>
+
+#### An extra ending, and hiding one
+
+An **ending** is a thank-you screen: partners stop there and their answers are sent. Besides the main thank-you screen you can add others, for example "Thank you for telling us" for partners who score 0 to 3. Rows below the first thank-you row are other routes: only a jump (or a **then go to**) leads there.
+
+| code | kind | question (English) | message (English) | jumps |
+|---|---|---|---|---|
+| `nps` | `nps` | | | `if nps <= 3 go to why_low` |
+| … | … | | | |
+| `thanks` | `thank you` | | | |
+| `why_low` | `voice/typing` | What went wrong for you? | | |
+| `low_end` | `ending` | Thank you for telling us | Our team will look at what you told us. | |
+
+- Partners who score 0 to 3 answer `why_low`, then reach `low_end` (the next row), and their answers are sent. Everyone else follows the main route.
+- **Its words are its own** (the texts `end.low_end.title` and `end.low_end.body`): add the other languages in **Texts & translations**. The closing line under the message is the main thank-you screen's (the text `thanks.close`).
+- **Give every route an ending.** If the ending isn't the next row, write its code in the route's last question's **then go to** (an ending may be chosen from anywhere, even above). A question at the very bottom of the table with no **then go to** ends at a standard thank-you screen that the form adds itself.
+- **An ending nothing leads to** is refused by the Check. Add the jump, or leave the row out.
+- **To hide an ending:** `no` in its **show**. Partners who would reach it end at the main thank-you screen instead; their answers are still sent, and they never go on to the rows below it. The Check warns about each route that now ends there.
+- **To remove an ending:** leave its row out of the table (only while it isn't live: once partners reached it in a real round, hide it instead). If the question just above it has no **then go to**, its route would then run on into the rows below: the **Check** of the pasted table and **Check for problems** in Publish both refuse that ("Row 11 ("…") has no "then go to", so partners who answer it go straight on to row 12 ("…"), which starts another route …"; Publish names the same rows as question 10 and question 11). Write an ending's code (or `end`) in that question's **then go to**, or keep an ending row between them. If both routes really should carry on into question 11, write its code there to say so.
+- **The main thank-you screen** is always the first thank-you row: it ends the main route, so it must be shown, and a table without any thank-you row is refused.
+
+<a id="recipe-18-show-a-question-only-in-one-language-or-one-round"></a>
+
+#### A question only in one language or one round
+
+Besides earlier answers, a rule (and a jump) can test **the partner's language** and **the round**. An information card only for partners who use the survey in Hindi:
+
+| code | kind | question (English) | message (English) | show only if |
+|---|---|---|---|---|
+| `hindi_note` | `info card` | A note for you | … | `language = hi` |
+
+For one round: `round = 2026-R2`, with the round's code exactly as in **Rounds**, capitals included.
+
+- **The language must be one of the questionnaire's languages** (`en`, `hi`, `ta`, `te`, `kn`, `ml` today), or the Check refuses it.
+- **The partner's language is the one on screen at that moment.** If a partner switches language with the button at the top of the form, the rules are checked again, and screens can appear or disappear. If the screen they are on disappears, **Next** takes them on to the first screen they haven't seen or finished yet, and **Back** keeps working. Answers on screens that left their route stay on the phone but are not sent.
+- **The round** is the one in the partner's link (`round=…`).
+- **Try it:** [Try a path](#recipe-20-try-a-path) offers the language and (when a rule tests it) the round. In Preview, switch to Hindi with the language button at the top of the form, or pick the round in the **Preview the draft** window.
 
 ### Recipe 16: Choose where the problem screens go
 
 The problem screens ("What is the main problem?") come after all the area ratings, as standard. They can also come straight after each low rating.
 
-1. **Questions**, then **Edit** on **Problem screens** (question 5).
-2. In the card **Settings of this screen** (the same settings as in **Settings**: a change here is a change there), under **Where the problem screens go**, pick:
+1. **Settings**, group **Problem screens**.
+2. Under **When to ask about problems**, pick:
    - **After all the area ratings (recommended)**: partners rate every area first, then get one problem screen per low area;
    - **Straight after each low rating**: each area's problem screen comes right after its rating.
-3. The same card has **Partners must pick a problem** and **“Other” needs a voice note or typed detail**.
+3. The same group has **Low rating (at or below)** (3 as standard; an area can have its own limit in **Areas & problems**), **A problem must be picked** and **"Other" needs an explanation**.
 4. Do the [everyday loop](#the-everyday-loop-save-preview-publish).
 
 **With "Straight after each low rating":**
 
-- The **Problem screens** row's place in the list, its rule and its arrows are not used. The panel says so in that card, and its **After this question** card says "Not used while the problem screens come straight after each low rating: set where partners go on the area ratings screen instead."
-- **"Clear them".** If that row still has a "Usually go to", jumps or an "Ask this question" choice from before, a yellow box says so, and **Check for problems** warns ("… are not used. They change nothing for partners: clear them …"). Click **Clear them** in that box. Nothing changes for partners.
-
-### Recipe 17: Add an ending, or hide or delete one
-
-An **ending** is a thank-you screen: partners stop there and their answers are sent. Besides the main thank-you screen you can add others, for example "Thank you! Our team will call you this week." for low scorers. Partners reach an extra ending only through a jump.
-
-**To add an ending:**
-
-1. **Questions**. Below the list, in the section **Other routes and endings**, click **Add an ending**.
-2. Type the **Title in English** and the **Message in English**. Under the title the panel shows its code ("Code in the data: …") and the names of its two texts (`end.<code>.title` and `end.<code>.body`). Click **Add ending**.
-3. **You should see** the ending under **Other routes and endings**, with the badges **Ends the survey** and **⚠ nothing leads here: add a jump to it**, and the message "Ending added below the thank-you screen. Now send partners there with a jump: Edit an earlier question > After this question > Add a jump."
-4. Add the other languages in its editor (card **What this ending says**) or in **Texts & translations**. The closing line under the message is the main thank-you screen's (the text `thanks.close`).
-5. Send partners there with a jump ([Recipe 14](#recipe-14-add-a-jump-promoters-skip-the-area-questions)). In **→ go to**, endings are listed under **Endings (send the answers)**.
-6. **Optional: questions on that route.** Click **Add a question**, and under **Put it after** pick the thank-you screen itself ("9. Thank-you screen (the end of the main route: below it, partners arrive only through a jump)") or a screen below it. Point the jump at that question. Its **Usually go to** decides where its route ends: **The next one in the list** if the ending is just below it, otherwise pick the ending.
-7. Do the [everyday loop](#the-everyday-loop-save-preview-publish). In Preview, give the answer that makes the jump happen.
-
-**Good to know:**
-
-- **Until a jump leads to it**, the ending keeps the badge "⚠ nothing leads here: add a jump to it", and **Check for problems** shows an error such as "The thank-you screen (question 9) must be the last one, but 1 question comes after it, and no jump leads there …". Add the jump, or delete the ending.
-- **Give every route an ending.** A question at the very bottom of the list with no **Usually go to** ends at a standard thank-you screen that the form adds itself ("The next one in the list: the end (the form adds a thank-you screen)").
-- **The main thank-you screen** stays at the end of the main route: it can't be moved, hidden or deleted.
-
-**To hide an ending:** click **Hide** on its card (or **Hide this ending** in its editor). If partners can reach it, a window **Hide this ending?** says what happens: "While it is hidden, partners who would reach it (question 3 jumps here) end at the main thank-you screen (question 9) instead. Their answers are still sent, and they never go on to the screens below it." Click **Hide it**. **Check for problems** then shows a warning for each route that now ends at the main thank-you screen. To bring the ending back, click **Show**.
-
-**To delete an ending:** this works until the ending is live (published, and the first real round has opened). After that its **Delete** is greyed out, and **Delete this ending** in its editor opens **This ending can’t be deleted**, which offers **Hide it instead**. For an ending that isn't live yet, the window **Delete this ending?** says what changes:
-
-- an arrow to it (a jump, or a **Usually go to**) is removed too ("partners then go where that question usually goes");
-- if the question just above it has no **Usually go to**, its route no longer stops there and runs on into the screens below. The window says where to, offers **Hide it instead**, and says so when Publish would refuse.
-
-**The run-on error, and its fix.** After such a delete, **Check for problems** may show: "Question 10 ("…") has no "usually go to", so partners who answer it go straight on to question 11 ("…"), which starts another route (question 3 jumps there). Choose where question 10 goes …". Click **Go there**: it opens that question's **After this question**. Under **Usually go to**, pick an ending: the thank-you screen above it is allowed too (endings can be chosen from anywhere). Or add a new ending and move it with **↑** just below that question. If both routes really should carry on into question 11, choose question 11 under **Usually go to** to say so.
-
-### Recipe 18: Show a question only in one language or one round
-
-Besides earlier answers, a rule ("Only show it if…") and a jump's condition can test **the partner’s language** and **the round**.
-
-Example: an information card only for partners who use the survey in Hindi.
-
-1. Edit the question. In **When to show this question**, choose **Only show it if…**.
-2. In the first list, pick **The partner’s language** (under **The partner and the round**). Then the test **is** (or **is not**, **is one of**) and the value **Hindi**.
-3. The sentence must say: "Partners see this question only if the partner’s language is “Hindi”."
-4. Do the [everyday loop](#the-everyday-loop-save-preview-publish). In Preview, switch to Hindi with the language button at the top of the form.
-
-For a question only in round `2026-R2`: pick **The round**, **is**, **2026-R2**. The list holds the rounds of the **Rounds** section. In Preview, pick that round in the **Preview the draft** window.
-
-**Good to know:**
-
-- **The partner’s language is the one on screen at that moment.** If a partner switches language with the button at the top of the form, the rules are checked again, and screens can appear or disappear. If the screen they are on disappears, **Next** takes them on to the first screen they haven't seen or finished yet, and **Back** keeps working. Answers on screens that left their route stay on the phone but are not sent.
-- **The round** is the one in the partner's link (`round=…`).
-- [Try a path](#recipe-20-try-a-path) offers both, to test such a rule.
+- The **problem screens** row's place in the table, its rule, its **then go to**, its **jumps** and its **ask for** are not used.
+- If that row still has a **then go to**, jumps or an **ask for**, the Check of a pasted table, and **Check for problems** in Publish, warn: "… so this row's "then go to", "jumps" and "ask for" are not used. They change nothing for partners: clear them in the route table (Questions > Paste a route), or choose "After all the area ratings" in that setting." Empty those cells in the table and paste it back. Nothing changes for partners either way.
 
 ### Recipe 19: See the whole route on the Map
 
-1. **Questions**, then **Map** (at the top, next to **Add a question**).
-2. Pick **Your draft (unsaved changes included)** or **The live version (what partners get now)**.
+1. **Questions**, then **Map** (at the top right, next to **Try a path**). To see a pasted route before you use it, click **Map of the pasted route** in the card **2. Paste a route** instead (after a clean **Check**).
+2. Pick **Your draft (unsaved changes included)**, **The pasted route (not used yet)** (shown after a clean **Check**, until you change the box or the draft) or **The live version (what partners get now)**.
 3. **You should see** the route as a list straight away ("Drawing the map of your draft… Meanwhile, here is the same route as a list."): each screen with its code, its "Only if …", "Asked for each …", "Then: …", "If …: …" and "Otherwise: …".
 4. **Within about 20 seconds the drawing replaces the list**: boxes are screens, diamonds are "only if" rules, labelled arrows are jumps, framed boxes are "for each area" loops, and round boxes are endings. The drawing library is large (about 750 KB), so after 6 seconds a note says it is still loading.
-5. **← All questions** goes back to the list.
+5. **← All questions** goes back to Questions.
 
 **If the drawing does not come**, after 20 seconds the panel says "The diagram could not be drawn here (…)" and keeps the list, which shows the same route. The drawing library comes from the website `cdn.jsdelivr.net`, which some office networks block. **Open in mermaid.live ↗** draws the same map in a new browser tab; that link holds only the questionnaire's wording and codes, no partner data. **[UNCONFIRMED]** Whether Google's panel window lets the drawing library load at all is tested only in Chrome outside Google; the list always works.
 
@@ -683,27 +806,27 @@ The map of the questionnaire on GitHub, `docs/flow.md`, shows the same kind of d
 
 ### Recipe 20: Try a path
 
-See which screens a partner with certain answers gets, without opening the form. It uses your draft as it is in the window (unsaved changes included). Nothing is sent or saved.
+See which screens a partner with certain answers gets, without opening the form. Nothing is sent or saved.
 
-1. **Questions**, then **Try a path** (at the top, next to **Map**).
+1. **Questions**, then **Try a path** (at the top right, next to **Map**). It uses your draft as it is in the window (unsaved changes included). To try a pasted route before you use it, click **Try a path on it** in the card **2. Paste a route** (after a clean **Check**): a card at the top then offers **Your draft (unsaved changes included)** and **The pasted route (not used yet)**.
 2. In the card **Answers and the link**, set:
    - **Language**;
    - **The partner’s link already says the language (&lang=…)**: tick it to skip the language screen, as with a link that names the language;
    - **“What changed” items for the round** (0 to 3);
    - **Round** (only when a rule tests the round);
-   - under **Answers that rules and jumps test**, one list per answer that a rule, a jump or "for each area rated low" tests. Each starts at **(not answered)**.
-3. **You should see**, in the card **What this partner gets**:
+   - under **Answers that rules and jumps test**, one list per answer that a rule, a jump or "each area rated low" tests. Each starts at **(not answered)**.
+3. **You should see**, in the card **What this partner gets** (**What this partner gets on the pasted route** for a pasted one):
    - how many screens, and the screens in order. The ending is marked **Ends: sends the answers**. **⏸ Next needs an answer** marks a screen where Next waits for an answer that this tool doesn't ask (it asks only the answers that rules test);
    - **Skipped**, with the reason for each skipped screen;
    - **What would be sent**: how many answers, ratings and typed or recorded items. **Show the data** shows the whole message.
-4. Change any list: the result changes at once.
+4. Change any list: the result changes at once. **← All questions** goes back.
 
 ### A live answer of a pick-one question
 
-Once the first real round has opened, every answer of a **Pick one answer** question in the live version is locked: partners picked it, and the dashboard compares rounds by its code. An answer can't be removed or hidden. Clicking its **Remove** opens the window **This answer must stay**: "Partners already picked this answer in a real round, so it must stay … You can still reword it (change its label in the boxes below)."
+Once the first real round has opened, every answer of a **pick one** question that partners could pick in a real round is locked: the dashboard compares rounds by its code. It must stay in its question's **answers** cell, with the same code. A table that leaves it out (or changes its code) is refused by the Check, for example: "Row 9 (contact_way), answers: the answer "visit" was already picked by partners in a real round, so it must stay (the dashboard compares rounds by its code). Put it back in "answers"; you can still change its words."
 
-- **To change what partners read**, reword the answer in its language boxes. Its code stays.
-- **To stop asking the question**, hide the whole question.
+- **To change what partners read**, change its words after the colon (`visit: A visit to our office`), or in **Texts & translations**. Its code stays.
+- **To stop asking the question**, hide the whole question (`no` in **show**).
 - **If such an answer disappears anyway** (after typing in the **Screens** tab, or an **Import from GitHub**), **Check for problems** shows an error: "The answer "…" of the question "…" was answered in an earlier published version but is no longer in the draft. Partners answered it in a real round, so it can never be deleted or re-coded, and Publish waits until it is back. Put it back in the list of answers …". Add it back with exactly the same code.
 
 ---
@@ -719,7 +842,11 @@ Partners reach the survey only if the web app's **Who has access** is **Anyone**
 
 ## What the errors and warnings mean
 
-**Check for problems** (in **Publish**, card **1. Check for problems**) lists **errors** ("✖ … problems to fix before publishing") and **warnings** ("… warnings (publishing still works)"), and shows the questionnaire's size for phones. Each one names where the problem is (for example "Problems › payments/payout_delayed", "Settings › Longest voice note (seconds)" or "Questions › question 10") and has a **Go there** button. For a question, **Go there** opens its editor at the card to fix: **After this question** for a jump or a **Usually go to**, **When to show this question** for a rule. The route is checked by the same route code the phones run, so the messages name the question ("Question 10 ("…")") and often end with its code ("(Its code is …)"). The exact wording comes from the panel; the tables explain the common ones.
+**Check for problems** (in **Publish**, card **1. Check for problems**) lists **errors** ("✖ … problems to fix before publishing") and **warnings** ("… warnings (publishing still works)"), and shows the questionnaire's size for phones. Each one names where the problem is (for example "Problems › payments/payout_delayed", "Settings › Longest voice note (seconds)" or "Questions › question 10") and has a **Go there** button. For a question, **Go there** opens **Questions** at that question's card, with a yellow note saying which row and column of the route table to change, for example: "To fix question 6, change row 7 of the route table (code callback, its "show only if" column): Copy the current route, change it in Excel, paste it back under "Paste a route", Check, then Use this route. The problem: …". **Close** removes the note ([Recipe 2](#recipe-2-change-the-questions-paste-a-route)). The route is checked by the same route code the phones run, so the messages name the question ("Question 10 ("…")") and often end with its code ("(Its code is …)"). The exact wording comes from the panel; the tables explain the common ones.
+
+**Publish uses the route table's words** (since 28 Oct 2026): "then go to", "jumps", "show only if", "ask for", "kind" and "show" are the columns of the route table, and "question 6" is row 7 of the table (the header is row 1).
+
+The **Check** of a pasted table uses the table's own words; its messages are explained [below](#when-you-check-a-pasted-route).
 
 **Errors (they block Publish):**
 
@@ -730,17 +857,18 @@ Partners reach the survey only if the web app's **Who has access** is **Anyone**
 | The default or backup language | It is switched off in the language list. | Switch it on in **Settings**, or choose another. |
 | The faces | There must be exactly 5. | Fix them in **Look & feel**. |
 | The form address | It must start with `https://` and end with `/`. | Fix it in **Settings > Form address**. |
-| A code (question, area, chip, option, support item, language) | It is empty, repeated, or uses characters that are not allowed. `other` is reserved for the automatic Other chip. | Let the panel make the code from the English text, or ask an admin. |
-| The main thank-you screen ("There is no thank-you screen", "The thank-you screen (question 9) is hidden", or "… must be the last one, but … no jump leads there") | The main route must end with a thank-you screen that is switched on: the answers are sent from it. Screens below it are allowed only when a jump leads to them. | Show the thank-you screen again. For screens below it: add a jump to them ([Recipe 14](#recipe-14-add-a-jump-promoters-skip-the-area-questions)), move them above it, or hide them. |
-| A screen below the thank-you screen ("Question 11 (…) comes after the thank-you screen (question 9), but no jump leads to it") | Partners would never see it. | Add a jump to it, move it above the thank-you screen, or hide it. |
-| A screen nothing leads to ("… can never be reached: no arrow leads to it from the start") | A **Usually go to** or a jump makes every partner skip it. | Point an earlier **Usually go to** or jump at it ([Recipe 13](#recipe-13-change-where-a-question-usually-goes)), or remove it. |
-| A route that runs on into another route ("Question 10 (…) has no "usually go to", so partners who answer it go straight on to question 11 (…), which starts another route") | Usually it happens after deleting an ending. | Choose where that question goes: [Recipe 17](#recipe-17-add-an-ending-or-hide-or-delete-one), "The run-on error". |
-| The order of screens | For example the problem screens come before the area ratings, or a question asked "for each area rated low" comes before them (its message mentions its "repeat for" filter). | Move the screens back into a sensible order: the area ratings first. |
-| A question without text, or a choice question without options | Partners would see an empty screen. | Add the text or the options. |
-| A rule ("Only show it if…") or a jump's condition | It points at a question that comes **later**, is hidden or no longer exists, tests a value no partner can give (for example 11 on the 0–10 question), or the rule is incomplete. | Fix the rule, or move the question after the one it depends on. |
-| The question with the code `nps` or `support_gate` is missing | Its answers fill their own column (`nps` or `support_contacted`) in every round's answers sheet, and the dashboard's headline score reads `nps`. The panel never deletes these two: this happens only after a hand edit of the **Screens** tab, or an **Import from GitHub** of files without them. | Undo the change, or add the question back with exactly that code. To stop asking it, hide it instead. |
+| A code (question, area, chip, option, support item, language) | It is empty, repeated, or uses characters that are not allowed. `other` is reserved for the automatic Other chip. | For a question or an answer: fix its code in the route table (small letters, digits and `_`), or leave the code cell empty and the panel makes one from the English. For an area, problem or support item: in its section. Or ask an admin. |
+| The main thank-you screen ("There is no thank-you screen", "The thank-you screen (question 9) is hidden", or "… must be the last one, but … no jump leads there") | The main route must end with a thank-you screen that is switched on: the answers are sent from it. Screens below it are allowed only when a jump leads to them. | In the route table: `yes` in the first thank-you row's **show**. For rows below it: add a jump to them ([example](#recipe-14-add-a-jump-promoters-skip-the-area-questions)), move them above it, or write `no` in their **show**. |
+| A screen below the thank-you screen ("Question 11 (…) comes after the thank-you screen (question 9), but no jump leads to it") | Partners would never see it. | Add a jump to it in an earlier row's **jumps**, move its row above the thank-you row, or write `no` in its **show**. |
+| A screen nothing leads to ("… can never be reached: no arrow leads to it from the start") | A **then go to** or a jump makes every partner skip it. | Point an earlier row's **then go to** or **jumps** at it ([example](#recipe-13-change-where-a-question-usually-goes)), or leave the row out. |
+| A route that runs on into another route ("Question 10 (…) has no "then go to", so partners who answer it go straight on to question 11 (…), which starts another route: question 3 (…) jumps there.") | Usually it happens after removing an ending. The **Check** of a pasted table finds it too. | Write an ending's code (or `end`) in that question's **then go to**, or keep an ending row between the two routes ([An extra ending](#recipe-17-add-an-ending-or-hide-or-delete-one)). |
+| The order of screens | For example the problem screens come before the area ratings, or a question asked "for each area rated low" comes before them (its message mentions its "repeat for" filter). | Move the rows of the route table back into a sensible order: the area ratings first. |
+| A question without text, or a choice question without options | Partners would see an empty screen. | Fill its **question (English)** (and, for a pick one, its **answers**) in the route table. |
+| A rule (the table's **show only if**; Publish may say "Only show it if…") or a jump's condition | It points at a question that comes **later**, is hidden or no longer exists, tests a value no partner can give (for example 11 on the 0–10 question), or the rule is incomplete. | Fix the row's **show only if** or **jumps** cell ([the rules](#rules-show-only-if-and-jumps)), or move the row below the one it depends on. |
+| The question with the code `nps` or `support_gate` is missing | Its answers fill their own column (`nps` or `support_contacted`) in every round's answers sheet, and the dashboard's headline score reads `nps`. Neither the panel nor a pasted route table can remove these two (the **Check** refuses it): this happens only after a hand edit of the **Screens** tab, or an **Import from GitHub** of files without them. | Undo the change, or add the row back with exactly that code. To stop asking it, hide it instead (`no` in **show**). |
 | The 0–10 question or "Did you contact Valmo support?" changed its kind ("… must stay of the kind "0 to 10 question"") | Their answers fill fixed columns of the answers sheet. This happens only after a hand edit of the **Screens** tab. | Put its kind back (in the **type** column: `nps_0_10` for `nps`, `yes_no` for `support_gate`), or give the new question another code. |
-| A code partners answered ("… was answered in an earlier published version but is no longer in the draft. Partners answered it in a real round, so it can never be deleted or re-coded, and Publish waits until it is back.") The start may also read "… is live today but is no longer in the draft." | Something partners answered after the first real round opened was deleted or given another code, usually by a hand edit of the tabs or an **Import from GitHub** ([golden rule 3](#the-golden-rules)). | Put it back with exactly the same code. To stop asking it, hide it; to change what partners read, change its wording. An answer of a pick-one question can't be hidden: put it back ([live answers](#a-live-answer-of-a-pick-one-question)). |
+| A question partners answered changed its kind ("… is now of the kind "faces", but partners have already answered it as a question of the kind "voice/typing", so its kind can't change") | Its answers would mean something else from one round to the next, and the dashboard compares rounds by its code. This check starts once the first real round has opened. | In the route table, put its **kind** back. To ask something else, write `no` in its **show** and add the new question in a new row with a new code. |
+| A code partners answered ("… was answered in an earlier published version but is no longer in the draft. Partners answered it in a real round, so it can never be deleted or re-coded, and Publish waits until it is back.") The start may also read "… is live today but is no longer in the draft." | Something partners answered after the first real round opened was deleted or given another code, usually by a hand edit of the tabs or an **Import from GitHub** ([golden rule 3](#the-golden-rules)). | Put it back with exactly the same code (a question: add its row back to the route table). To stop asking it, hide it (`no` in **show**); to change what partners read, change its wording. An answer of a pick-one question can't be hidden: put it back ([live answers](#a-live-answer-of-a-pick-one-question)). |
 | The form on GitHub ("The form on GitHub is older than this control panel: upload the new form code first, wait for the green tick, then publish.", at **Settings › Form address (web link)**) | Your version has a route the old form on GitHub doesn't understand: its phones would ignore it and show the form's stored copy. | Ask whoever looks after GitHub to upload the newest project files and wait for the green tick in GitHub's **Actions** tab. Then publish again. |
 | A missing text | A text the form needs has no English (or no text in the backup language), or still says `[TRANSLATE]` in English. | Write the English in **Texts & translations**. |
 | `{s}` or `{n}` in a translation | The translation dropped or added one of these number places. | Make it match the English exactly. |
@@ -754,15 +882,109 @@ Partners reach the survey only if the web app's **Who has access** is **Anyone**
 | An area with fewer than 4 or more than 6 active chips | Too few chips miss problems; too many slow partners down. | Add or hide chips. |
 | Texts still to translate in a language | Partners using that language see English for those texts. | Translate them ([Recipe 5](#recipe-5-translate-a-language)) when you can. |
 | Texts that nothing uses | Left over from something you deleted. | Harmless. A developer can tidy them up. |
-| Codes that are live today but missing from the draft ("… is live today but is no longer in the draft") | You deleted or renamed something partners already answered. The dashboard compares rounds by code. This check starts once the first real round has opened; before that, codes may still change. If the message goes on "Partners answered it in a real round, so it can never be deleted or re-coded", it is an **error** instead (see the errors above). | **Undo it**: rename the label instead of the code, and hide instead of deleting. |
-| The 0–10 question or "Did you contact Valmo support?" is hidden ("… is hidden, so the support_contacted column of every round's answers sheet stays empty while it is") | Its own column of the answers sheet stays empty while it is hidden. Hiding "Did you contact Valmo support?" also gives an **error** on the support ratings question, whose rule tests its answer. | Show it again, unless that is what you want. If you keep it hidden, hide the support ratings question too, or change its rule. |
-| An ending that is hidden ("… an ending that is hidden, so partners end at the main thank-you screen (question 9) instead") | Normal after you hide an ending: its partners still send their answers, from the main thank-you screen ([Recipe 17](#recipe-17-add-an-ending-or-hide-or-delete-one)). | Nothing, if that is what you want. Otherwise show the ending again. |
-| A jump or **Usually go to** that leads to a hidden question ("… goes to question 6 (…), which is hidden, so it goes to question 7 (…) instead") | Partners go where the hidden question would have gone. | Nothing, if that is what you want. Otherwise pick another place under **After this question**, or show the question again. |
-| Left-overs on the problem screens row ("… are not used. They change nothing for partners: clear them …") | The problem screens come straight after each low rating, so that row's **Usually go to**, jumps and "Ask this question" are not used. | Click **Clear them** in that question's **After this question** card ([Recipe 16](#recipe-16-choose-where-the-problem-screens-go)). |
+| Codes that are live today but missing from the draft ("… is live today but is no longer in the draft") | You deleted or renamed something partners already answered. The dashboard compares rounds by code. This check starts once the first real round has opened; before that, codes may still change. If the message goes on "Partners answered it in a real round, so it can never be deleted or re-coded", it is an **error** instead (see the errors above). | **Undo it**: rename the label instead of the code, and hide instead of deleting (a question: put its row back in the route table with `no` in **show**). |
+| The 0–10 question or "Did you contact Valmo support?" is hidden ("… is hidden, so the support_contacted column of every round's answers sheet stays empty while it is") | Its own column of the answers sheet stays empty while it is hidden. Hiding "Did you contact Valmo support?" also gives an **error** on the support ratings question, whose rule tests its answer. | Show it again (`yes` in its **show**), unless that is what you want. If you keep it hidden, hide the support ratings row too, or change its rule. |
+| An ending that is hidden ("… an ending that is hidden, so partners end at the main thank-you screen, question 9 (…), instead …") | Normal after you hide an ending: its partners still send their answers, from the main thank-you screen ([An extra ending](#recipe-17-add-an-ending-or-hide-or-delete-one)). | Nothing, if that is what you want. Otherwise show the ending again (`yes` in its **show**). |
+| A jump or a **then go to** that leads to a hidden question ("… goes to question 6 (…), which is hidden, so it goes to question 7 (…) instead") | Partners go where the hidden question would have gone. | Nothing, if that is what you want. Otherwise change that row's **then go to** or **jumps** in the route table, or show the question again. |
+| Left-overs on the problem screens row ("… so this row's "then go to", "jumps" and "ask for" are not used. They change nothing for partners: clear them in the route table …") | The problem screens come straight after each low rating, so that row's **then go to**, **jumps** and **ask for** are not used. | Empty those three cells of the problem screens row in the route table and paste it back ([Recipe 16](#recipe-16-choose-where-the-problem-screens-go)). |
 | The list of codes partners answered is nearly full ("The list of every code partners have answered under is … characters long") | Google keeps it in one small setting of the script. When it is full, newly added codes are no longer protected. | Ask whoever maintains the scripts. |
 | A round whose code contains DEMO, such as `DEMO-R1` ("fake demo content") | DEMO rounds hold fake content. This warning is normal: it shows as long as `DEMO-R1` has its sample bullets. | Never open it or send its links to real partners. |
 | An open round whose name contains DEMO | DEMO rounds hold fake content. | Close it, unless you are testing on purpose. |
 | `[SAMPLE]` in a real round's "What changed" | Sample text was left in. | Replace it with real bullets. |
+
+### When you Check a pasted route
+
+**Check** in **Questions > 2. Paste a route** lists **problems** (they stop **Use this route**; nothing changes in your draft) and **warnings** (they don't stop you). Each one is labelled with where it is: **Row 5 · jumps** is row 5 of your table as Excel numbers it (the header is row 1), column **jumps**; **The whole table** or **Column "…"** when it is about the whole table or a column name. The message itself starts the same way, "Row 5 (nps), jumps: …", with the row's code in brackets; the messages of the route checker name the row as "Row 4 ("How likely are you…")". Fix the table in Excel (or ask the AI to), copy it again, click **Clear**, paste and **Check**.
+
+**On a row with `no` in show**, problems with its rule, jumps or **then go to** are only warnings: they aren't used while the row is hidden.
+
+**Problems (they stop Use this route):**
+
+| The message says… | What it means | What to do |
+|---|---|---|
+| "The header row could not be found." | No line of the pasted text names at least two of the columns. | Copy the header row together with your rows (**Cmd+A** in Excel selects both), from the template or **Copy the current route**. |
+| "This looks like the Sheet's Screens tab. In the control panel use Questions > Copy the current route, change that table, and paste it here." | The pasted rows come from the Sheet's own **Screens** tab (its columns are `id`, `type`, `text` …), not from the route table. | Do what it says: **Copy the current route**, change that table, paste it. |
+| "Below the table there is a second table with other columns ("…"). Paste one table only: the route, with one header row." | An AI added another table (for example a list of the codes) under the route. | Copy only the route table. (A second table with the **same** columns is joined to the first, with a warning.) |
+| "The table has no "kind" column, so the panel cannot tell what each row is." | **kind** is the one column every table needs. | Add a column named `kind`. |
+| "The table has its header row but no rows under it." | Only the header was pasted. | Copy the whole table. |
+| "The column "…" means the same as the column "…". Keep only one of them." | Two columns are read as the same one, for example `question` and `question (English)`. | Delete one of the two columns. |
+| "this row has more cells than the header row has columns (…), so some of its words would be lost." | Usually a comma inside a text of a CSV file, or a `|` inside a text of an AI's table; otherwise a column name is missing. | Put that text in "double quotes" (CSV), write the `|` as `\|` (an AI's table), or add the missing column name. |
+| "the kind is empty. Write one of: …" | The **kind** cell is empty. | Write one of [the kinds](#the-kinds). |
+| ""…" is not a kind the panel knows. Did you mean "…"? The kinds are: …" | A typo, or Excel changed the cell: it turns `0-10` and `1-5` into dates such as `10-Jan`. | Write one of the kinds listed; `0 to 10` and `faces` instead of 0-10 and 1-5. |
+| "there is already a "…" row (row …). It can appear only once: remove one of them." | A built-in screen (language, what changed, area ratings, problem screens, support ratings) appears twice. | Remove one of the two rows. |
+| ""…" cannot be a code: use small letters a-z, digits and _, starting with a letter (for example "…")." | The code has spaces or other signs, or starts with a digit. (Capitals alone are fine: they are read as small letters.) | Use the code the message suggests, or one like it. |
+| "the code is … characters long; the most is 60." | | Use a shorter code. |
+| "the same code as row …. Every row needs its own code, because answers are saved under it." | Two rows share a code. | Give one of them another code (keep the one partners answered). |
+| "a "nps" row must have the code "nps" …" or "a "support question" row must have the code "support_gate" …" | These two fill their own columns of every answers sheet. | Write `nps` / `support_gate` as the code. For another 0 to 10 question use the kind `0 to 10`; for another yes/no question, `yes/no`. |
+| "the code "nps" belongs to the NPS question, so its kind must be "nps"." (or `support_gate`: "support question") | The code `nps` or `support_gate` is on another kind of row. | Put the right kind back, or give your new question another code. |
+| ""support_comment" is kept for the comment under the support ratings. Use another code." | | Use another code. |
+| ""…" cannot be the code of a question: the rules read it as …" | Words such as `language`, `round`, `and`, `or`, `not`, `if` or `answered` mean something in rules. | Use another code, for example `language_pref`. |
+| "the code "…" cannot be used here: its question text (q.…) holds the words of the area ratings …" (or the problem screens, the support ratings, the support comment) | Codes such as `fn_rating`, `deep_dive`, `tell_more` or `support_block` would change a built-in screen's words. | Use another code. |
+| ""…" is not yes or no." (**show**), or "… is not yes or no (leave it empty for the usual)." (**required**) | | Write `yes` or `no` (or leave **required** empty). |
+| "the rule "…" cannot be read: …" | The **show only if** cell isn't a rule the panel understands. The end of the message says what is wrong and where, for example "a value is missing", "a comparison (=, !=, <=, >=, in, answered) is missing after …", "a "(" is not closed with ")"" or "there is something after the end of the rule … Join two tests with "and" or "or"." | Write it like [the rules](#rules-show-only-if-and-jumps): `nps <= 6`, `support_gate = yes`. |
+| "… it mixes "and" and "or" without brackets, so it is not clear which goes first." | | Add brackets: `(nps <= 6 and support_gate = yes) or one_fix answered`. |
+| "jump 1 ("…"): it does not say where to go." / "… the rule before "go to" is missing." / "… the code to go to is missing after "go to"." | The **jumps** cell isn't written as `if <rule> go to <code>`. | Write each jump like `if nps >= 9 go to support_gate`; separate several with `;`. |
+| ""then go to" goes to "…", but no row has that code. Did you mean "…"?" (also "jump 1 goes to …") | A typo, or that row isn't in the table. | Correct the code, or add the row. |
+| "… goes to this row itself. Write a later row or an ending." | | Write a later row's code, or an ending's. |
+| "… goes back up to row … ("…"). Arrows may only go down the table (to a later row) or to an ending (a thank-you row), so a route can never go round in circles." | Partners can't be sent back up; only an ending may be above. | Send them to a later row or an ending, or move the rows. |
+| ""…" is not an answer of any row in this table." (often with a hint) | A rule or jump tests something no row stores. The hint says how to write it: "Name the area: fn_rating:<area>, for example fn_rating:losses", "Problems are tested one area at a time: write fn_deep_dive:<area>", "Support ratings are tested one at a time: write support:<code>", "That question is asked once per area, so name the area: …", "There is no area "…". The areas are: …", or "Did you mean "…"?". | Write the answer the way the hint says. |
+| "… Row … is a "…" row: it has no answer to test." | The rule tests a row that stores no answer (an info card, a thank-you …). | Test another answer. |
+| ""…" is not one of the questionnaire's languages (en, hi, …)." | `language = …` names a language the questionnaire doesn't have. | Use one of the codes listed (or its name: `Hindi`). |
+| "its rule ("show only if") tests "…", which row … answers, but that screen never comes before this point, so there is no answer yet. Move … above …, or test an earlier answer." | A rule tests an answer given **later** (or only on another route). | Move the row below the question it tests, or test an earlier answer. |
+| "its "repeat for" filter ("where") tests "fn_rating:…", which row … (fn_ratings) answers, but that screen never comes before this point …" (column **ask for**) | `each area rated low` above the area ratings. | Move the row below the area ratings. |
+| "its jump to "…" tests "…", but what answers it is hidden (switched off), so there is never an answer. Switch it on again, or change the rule." | A rule or jump tests a row with `no` in **show**. | Show that row again, or test another answer. |
+| "a "…" row is never asked once per area. Only these kinds can be: …. Leave "ask for" empty." | **ask for** on a built-in screen or an ending. | Leave **ask for** empty. |
+| ""…" is not one of: once (empty), each area, each area rated low." | | Write one of those (or leave it empty). |
+| "the question is empty: write it in English." / "the ending's title (the question column) is empty: write it in English." | A new question (or ending) needs its English words. | Fill **question (English)**. |
+| "a "pick one" question needs its answers, written like: phone: Phone call; app: In the app" | | Fill **answers**. |
+| "a "pick one" question needs at least 2 answers, separated by ";" …" (and "Commas and slashes don't separate answers: use ";".") | One answer only, often because the answers were separated by commas. | Separate the answers with `;`. |
+| "the answer "…" has no code, but the answers around it have one: is there a ";" inside a label? Put that label in double quotes, like: …" | A label contains `;`, so it was cut in two. | Put that label in double quotes: `b: "Yes; always"`. |
+| "looks like a text key ("q.one_fix"), not words. Write the words partners should see." | The cell holds a text's name (its key), not its words, usually after copying the Sheet's tabs. | Write the words, or leave the cell empty to keep today's words. |
+| "partners have already answered it as a question of the kind "…", so its kind can't change …" (column **kind**) | A question partners answered got another kind. | Put its kind back. To ask something else, write `no` in its **show** and add a new row with a new code. |
+| "Row … has no "then go to", so partners who answer it go straight on to row …, which starts another route: row … jumps there. …" | A route below the thank-you row has no end, so its partners would run on into the next route (usually after removing an ending). | Write where it goes in its **then go to** (its own ending, or `end`), or add an ending row between the two routes. |
+| "endings go below the "thank you" row (row …) …" | An `ending` row is above the main `thank you` row: partners reaching it would never see the rows after it. | Move it below the `thank you` row. |
+| "an ending can't have a "show only if": partners reach it through a jump or a "then go to". Leave the cell empty." | A rule on a `thank you` or `ending` row. | Empty its **show only if**. |
+| "two answers have the code "…". Every answer needs its own code." | | Give each answer its own code. |
+| "the answer "…" has no words: write them in English, like: …" | | Write the words after the colon. |
+| "these words go into the same text as row … (…), but they are different." | Two rows would write different words into one text. | Make the words the same, or give one of the rows its own words another way (for a second thank-you screen, the kind `ending`). |
+| "The table has no row with the code "nps" (kind: nps). …" (or `support_gate`, kind: support question) | These two fill their own columns of every answers sheet, so they can never be removed. | Put the row back. To stop asking it, keep the row and write `no` in **show**. |
+| "The table has no thank-you row. Add one (kind: thank you) after the last question: the answers are sent from it." | | Add a `thank you` row after the last question of the main route. |
+| "the first thank-you row ends the main route and sends the answers, so it must be shown: write yes in "show"." | | `yes` in its **show**. |
+| "the problem screens ask about the areas rated low, but there is no shown "area ratings" row …" / "the problem screens must come after the area ratings (row …) …" | | Add (or show) the `area ratings` row, above the problem screens row. |
+| "The table has no row with the code "…", but partners already answered it in a real round, so it can never be removed …" | A question partners answered is missing from the table, or its code was changed ([golden rule 3](#the-golden-rules)). | Put its row back with the same code. To stop asking it, write `no` in **show**. |
+| "the answer "…" was already picked by partners in a real round, so it must stay …" | An answer of a pick-one question partners picked is missing (or re-coded). | Put it back in **answers** with its code; you can change its words ([live answers](#a-live-answer-of-a-pick-one-question)). |
+| "Row … ("…") can never be reached: no arrow leads to it from the start. Point the "then go to" of an earlier screen at it, or remove it." | Usually an ending or a question below the thank-you row that no jump leads to, or a row everyone skips. | Add a jump (or a **then go to**) to it in an earlier row, or leave it out. |
+| "The table could not be read (…). Check that it is the whole table, header row first." | Something unexpected went wrong while reading it. | Paste the whole table again, header row first. If it keeps happening, send the message to whoever maintains the scripts. |
+| "The route could not be checked here, so it can't be used yet. Close the panel, open it again and press Check once more." | The route checker didn't run on this table. | Do what it says. |
+
+**Warnings (they don't stop you):**
+
+| The message says… | What it means | What to do |
+|---|---|---|
+| "The line of other text above the table is left out." (or "The 3 lines …", or "… below the table …") | Words above or below the table, for example the AI's introduction. | Nothing. |
+| "Left out of the table, as the line under it says: "…". Check whether it is needed." | The AI wrote a "Left out: …" line under its table, naming notes that didn't fit. | Read it: add what you need to the table yourself, or ask the AI. |
+| "A second table with the same columns follows the first one: its … rows were added after the first table, as rows … to …. …" | The paste held two tables with the same header, for example a long answer split in two. | Check that the second part isn't an old copy of the route: each code may appear only once. |
+| ""NA" was read as an empty cell, so the words stay as they are. Leave a cell empty when you don't want to change it." | A placeholder (`NA`, `-`, `TBD`, `(to be translated)` …) in a text cell counts as empty. | Nothing; next time leave the cell empty. |
+| "new Hindi words: "…". Keep them only if a person wrote them: the panel never translates, and an AI must not either." (or "the Hindi words change: "…" -> "…". …") | The table adds or changes Hindi (or another language's words). | Keep them only if you, or a person you trust, wrote them. If an AI made them up, empty those cells and paste again. |
+| "the English of a built-in screen changes: "…" -> "…". Partners see it, so check that this is what you want." | A built-in screen (for example `nps`) gets new English. | Nothing, if you meant it; have the Hindi checked too. |
+| "only the first "thank you" row is the main thank-you screen; this row was read as an "ending" with its own words. Write ending in its kind." | A second `thank you` row has its own words. | Write `ending` in its **kind**. |
+| "the rule tests the round "…", but no round has that id (the rounds are: …). Did you mean "…"? Round ids must match exactly." | The rule names a round that doesn't exist, or with other capitals. | Write the round's code exactly as in **Rounds**. |
+| "this line is not a row of the table, so it is left out: "…"." | Words under the table, or a line with a single cell and no kind. | Nothing, unless it was meant to be a row: then give it a kind. |
+| "The column "…" is not one the panel reads, so it is left out. The columns are: …" (or "… left out, with the words in it (… rows)") | A column name the panel doesn't know, perhaps a typo. | If it was meant to be read, rename it to one of the columns listed. |
+| "The column "…" is left out: Tamil is not one of the questionnaire's languages (Settings > Languages)." | | Add the language in **Settings > Languages** first, if you want it. |
+| "the kind is empty, so the row is read as "…" (its code says so)." | | Nothing; or write the kind. |
+| "codes are written in small letters, so "…" is read as "…"." | | Nothing. |
+| "the code was empty, so the panel made one from the English question: "…". Answers are saved under it, so keep it from now on." | | Write that code into your table, and keep it. (Before the first real round you may still choose a shorter one.) |
+| "answers without a code got one made from their English: …" / "the answer code "…" is written "…"" | | Write those codes into your table, like `phone: Phone call`, and keep them. |
+| "it has … answers but "answers" has …, so they are matched in order." (column **answers (Hindi)**) | The Hindi answers have no codes, and their number differs. | Write the Hindi answers with their codes: `phone: …; app: …`. |
+| "only "pick one" questions have answers to write here, so this is left out." | | Nothing (or empty the cell). |
+| "a "…" row has nothing to answer, so "required" changes nothing." / "a "…" row shows no message, so it is left out." | | Nothing (or empty the cell). |
+| "the Hindi words are left out: write the English too." | A new text has Hindi but no English. | Write the English. |
+| "a thank-you row ends the survey, so its "then go to" and jumps are not used." | | Empty those cells. |
+| "The current questionnaire has a row "…" (…) that this table does not have: using the table removes it." | You left that row out. | Nothing, if you meant to remove it. Otherwise put it back, or keep it hidden with `no` in **show**. |
+| "the English changed but the Tamil did not: check it in Texts & translations (…)." | A real translation was kept while the English changed. | Have the translator check it ([Recipe 5](#recipe-5-translate-a-language)). |
+| "… an ending that is hidden, so partners end at the main thank-you screen, row … (…), instead …", or "… which is hidden, so it goes to …" | A jump or **then go to** leads to a hidden row. | Nothing, if that is what you want. |
+| "… so this row's "then go to", "jumps" and "ask for" are not used …" | [Recipe 16](#recipe-16-choose-where-the-problem-screens-go). | Empty those cells. |
 
 ---
 
@@ -789,8 +1011,15 @@ Partners reach the survey only if the web app's **Who has access** is **Anyone**
 | **Home** says "The web app address isn't recorded here yet", or the **Backup copy in GitHub** card warns about it | Nobody has recorded the web app address in the panel yet. | Ask the admin to record it ([setup guide, step 10](../apps-script/README.md#step-10-copy-the-web-app-address-and-record-it-in-the-control-panel)). Until then, do not put files from **Download files for the GitHub copy** on GitHub ([Recipe 12](#recipe-12-refresh-the-github-copy)). |
 | **Bring back your unsaved changes?** when the panel opens | The panel was closed last time before you saved. | **Bring them back** and **Save**, or **Throw them away**. |
 | Publish is blocked | **Check for problems** found errors. | Use each **Go there** button, fix, and publish again. |
-| **This question can't be deleted** | The question is live and the first real round has opened: earlier answers use its code. (Before that, live questions can still be deleted.) | Click **Hide it instead**. For live areas, problems and support items, **Delete** is greyed out (click it to see why): switch them to **Hidden** instead. |
-| **Delete** is greyed out on the 0–10 question or on "Did you contact Valmo support?" | These two fill their own columns in the answers sheet, so they can never be deleted or given a new code. | Click **Hide** instead, if you really want to stop asking it. |
+| **Delete** is greyed out on an area, a problem or a support item | It is live and the first real round has opened: earlier answers use its code. (Before that, live items can still be deleted.) | Click it to see why, then switch it to **Hidden** instead. For a question: write `no` in its **show** in the route table; the **Check** refuses a table that leaves out a question partners answered, or `nps` and `support_gate` at any time ([When you Check a pasted route](#when-you-check-a-pasted-route)). |
+| There are no **Edit**, **Hide**, **Delete** or **↑ ↓** buttons on the questions, and no **Add a question** | Since 27 Oct 2026 the questions are changed only through the route table; the list **The route now** is read only. | Use **Copy the current route**, change it, paste it back ([Recipe 2](#recipe-2-change-the-questions-paste-a-route)). |
+| **Questions** says "No questions yet" | The draft in this Sheet is empty: the questionnaire was never imported. | Click **Go to Settings** and use **Import from GitHub** first: it brings the questions, languages, areas, support questions and texts. Then change the route with the table. |
+| A message "Paste the table into the box first (with its header row), then press Check." | **Check** was clicked with an empty box. | Paste the whole table, header row included, then **Check**. |
+| Under the paste box: "The table in the box changed since this check: press Check again." or "Your draft changed since this check: press Check again." (and the buttons say "Press Check again first …") | The box or the draft changed after the last **Check**, so its result may no longer be right. | Click **Check** again. |
+| A message "The table was checked once more and now has problems (see the list), so nothing was changed." | **Use this route** checks again against your draft as it is now, and something changed since the first **Check** (for example a colleague's save that you reloaded). | Read the problems under the box, fix the table and **Check** again. |
+| A message "Undo is no longer possible: you changed other things since." | Undo works only until the next change. | Use **Discard** in the top bar to go back to the last saved draft (this also throws away your other unsaved changes), or restore a published version ([Recipe 11](#recipe-11-undo-a-bad-publish-restore)). |
+| A window **Copy by hand** after a copy button | This browser did not allow automatic copying. | The text is selected: press **Cmd+C** (Ctrl+C on Windows), then **Close**. |
+| In the **Paste a route** card: "The route code in this Sheet (the Apps Script file Flow) is older than this control panel, so it can't read or write a route table." | `Panel` was updated, but `Flow` wasn't. The Map and Try a path still work. | Ask whoever set up the Sheet to paste the latest `Flow.gs` into the Apps Script project ([setup guide, This release](../apps-script/README.md#this-release-paste-a-route-27-oct-2026)), then open the panel again. |
 | The preview says "The draft could not be shown: something in it stops the form from starting" | The draft has a mistake the checks missed, and it stops the form from starting (the form shows its stored copy instead). | **Don't publish it.** Undo your last change, click **Check for problems**, and preview again. If you can't find the cause, restore the live version as your draft (**Publish > history > Restore**). |
 | The preview says "Could not load the draft: showing the form's stored copy" | The preview link lost its end (`&pk=…`) when it was copied, Google took more than 20 seconds, or the form is not connected to the live backend yet. | Open the preview again from the panel (**Preview > Open the preview**), or copy the **whole** link with **Copy**. Before go-live, see the [setup guide, Part D](../apps-script/README.md#part-d-connect-the-form). |
 | Partners still see the old version | You saved but did not publish, or their page was already open. | Publish. Partners get it the next time they open their link. |
@@ -798,16 +1027,17 @@ Partners reach the survey only if the web app's **Who has access** is **Anyone**
 | A partner sees "This link is not valid" | The link was cut when it was copied, or edited by hand. | Send the full link again from the **Links** section. |
 | The panel says "The control panel could not open" | A tab is missing, or Google was busy. If the message also says "Google Drive would not open … for you", you don't have the Drive folder (see the row about that message above). | Click **Try again**. If it keeps happening, run **Partner Pulse > Set up or repair**, then open the panel again. In the Drive case, ask the admin to share the folder instead. |
 | A red banner on **Home**: "The form on GitHub does not run the same route code as this control panel." | The form on GitHub Pages and this control panel run different versions of the route code, so phones could follow other rules than the ones the panel shows and checks (jumps, repeats, endings). The banner's last line shows the start of both codes and when they were compared. | Make them the same, from one copy of the project: whoever looks after GitHub uploads the newest form files (`web/js/flow.js`, `flow-panel.js` and `flow-check.js`) and waits for the green tick, and the admin pastes the newest `apps-script/Flow.gs` into the Apps Script project ([setup guide](../apps-script/README.md#update-the-code-later-same-address)). The comparison is kept for 10 minutes: open the panel again after that. If the form can't be reached, no banner shows. |
-| In **Questions**: "The route tools (the map, Try a path, jumps, “asked for each area” and extra endings) could not start: …" | The panel window could not run the route code. Everything else works. If the message says the script file "Flow" is missing, the fifth code file was never pasted. **[UNCONFIRMED]** that Google's panel window always allows the route code to run: it is tested only in Chrome outside Google. | Close the panel and open it again. If it keeps happening, ask the admin to paste the latest `Flow.gs` ([setup guide, step 3](../apps-script/README.md#step-3-add-the-five-code-files)). |
-| **Map** and **Try a path** are greyed out ("The route tools are still loading. Try again in a moment.") | The route code is still loading, or could not start (row above). | Wait a moment. If the note above appears, see that row. |
+| In **Questions**: "The route tools could not start: …" and "Pasting a route still works: Check, Use this route and the table buttons ask Google instead, so they take a few seconds longer. …" | The panel window could not run the route code, so the panel asks Google to run the same code. Pasting a route, Save, Preview and Publish all work; only the **Map**, **Try a path** and the route badges are off. **[UNCONFIRMED]** that Google's panel window always allows the route code to run: it is tested only in Chrome outside Google. | Click **Try again** in the note. If it stays, keep working, and send the whole note to whoever maintains the scripts. |
+| In **Questions**: "The route tools could not start: …" and "Pasting a route, the Map and Try a path need them, so they are switched off for now. Everything else works. …" | Neither the window nor Google could run the route code. If the message says the script file "Flow" is missing, the fifth code file was never pasted. | Click **Try again** in that note. If it keeps happening, close the panel and open it again, then ask the admin to paste the latest `Flow.gs` ([setup guide, step 3](../apps-script/README.md#step-3-add-the-five-code-files)). |
+| **Map**, **Try a path**, **Check** and the three table buttons look switched off; clicking one says "The route tools are still loading. Try again in a moment." (or "… could not start …") | The route code is still loading, or could not start (row above). | Wait a moment. If the note above appears, see that row. |
+| In **Questions**: "The route could not be worked out from these rows (…). Check for problems in Publish." | The draft's rows (perhaps typed into the **Screens** tab by hand) have a mistake that stops the route from being made. | **Publish > Check for problems** names it. Or **Copy the current route**, fix the row in Excel, paste it back and **Check**. |
 | The **Map** says "The diagram could not be drawn here (…)" | The drawing library (from the website `cdn.jsdelivr.net`) was blocked, or took more than 20 seconds. | Use the list below it: it shows the same route. Or click **Open in mermaid.live ↗**. On another network (for example a phone's hotspot) the drawing may work ([Recipe 19](#recipe-19-see-the-whole-route-on-the-map)). |
 | **Version … is live**, with "Please check one thing: Published, but Partner Pulse could not check that the form on GitHub understands this version (…)" | The version is live, but Google could not reach the form on GitHub just then (or the form address is not valid). | If partners keep seeing the old questions, ask whoever looks after GitHub to upload the newest form code and wait for the green tick, then publish again. Check **Settings › Form address (web link)**. |
 | "Nothing was published: Google Drive could not read the live version (version …) just now, and Publish needs it to protect the codes partners have answered." | A passing problem with Google Drive, once codes are locked. Nothing was published. | Try again in a minute. If it keeps happening, check that the file named in the message (for example `p7.json`) is still in the Drive folder **Valmo Partner Pulse > published**, or ask whoever maintains the scripts. |
-| The badge **⚠ nothing leads here: add a jump to it** | No arrow leads to this screen, so partners never see it. Usual for a new ending or a question below the thank-you screen. | Add a jump to it ([Recipe 14](#recipe-14-add-a-jump-promoters-skip-the-area-questions)), or delete it. |
-| The badge **⚠ this jump can never happen** | The jump is not used: where it goes is hidden, missing or above it, or its condition can't be true. | Open the question: the jump's box under **After this question** says why. Pick another place or condition. |
-| After moving a question: "Question … now has an arrow back up to question …" | Arrows only go down the list, so the form leaves that arrow out. | Move the question back, or change the jump or **Usually go to**. |
-| **This answer must stay**, when you remove an answer of a pick-one question | Partners picked it in a real round. | Reword it instead ([live answers](#a-live-answer-of-a-pick-one-question)). |
-| **This ending can’t be deleted** | The ending is live: answers from earlier rounds name it. | Click **Hide it instead**. Its partners then end at the main thank-you screen ([Recipe 17](#recipe-17-add-an-ending-or-hide-or-delete-one)). |
+| The badge **⚠ nothing leads here** on a card | No arrow leads to this screen, so partners never see it. Usual for an ending or a question below the thank-you screen that no jump leads to. The reason is written under the card. | Add a jump (or a **then go to**) to it in an earlier row of the route table ([example](#recipe-14-add-a-jump-promoters-skip-the-area-questions)), or leave the row out. |
+| The badge **⚠ this jump can never happen** | The jump is not used: where it goes is hidden, missing or above it, or its condition can't be true. The reason is written under the card. | Change the row's **jumps** cell in the route table: another place or another rule. |
+| The badge **⚠ The rule tests a later or hidden answer** | The row's **show only if** tests an answer that comes later, is hidden, or that no screen stores any more. The text under the card says which. | In the route table, test an earlier answer, or move the row further down. |
+| The badge **⚠ the jumps can't be read**, **⚠ route problem: see below** or **⚠ route note: see below** | The route checker found something about this row; the text under the card says what. Usually after typing in the **Screens** tab by hand. | Fix that row in the route table (or follow **Check for problems** in **Publish**). |
 | The panel window is cut off | Your screen is very small: the window shrinks itself only so far. | Zoom out in Chrome (Cmd+minus). |
 
 The admin's [setup guide](../apps-script/README.md#troubleshooting) has more answers.
@@ -826,10 +1056,17 @@ The admin's [setup guide](../apps-script/README.md#troubleshooting) has more ans
 | **Code** | The permanent id of a question, area, chip, option or support item, such as `payout_delayed`. Answers are saved under it. |
 | **Chip** | One of the problem choices on "What is the main problem?". |
 | **Threshold** | The rating at or below which an area's problem screen is asked (3 by default). |
-| **Route** | Which screen comes after which. The Questions list from top to bottom, plus any "Usually go to", jumps and endings. |
-| **Usually go to** | Where partners go after a question when no jump applies. Standard: the next question in the list. |
-| **Jump** | "If this answer is …, go to …": sends some partners to a later question or an ending. |
-| **Ending** | A thank-you screen. Partners stop there and their answers are sent. The main one ends the main route; extra ones are reached through jumps. |
+| **Route** | Which screen comes after which: the route table from top to bottom, plus any **then go to**, jumps and endings. |
+| **Route table** | The whole route as one table, one row per screen (Questions > **Copy the current route**). You change it in Excel or Google Sheets, or have Claude or ChatGPT write it, and paste it back with **Paste a route** ([Recipe 2](#recipe-2-change-the-questions-paste-a-route)). |
+| **Paste a route** | The card in Questions where you paste the route table, **Check** it and **Use this route**. |
+| **Check** (of a pasted route) | Reads the pasted table and checks it with the same rules as Publish. Problems name the table's row and column. It changes nothing. |
+| **Use this route** | Makes the checked table your draft's questions. Then Save, Preview and Publish as usual; **Undo** puts the draft back. |
+| **Kind** | What a row of the route table is: a built-in screen (such as `nps` or `area ratings`) or a kind of question (such as `yes/no` or `pick one`) ([the kinds](#the-kinds)). |
+| **Show only if** | A row's rule: partners see it only when the rule is true, for example `nps <= 6`. |
+| **Then go to** | Where partners go after a row when no jump applies. Empty: the next row. |
+| **Usually go to** | The older name of **then go to** (the removed question editor), still used in Publish's messages. |
+| **Jump** | "If this answer is …, go to …": sends some partners to a later row or an ending. In the table: `if nps >= 9 go to support_gate`. |
+| **Ending** | A thank-you screen. Partners stop there and their answers are sent. The main one (the first thank-you row) ends the main route; extra ones are reached through jumps. |
 | **Map** | A drawing of the whole route (Questions > Map). On GitHub, the file `docs/flow.md` shows the same kind of map. |
 | **Route code** | The part of the form's code that decides the route. The phones, the panel (the Apps Script file `Flow`) and GitHub's settings check all run the same copy. |
 | **Detractor** | A partner who scores 0–6 on the 0–10 question. |

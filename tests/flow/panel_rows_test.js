@@ -17,6 +17,10 @@
      4. Arrows that would be unsafe are left out with a plain-English warning
         (backwards, unknown, unreadable, an ending's next, repeat where it
         can't apply), so the result can never go round in circles.
+     4b. A route below the thank-you that runs on into another route: note
+        G5 (level "error"), the same rows as a FROZEN copy of Model.gs
+        PP_mdlCheckRunIntoRoutes_ on 3,000 generated routes; and every note
+        in the route table's words (27 Oct 2026, review W8 findings 2, 10).
      5. toRows refuses graphs the panel can't show, naming each screen.
      6. formatFlow and surveyTextWithFlow: the same text every time, valid
         JSON, the note at the top, and only the "flow" part of survey.json
@@ -334,6 +338,151 @@ const ratings = AREAS.map((a) => 'fn_rating:' + a);
   deep(mi.warnings.map((w) => w.code + ':' + w.node), ['F1:fn_deep_dives'], 'immediate: the problem screens row\'s next is not used');
   deep(mi.graph, flow.fromLegacy(si), 'immediate: the graph is unchanged');
   ok('unsafe arrows and settings are left out with a warning (G2, G3, G4, F1)');
+}
+
+// ---------------------------------------------------------------------------
+// 4b. A route below the thank-you that runs on into another route (G5, level
+//     "error"; 27 Oct 2026, review W8 finding 2): the rule Model.gs
+//     PP_mdlCheckRunIntoRoutes_ had alone, now in fromRows, so the table's
+//     Check, the panel's cards and Publish share it.
+// ---------------------------------------------------------------------------
+/* FROZEN REFERENCE: apps-script/Model.gs PP_mdlCheckRunIntoRoutes_ (and PP_mdlMainThanks_) as they were on
+   27 Oct 2026, copied line for line; only the helpers are plain JS here and report.error() records
+   { row, into, from } instead of a message. Never change it: fromRows must agree with it. */
+function referenceRunInto(model) {
+  const PP_mdlHas_ = (obj, key) => obj !== null && obj !== undefined && Object.prototype.hasOwnProperty.call(obj, key);
+  const PP_mdlIsObject_ = (value) => Object.prototype.toString.call(value) === '[object Object]';
+  const PP_mdlTrim_ = (value) => (value === null || value === undefined ? '' : String(value)).trim();
+  function PP_mdlMainThanks_(m) {
+    let at = -1;
+    m.screens.forEach((screen, index) => { if (at < 0 && screen.type === 'thank_you' && screen.active) at = index; });
+    return at;
+  }
+  const flagged = [];
+  const main = PP_mdlMainThanks_(model);
+  if (main < 0) return flagged;
+  const screens = model.screens;
+  const immediate = model.settings['deep_dive.when'] === 'immediate';
+  const jumpedTo = {};   // '#code' -> the shown rows whose jumps lead there
+  screens.forEach((screen, index) => {
+    if (!screen.active || !Array.isArray(screen.jumps)) return;
+    screen.jumps.forEach(jump => {
+      const to = PP_mdlIsObject_(jump) ? PP_mdlTrim_(jump['goto']) : '';
+      if (!to) return;
+      if (!PP_mdlHas_(jumpedTo, '#' + to)) jumpedTo['#' + to] = [];
+      if (jumpedTo['#' + to].indexOf(index) === -1) jumpedTo['#' + to].push(index);
+    });
+  });
+  for (let i = main + 1; i < screens.length; i += 1) {
+    const row = screens[i];
+    if (!row.active || row.type === 'thank_you' || PP_mdlTrim_(row.next)) continue;
+    if (immediate && row.type === 'function_deep_dives') continue;   // not part of the route in that mode
+    let k = i + 1;
+    while (k < screens.length && !screens[k].active && screens[k].type !== 'thank_you') k += 1;
+    if (k >= screens.length || !screens[k].active) continue;         // the end, or a hidden ending: the route ends
+    const into = screens[k];
+    const from = (PP_mdlHas_(jumpedTo, '#' + into.id) ? jumpedTo['#' + into.id] : []).filter(at => at !== i);
+    if (!into.id || !from.length) continue;
+    flagged.push({ row: i, into: k, from: from });
+  }
+  return flagged;
+}
+{
+  // The review's case (review/e9b.js): promoters' question below the thank-you runs on into the detractors' route
+  const s = survey();
+  const rows = rowsOf(s.flow);
+  rows.find((r) => r.id === 'nps').jumps = [{ when: { answer: 'nps', at_most: 6 }, goto: 'detractor_q' }, { when: PROMOTER, goto: 'promo_q' }];
+  rows.push(row({ id: 'promo_q', type: 'free_text', text: 'q.promo_q', required: false }),
+    row({ id: 'detractor_q', type: 'free_text', text: 'q.detractor_q', required: false }),
+    row({ id: 'detractor_end', type: 'thank_you', text: 'end.detractor_end.title' }));
+  const made = panel.fromRows(rows, s, { nameOf: (r, i) => 'row ' + (i + 2) + ' ("' + r.id.toUpperCase() + '")' });
+  const notes = made.warnings.filter((w) => w.code === 'G5');
+  deep(notes.map((w) => [w.code, w.level, w.node, w.row]), [['G5', 'error', 'promo_q', 9]], 'one G5 note, level "error", at the row');
+  assert.strictEqual(notes[0].message, 'Row 11 ("PROMO_Q") has no "then go to", so partners who answer it go straight on to row 12 ("DETRACTOR_Q"), ' +
+    'which starts another route: row 4 ("NPS") jumps there. Write where it goes in its "then go to" column, for example its own ending, or add an ' +
+    'ending row between them. If both routes should carry on there, write "detractor_q" in its "then go to" to say so. (Its code is "promo_q"; ' +
+    'the code of the row after it is "detractor_q".)');
+  deep(walk(s, made.graph, { nps: 10 }), ['nps', 'promo_q', 'detractor_q', 'detractor_end'], 'what it warns about: promoters run on (the graph is unchanged)');
+  rows.find((r) => r.id === 'promo_q').next = 'thanks';
+  deep(panel.fromRows(rows, s).warnings.filter((w) => w.code === 'G5'), [], 'with its own "then go to": fine');
+  ok('G5: a route below the thank-you that runs on into another route is an error note at its row, in the table\'s words');
+}
+{
+  // Parity with the frozen Model.gs rule on generated routes: random jumps, "next", hidden rows, endings, both modes
+  let seed = 20261027;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  const pick = (a) => a[rnd(a.length)];
+  let flaggedLists = 0;
+  let total = 0;
+  for (let iter = 0; iter < 3000; iter++) {
+    const immediate = rnd(4) === 0;
+    const s = survey({ deep_dive: Object.assign(clone(BASE.deep_dive), { when: immediate ? 'immediate' : 'after_all_ratings' }) });
+    const rows = rowsOf(BASE.flow);
+    const n = 2 + rnd(7);
+    for (let k = 0; k < n; k++) {
+      const kind = pick(['free_text', 'yes_no', 'rating_1_5', 'info_card', 'thank_you', 'thank_you', 'free_text', 'function_deep_dives']);
+      const id = rnd(12) === 0 ? pick(['promo_q', 'thanks', 'r0']) : 'r' + k;      // now and then a code twice
+      rows.push(row({ id, type: kind, text: kind === 'thank_you' ? 'end.' + id + '.title' : 'q.' + id }));
+    }
+    if (rnd(3) === 0) rows.splice(1 + rnd(rows.length - 1), 0, row({ id: 'mid' + iter, type: pick(['yes_no', 'thank_you']) }));
+    const codes = rows.map((r) => r.id).concat(['nowhere']);
+    rows.forEach((r, i) => {
+      if (rnd(5) === 0) r.active = false;
+      if (rnd(5) === 0) r.next = pick(codes);
+      if (rnd(3) === 0) {
+        const list = [];
+        for (let j = rnd(3); j >= 0; j--) list.push(rnd(10) === 0 ? { goto: pick(codes) } : { when: { answer: 'nps', at_most: rnd(11) }, goto: pick(codes) });
+        r.jumps = rnd(15) === 0 ? { unreadable: 'if nps go' } : list;
+      }
+      if (r.type === 'thank_you' && rnd(6) === 0) r.show_if = { answer: 'nps', at_least: 9 };
+    });
+    total++;
+    const want = referenceRunInto({ screens: clone(rows), settings: { 'deep_dive.when': immediate ? 'immediate' : 'after_all_ratings' } });
+    const got = panel.fromRows(clone(rows), s).warnings.filter((w) => w.code === 'G5');
+    deep(got.map((w) => w.row), want.map((f) => f.row), 'iteration ' + iter + ': the same rows flagged\n' + JSON.stringify(rows));
+    got.forEach((w, k) => {
+      assert.strictEqual(w.level, 'error');
+      assert.strictEqual(w.node, rows[w.row].id);
+      assert.ok(w.message.indexOf('"' + rows[want[k].into].id + '"') !== -1, 'names the row it runs into: ' + w.message);
+    });
+    if (want.length) flaggedLists++;
+  }
+  assert.ok(flaggedLists >= 200, 'enough generated routes run on into another: ' + flaggedLists + ' of ' + total);
+  ok('G5 agrees with the frozen Model.gs PP_mdlCheckRunIntoRoutes_ on ' + total + ' generated routes (' + flaggedLists + ' with a run-on)');
+}
+{
+  // Review W8 finding 10: the notes are written in the route table's words (they reach Publish and the panel's cards as they are)
+  const s = survey();
+  const rows = rowsOf(s.flow);
+  const r = (id) => rows.find((x) => x.id === id);
+  r('support_gate').jumps = [{ when: PROMOTER, goto: 'nps' }];
+  r('support').next = 'nowhere_at_all';
+  r('one_fix').jumps = '{"when": nps';
+  r('nps').jumps = [{ goto: 'support_gate' }];
+  r('fn_ratings').repeat = 'each_area';
+  r('support_gate').repeat = 'twice';
+  r('thanks').next = 'nps';
+  rows.push(row({ id: 'late_end', type: 'thank_you', text: 'end.late_end.title', active: false }));
+  r('whats_changed').jumps = [{ when: PROMOTER, goto: 'late_end' }];
+  const notes = panel.fromRows(rows, s, { nameOf: (x, i) => 'row ' + (i + 2) + ' ("' + x.id.toUpperCase() + '")' }).warnings;
+  const si = survey({ deep_dive: Object.assign(clone(BASE.deep_dive), { when: 'immediate' }) });
+  const ri = rowsOf(si.flow);
+  ri.find((x) => x.id === 'fn_deep_dives').next = 'one_fix';
+  const all = notes.concat(panel.fromRows(ri, si).warnings);
+  assert.ok(all.length >= 9, JSON.stringify(all.map((w) => w.code)));
+  all.forEach((w) => {
+    assert.ok(!/control panel|Edit this question|Clear them\)|Pick the question|Build (it|them) again|Screens tab|"usually go to"|"next"|"repeat"|its type is/.test(w.message),
+      'table words: ' + w.message);
+  });
+  const hiddenEnd = notes.find((w) => w.code === 'C2' && w.node === 'whats_changed');
+  assert.strictEqual(hiddenEnd.message, 'Row 3 ("WHATS_CHANGED"): jump 1 goes to row 11 ("LATE_END"), an ending that is hidden, so partners end at the main ' +
+    'thank-you screen, row 10 ("THANKS"), instead. (Its code is "whats_changed"; that ending\'s code is "late_end".)', 'the main thank-you is named like every row');
+  assert.ok(/Correct it in the route table \(Questions > Paste a route\)\./.test(notes.find((w) => w.code === 'G2').message));
+  assert.ok(/its "ask for" says "twice", which the form does not know, so it is asked once\. Write one of: once \(empty\), each area, each area rated low\./
+    .test(notes.find((w) => w.code === 'F1' && w.node === 'support_gate').message));
+  assert.ok(/only some kinds of question \(0 to 10, faces, yes\/no, pick one, voice\/typing, info card\) can be asked once per area, so its "ask for" is not used here\. \(Its code is "fn_ratings"; its kind is "area ratings"\.\)/
+    .test(notes.find((w) => w.code === 'F1' && w.node === 'fn_ratings').message));
+  ok('fromRows notes use the route table\'s words ("then go to", "jumps", "ask for", "Correct it in the route table"), and name the main thank-you like any row');
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,17 @@
+Code	Kind	Question (English)	Question (Hindi)	Answers	Answers (Hindi)	Message (English)	Required	Show only if	Then go to	Jumps	Ask for	Show	Notes	
+language	language											yes	first screen	
+whats_changed	what changed											yes		
+nps	nps	How likely are you to recommend Valmo to another DC owner?					yes			if nps <= 3 go to why_low; if nps >= 9 go to support_gate		yes		
+fn_ratings	area ratings											yes		
+fn_deep_dives	problem screens											yes		
+callback	yes/no	Should someone from Valmo call you about this?	हिंदी 1				no				each area rated low	yes	fake question	
+visit_type	pick one	How did you last meet the Valmo team?	हिंदी 2	phone: Phone call; app: In the app; visit: A visit	phone: हिंदी 3; visit: हिंदी 4		yes					yes		
+support_gate	support question	In the last 30 days, did you contact Valmo support?					yes					yes		
+support	support ratings							support_gate = yes				yes		
+old_question	voice/typing	An old question nobody sees					no	nothing_here answered				no	kept hidden	
+note_card	info card	A short note				"Line one
+Line two"		language = hi				yes		
+one_fix	voice/typing	If Valmo could fix just one thing for you, what should it be?					no					yes		
+thanks	thank you											yes		
+why_low	voice/typing	What went wrong for you?					no					yes		
+low_end	ending	Thank you for telling us				Our team will call you back.						yes		

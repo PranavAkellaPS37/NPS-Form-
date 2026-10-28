@@ -46,10 +46,18 @@
      "python3 scripts/flow.py check" use), on the compiled questionnaire, and
      its findings are told here in the panel's words (PP_mdlCheckRoute_). This
      file only checks what the route checker cannot see: the Screens tab's own
-     rules and what compiling leaves out (PP_mdlCheckScreens_), a route below
-     the thank-you screen that would run on into another one
-     (PP_mdlCheckRunIntoRoutes_), and the codes lock over the codes partners
-     answered, kind by kind (PP_mdlCheckLiveCodes_).
+     rules and what compiling leaves out (PP_mdlCheckScreens_), and the codes
+     lock over the codes partners answered, kind by kind
+     (PP_mdlCheckLiveCodes_), including the kind of a question partners
+     answered (PP_mdlCheckLiveKinds_, 27 Oct 2026). A route below the
+     thank-you screen that would run on into another one is found while the
+     rows become the route (Flow.gs, note G5; since 27 Oct 2026 this file has
+     no copy of that rule), so the pasted route table's Check and Publish say
+     the same.
+     Since 27 Oct 2026 the questions' route is changed only by pasting a route
+     table in the control panel (Questions > Paste a route; the question
+     editor is gone), so the messages say what to change in that table:
+     its "kind", "show", "show only if", "then go to" and "jumps" columns.
 
    HOW TO USE IT
      You never run anything in this file by hand: the control panel, set-up
@@ -314,15 +322,17 @@ var PP_SETTINGS_SCHEMA = [
 
 /**
  * The kinds of screens (contract section 6), as the Screens tab and the
- * control panel offer them: one entry per kind of row. "builtin" screens may
- * appear only once and cannot be deleted; "fields" are the extra fields the
- * panel's editor shows (the question text is shown when needs_text is true);
+ * control panel know them: one entry per kind of row. "builtin" screens may
+ * appear only once and cannot be deleted; "fields" are the extra settings a
+ * row of that kind can have (the question text when needs_text is true);
  * "required_default" is what an empty "required" means for that type. For the
- * panel's "Add a question" picker: icon, order (its place in the list),
- * default_id and default_text (the code and question text a new row of a
- * built-in kind gets) and after_note (said after its name in "Put it after");
- * repeatable: it can be asked once per area; node_type: the kind the row
- * becomes in the route when that has another name.
+ * control panel's list of questions (since 27 Oct 2026 read only: the route
+ * is changed by pasting a route table, Questions > Paste a route, whose
+ * "kind" column names the kinds its own way: PP_MDL_TABLE_KINDS_): icon,
+ * order (its place in a list of kinds), default_id and default_text (the code
+ * and question text a new row of a built-in kind gets) and after_note (said
+ * after its name); repeatable: it can be asked once per area; node_type: the
+ * kind the row becomes in the route when that has another name.
  *
  * A kind ADDED in web/js/types/ (docs/config-guide.md, "How to add a question
  * type") is not in the route code (Flow.gs holds only the built-in kinds), so
@@ -509,14 +519,20 @@ var PP_MDL_FLAG_COLUMNS_ = { order: true, active: true, required: true };
 /**
  * Problems Flow.gs reports while it turns the rows into the route
  * (PP.flowPanel.fromRows) that block Publish: an arrow to a code no row has
- * (G2) or back to an earlier row (G3), and settings it had to leave out (F1).
- * The others are warnings: an arrow to a hidden row or ending (C2), an
- * ending's arrows (G4). A note Flow.gs marks level "warning" is always a
- * warning: settings left on the problem-screens row while the problem screens
- * follow each low rating change nothing for partners (26 Oct 2026, review
- * finding 7), so they never block Publish; the message says to clear them.
+ * (G2) or back to an earlier row (G3), settings it had to leave out (F1), and
+ * a route below the main thank-you screen that runs on into another route
+ * (G5, which Flow.gs marks level "error"; 27 Oct 2026, review W8 finding 2:
+ * until then Model.gs had its own copy of that rule). The others are
+ * warnings: an arrow to a hidden row or ending (C2), an ending's arrows (G4).
+ * A note Flow.gs marks level "warning" is always a warning: settings left on
+ * the problem-screens row while the problem screens follow each low rating
+ * change nothing for partners (26 Oct 2026, review finding 7), so they never
+ * block Publish; the message says to clear them. A note marked level "error"
+ * is always an error. The route table's Check (PP.flowPanel.fromTable) blocks
+ * the same notes (it relies on the level for G5, which Flow.gs always marks
+ * "error"), so Check and Publish refuse the same routes.
  */
-var PP_MDL_FLOW_ERRORS_ = { G2: true, G3: true, F1: true };
+var PP_MDL_FLOW_ERRORS_ = { G2: true, G3: true, F1: true, G5: true };
 /**
  * The answer keys built-in area screens use, which the panel never changes:
  * a published route's node "fn_ratings" stores fn_rating:<area>, and so on.
@@ -536,6 +552,34 @@ var PP_MDL_DATA_COLUMNS_ = [
   { id: 'nps', type: 'nps_0_10', column: 'nps', reader: ' (the dashboard\'s headline score reads it)' },
   { id: 'support_gate', type: 'yes_no', column: 'support_contacted', reader: '' }
 ];
+/**
+ * The kinds of row as the route table names them in its "kind" column
+ * (control panel, Questions > Paste a route), in its order: exactly the names
+ * web/js/flow-panel.js writes (its KINDS and kindName;
+ * tests/model/test_model.js compares the two). "type" is the Screens tab's
+ * kind. Two codes have a name of their own ("nps", the headline question, and
+ * "support_gate", the support question), and a thank-you row with its own
+ * words is an "ending". A kind added in web/js/types/ is named by its type.
+ */
+var PP_MDL_TABLE_KINDS_ = [
+  { name: 'language', type: 'language_picker' },
+  { name: 'what changed', type: 'whats_changed' },
+  { name: 'nps', type: 'nps_0_10', code: 'nps' },
+  { name: 'area ratings', type: 'function_ratings' },
+  { name: 'problem screens', type: 'function_deep_dives' },
+  { name: 'support question', type: 'yes_no', code: 'support_gate' },
+  { name: 'support ratings', type: 'support_block' },
+  { name: 'thank you', type: 'thank_you' },
+  { name: 'ending', type: 'thank_you', ending: true },
+  { name: '0 to 10', type: 'nps_0_10' },
+  { name: 'faces', type: 'rating_1_5' },
+  { name: 'yes/no', type: 'yes_no' },
+  { name: 'pick one', type: 'single_choice' },
+  { name: 'voice/typing', type: 'free_text' },
+  { name: 'info card', type: 'info_card' }
+];
+/** Where messages send people to change the questions' route (since 27 Oct 2026 the only way to change it). */
+var PP_MDL_ROUTE_TABLE_ = 'the route table (Questions > Paste a route)';
 /**
  * Every code partners have ever answered under (Script Property
  * CODES_EVER_LIVE, kept by Code.gs) must fit in one Script Property, which
@@ -825,6 +869,30 @@ function PP_mdlTypeNames_() {
 function PP_mdlIsBuiltin_(type) {
   const entry = PP_mdlScreenType_(type);
   return Boolean(entry && entry.builtin);
+}
+
+/**
+ * A row's kind as the route table names it ("voice/typing", "faces", "nps",
+ * "ending", ...: PP_MDL_TABLE_KINDS_), else its type as it is (a kind added
+ * in web/js/types/, or one the form does not know). screen = { id, type,
+ * text, body } (only "type" is needed).
+ */
+function PP_mdlTableKind_(screen) {
+  const type = PP_mdlText_(screen.type);
+  const code = PP_mdlTrim_(screen.id);
+  const ending = type === 'thank_you' && (PP_mdlIsFilled_(PP_mdlText_(screen.text)) || PP_mdlIsFilled_(PP_mdlText_(screen.body)));
+  const kind = PP_MDL_TABLE_KINDS_.filter(entry => entry.type === type && (!entry.code || entry.code === code) &&
+    Boolean(entry.ending) === ending)[0];
+  return kind ? kind.name : type;
+}
+
+/** Every kind's name in the route table, in its order, then the kinds added in web/js/types/ (by type). */
+function PP_mdlTableKindNames_() {
+  const names = PP_MDL_TABLE_KINDS_.map(entry => entry.name);
+  PP_SCREEN_TYPES.forEach(entry => {
+    if (!PP_MDL_TABLE_KINDS_.some(kind => kind.type === entry.type) && names.indexOf(entry.type) === -1) names.push(entry.type);
+  });
+  return names;
 }
 
 // =============================================================================
@@ -2220,12 +2288,12 @@ function PP_validate(model, liveDoc, everLive) {
   PP_mdlCheckScreens_(tidy, ctx, report);
   PP_mdlReportFlowNotes_(flowNotes, report);
   PP_mdlCheckRoute_(tidy, compiled, report);
-  PP_mdlCheckRunIntoRoutes_(tidy, report);
   PP_mdlCheckTexts_(tidy, ctx, report);
   PP_mdlCheckNews_(tidy, ctx, report);
   PP_mdlCheckClips_(tidy, ctx, report);
   PP_mdlCheckRounds_(tidy, report);
   PP_mdlCheckLiveCodes_(tidy, liveDoc, report, everLive);
+  PP_mdlCheckLiveKinds_(tidy, liveDoc, report);
   PP_mdlCheckEverLiveSize_(everLive, report);
   const compiledChars = JSON.stringify(compiled).length;
   if (compiledChars > PP_MDL_MAX_COMPILED_CHARS_) {
@@ -2455,7 +2523,7 @@ function PP_mdlCheckAreas_(model, ctx, report) {
   });
   if (PP_mdlHas_(ctx.firstActive, 'function_ratings') && !Object.keys(ctx.activeAreas).length) {
     report.error('areas', '', 'The area ratings screen is switched on, but no area is. Switch on at least one ' +
-      'area, or hide the area ratings screen.');
+      'area, or hide the area ratings screen by writing no in the "show" column of its row in ' + PP_MDL_ROUTE_TABLE_ + '.');
   }
 }
 
@@ -2518,7 +2586,8 @@ function PP_mdlCheckSupport_(model, ctx, report) {
   });
   if (PP_mdlHas_(ctx.firstActive, 'support_block') && !ctx.activeSupport.length) {
     report.warn('support', '', 'The support ratings screen is switched on, but no support question is, so that ' +
-      'screen would be empty. Switch on at least one support question, or hide the screen.');
+      'screen would be empty. Switch on at least one support question, or hide the screen by writing no in the ' +
+      '"show" column of its row in ' + PP_MDL_ROUTE_TABLE_ + '.');
   }
 }
 
@@ -2564,7 +2633,8 @@ function PP_mdlCheckScreens_(model, ctx, report) {
     // Several thank-you screens are allowed: extra endings, reached by a jump (docs/flow-engine.md 9.1).
     if (type.builtin && screen.type !== 'thank_you' && PP_mdlHas_(builtins, screen.type)) {
       report.error('screens', ref, label + ': there is already a "' + type.label + '" screen (question ' +
-        builtins[screen.type] + '). This kind of screen can appear only once: delete one of them.');
+        builtins[screen.type] + '). This kind of screen can appear only once: delete one of the two rows in ' +
+        PP_MDL_ROUTE_TABLE_ + '.');
     } else if (type.builtin) {
       builtins[screen.type] = index + 1;
     }
@@ -2574,50 +2644,62 @@ function PP_mdlCheckScreens_(model, ctx, report) {
   PP_mdlCheckImmediateDives_(model, ctx, report);
 }
 
+/**
+ * A row without a kind, or of a kind the form does not know (only a hand-made
+ * change in the Sheet's Screens tab can do that: the route table refuses
+ * unknown kinds). It is fixed in the route table, whose "kind" column names
+ * the kinds its own way (PP_mdlTableKind_); a close spelling of a known kind
+ * is suggested by its name there.
+ */
 function PP_mdlUnknownTypeMessage_(label, type) {
-  const known = 'Known types: ' + PP_mdlTypeNames_().join(', ') + '.';
-  if (!type) {
-    return label + ' does not say what kind of screen it is. Fill in its type in the Screens tab, or delete it ' +
-      'and add it again with "Add a question". (' + known + ')';
-  }
-  return label + ' is a kind of screen the form does not know. Correct its type in the Screens tab, or delete it ' +
-    'and add it again with "Add a question". (Its type is ' + PP_mdlShow_(type) + '.' +
-    PP_mdlDidYouMean_(type, PP_mdlTypeNames_()) + ' ' + known + ')';
+  const known = 'The kinds: ' + PP_mdlTableKindNames_().join(', ') + '.';
+  const fix = ' in ' + PP_MDL_ROUTE_TABLE_ + ', or delete the row and add it again there.';
+  if (!type) return label + ' does not say what kind of screen it is. Write its kind in the "kind" column of its row' + fix + ' (' + known + ')';
+  const close = PP_mdlClosest_(type, PP_mdlTypeNames_(), 0.7);
+  const nearest = close ? PP_mdlTableKind_({ type: close }) : PP_mdlClosest_(type, PP_mdlTableKindNames_(), 0.7);
+  return label + ' is a kind of screen the form does not know. Correct the "kind" column of its row' + fix +
+    ' (Its kind is ' + PP_mdlShow_(type) + '.' + (nearest ? ' Did you mean "' + nearest + '"?' : '') + ' ' + known + ')';
 }
 
 /**
  * A shown row's settings that compiling leaves out of the route (so the
  * route checker cannot see them): a skip setting on the wrong kind of screen,
- * "required" that is not TRUE / FALSE / empty, a rule ("Show this question
- * only if…") that cannot be read, and a rule on the only ending.
+ * "required" that is not TRUE / FALSE / empty, a rule ("show only if") that
+ * cannot be read, and a rule on the only ending. The messages say what to
+ * write in the route table (since 27 Oct 2026 the only way to change the
+ * route), plus what the Sheet's Screens tab holds, for whoever edits it.
+ * A skip setting is not a column of the route table (pasting a table keeps
+ * it), so a wrong one is cleared in the Screens tab itself.
  */
 function PP_mdlCheckScreenFields_(model, screen, ref, label, report) {
   const allowed = PP_mdlHas_(PP_MDL_SKIP_IF_, screen.type) ? PP_MDL_SKIP_IF_[screen.type] : '';
   if (screen.skip_if && !allowed) {
     report.error('screens', ref, label + ' is set to be skipped, but only the language buttons and the "What ' +
-      'changed" card can be skipped that way. Clear that setting. To show this question only to some partners, ' +
-      'give it a rule ("Show this question only if…") instead. (In the Screens tab, its skip_if column says ' +
-      PP_mdlShow_(screen.skip_if) + '.)');
+      'changed" card can be skipped that way. Clear that setting: in the Sheet\'s Screens tab, empty the skip_if ' +
+      'cell of its row. To show this question only to some partners, write a rule in its "show only if" column in ' +
+      PP_MDL_ROUTE_TABLE_ + ' instead. (In the Screens tab, its skip_if column says ' + PP_mdlShow_(screen.skip_if) + '.)');
   } else if (screen.skip_if && screen.skip_if !== allowed) {
-    report.error('screens', ref, label + ' has a skip setting the form does not know. Choose "' +
-      PP_MDL_SKIP_IF_NAMES_[allowed] + '", or switch skipping off. (In the Screens tab, its skip_if column must be "' +
-      allowed + '" or empty; right now it is ' + PP_mdlShow_(screen.skip_if) + '.)');
+    report.error('screens', ref, label + ' has a skip setting the form does not know. Use the usual one ("' +
+      PP_MDL_SKIP_IF_NAMES_[allowed] + '"), or switch skipping off: in ' + PP_MDL_ROUTE_TABLE_ + ', leave its ' +
+      '"show only if" column empty for the usual one, or write always there to switch skipping off. (In the Screens ' +
+      'tab, its skip_if column must be "' + allowed + '" or empty; right now it is ' + PP_mdlShow_(screen.skip_if) + '.)');
   }
   if (screen.required !== null && typeof screen.required !== 'boolean') {
-    report.error('screens', ref, label + ' has "required" set to ' + PP_mdlShow_(screen.required) + '. In the ' +
-      'Screens tab, write TRUE (partners must answer), FALSE (they can skip) or leave it empty (the usual for this ' +
-      'kind of question).');
+    report.error('screens', ref, label + ' has "required" set to ' + PP_mdlShow_(screen.required) + '. In ' +
+      PP_MDL_ROUTE_TABLE_ + ', write yes (partners must answer) or no (they can skip) in its "required" column, or ' +
+      'leave it empty (the usual for this kind of question). (In the Screens tab: TRUE, FALSE or empty.)');
   }
   if (PP_mdlIsObject_(screen.show_if) && PP_mdlHas_(screen.show_if, 'unreadable')) {
-    report.error('screens', ref, label + ': the rule could not be read. Open this question in the control panel and ' +
-      'build the rule again. (In the Screens tab, show_if says ' + PP_mdlShowJson_(PP_mdlText_(screen.show_if.unreadable)) +
-      ', but it must be written like {"answer": "support_gate", "equals": "yes"}.)');
+    report.error('screens', ref, label + ': its rule could not be read. Write it again in its "show only if" column ' +
+      'in ' + PP_MDL_ROUTE_TABLE_ + ', for example: support_gate = yes. (In the Screens tab, show_if says ' +
+      PP_mdlShowJson_(PP_mdlText_(screen.show_if.unreadable)) + '; there a rule is written like {"answer": ' +
+      '"support_gate", "equals": "yes"}.)');
   }
   // With one ending, a rule on it has no use; with several, a rule can choose between them.
   const endings = model.screens.filter(other => other.type === 'thank_you').length;
   if (screen.type === 'thank_you' && screen.show_if && endings === 1) {
-    report.warn('screens', ref, label + ' has a rule ("Show this question only if…"), which has no use there: the ' +
-      'form always ends with the thank-you screen. Remove the rule.');
+    report.warn('screens', ref, label + ' has a rule in its "show only if" column, which has no use there: the ' +
+      'form always ends with the thank-you screen. Empty that cell in ' + PP_MDL_ROUTE_TABLE_ + '.');
   }
 }
 
@@ -2638,11 +2720,11 @@ function PP_mdlCheckMainThanks_(model, report) {
   let at = -1;
   model.screens.forEach((screen, index) => { if (at < 0 && screen.type === 'thank_you') at = index; });
   if (at < 0) {
-    report.error('screens', '', 'There is no thank-you screen. Add one as the very last question: the answers are ' +
-      'sent from it. (In the Screens tab its type is thank_you.)');
+    report.error('screens', '', 'There is no thank-you screen. Add a row of the kind "thank you" after the last ' +
+      'question in ' + PP_MDL_ROUTE_TABLE_ + ': the answers are sent from it.');
   } else if (!model.screens[at].active) {
     report.error('screens', 'screen ' + (at + 1), 'The thank-you screen (question ' + (at + 1) + ') is hidden. ' +
-      'Show it again: the answers are sent from it.');
+      'Show it again by writing yes in its "show" column in ' + PP_MDL_ROUTE_TABLE_ + ': the answers are sent from it.');
   }
 }
 
@@ -2659,74 +2741,38 @@ function PP_mdlCheckImmediateDives_(model, ctx, report) {
   const dives = PP_mdlHas_(ctx.firstActive, 'function_deep_dives') ? ctx.firstActive.function_deep_dives : -1;
   if (dives >= 0 && ratings < 0) {
     report.error('screens', 'screen ' + (dives + 1), 'The problem screens (question ' + (dives + 1) + ') ask about ' +
-      'areas rated low, but the area ratings screen is missing or hidden, so nothing is ever rated. Add or show ' +
-      'the area ratings screen above them.');
+      'areas rated low, but the area ratings screen is missing or hidden, so nothing is ever rated. In ' +
+      PP_MDL_ROUTE_TABLE_ + ', add an "area ratings" row above them, or show it (yes in its "show" column).');
   } else if (dives >= 0 && dives < ratings) {
     report.error('screens', 'screen ' + (dives + 1), 'The problem screens (question ' + (dives + 1) + ') must come ' +
-      'after the area ratings (question ' + (ratings + 1) + '): they depend on those ratings. Move them below.');
+      'after the area ratings (question ' + (ratings + 1) + '): they depend on those ratings. Move their row below ' +
+      'it in ' + PP_MDL_ROUTE_TABLE_ + '.');
   }
 }
 
 /**
  * What Flow.gs said while it made the route from the rows (PP_compile's
- * flowNotes), as errors (PP_MDL_FLOW_ERRORS_) or warnings, at their row. A
- * note with level "warning" is a warning whatever its code.
+ * flowNotes), as errors or warnings, at their row. A note with level
+ * "warning" is a warning whatever its code; one with level "error" is an
+ * error whatever its code; any other note is an error when its code is in
+ * PP_MDL_FLOW_ERRORS_. The route table's Check (PP.flowPanel.fromTable)
+ * blocks the same notes Flow.gs makes.
+ * One of them (since 27 Oct 2026, review W8 finding 2) is G5: a shown row
+ * below the main thank-you screen without its own "then go to", whose next
+ * shown row starts ANOTHER route (a jump of another question leads there),
+ * so partners of the first route would run on into the second one (for
+ * example promoters into the detractors' questions, after the ending between
+ * them was deleted). Flow.gs finds it while it makes the route, so Model.gs
+ * keeps no copy of that rule (its own copy, PP_mdlCheckRunIntoRoutes_, was
+ * removed that day): Publish reports it once, as an error, at that row.
  */
 function PP_mdlReportFlowNotes_(notes, report) {
   notes.forEach(note => {
     const ref = typeof note.row === 'number' && note.row >= 0 ? 'screen ' + (note.row + 1) : '';
-    if (note.level !== 'warning' && PP_mdlHas_(PP_MDL_FLOW_ERRORS_, note.code)) report.error('screens', ref, note.message);
+    const isError = note.level === 'error' || (note.level !== 'warning' && PP_mdlHas_(PP_MDL_FLOW_ERRORS_, note.code));
+    if (isError) report.error('screens', ref, note.message);
     else report.warn('screens', ref, note.message);
   });
-}
-
-/**
- * Rows below the main thank-you screen are other routes, each started by a
- * jump. A shown row there without its own "usually go to" goes on to the next
- * shown row: when that row starts ANOTHER route (a jump of another question
- * leads to it), partners of the first route would run on into the second one
- * (for example promoters into the detractors' questions, after an ending
- * between them was deleted). That is an error, so Publish waits (26 Oct 2026,
- * review finding 1). A hidden ending between them is fine: it still ends the
- * route, at the main thank-you screen (Flow.gs, PP.flowPanel.fromRows).
- * Only the rows decide here, so the message can name both questions.
- */
-function PP_mdlCheckRunIntoRoutes_(model, report) {
-  const main = PP_mdlMainThanks_(model);
-  if (main < 0) return;
-  const screens = model.screens;
-  const immediate = model.settings['deep_dive.when'] === 'immediate';
-  const jumpedTo = {};   // '#code' -> the shown rows whose jumps lead there
-  screens.forEach((screen, index) => {
-    if (!screen.active || !Array.isArray(screen.jumps)) return;
-    screen.jumps.forEach(jump => {
-      const to = PP_mdlIsObject_(jump) ? PP_mdlTrim_(jump['goto']) : '';
-      if (!to) return;
-      if (!PP_mdlHas_(jumpedTo, '#' + to)) jumpedTo['#' + to] = [];
-      if (jumpedTo['#' + to].indexOf(index) === -1) jumpedTo['#' + to].push(index);
-    });
-  });
-  for (let i = main + 1; i < screens.length; i += 1) {
-    const row = screens[i];
-    if (!row.active || row.type === 'thank_you' || PP_mdlTrim_(row.next)) continue;
-    if (immediate && row.type === 'function_deep_dives') continue;   // not part of the route in that mode
-    let k = i + 1;
-    while (k < screens.length && !screens[k].active && screens[k].type !== 'thank_you') k += 1;
-    if (k >= screens.length || !screens[k].active) continue;         // the end, or a hidden ending: the route ends
-    const into = screens[k];
-    const from = (PP_mdlHas_(jumpedTo, '#' + into.id) ? jumpedTo['#' + into.id] : []).filter(at => at !== i);
-    if (!into.id || !from.length) continue;
-    const name = PP_mdlQuestionName_(model, row, i);
-    const next = PP_mdlQuestionName_(model, into, k);
-    const jumpers = from.map(at => 'question ' + (at + 1));
-    report.error('screens', 'screen ' + (i + 1), PP_mdlCapital_(name) + ' has no "usually go to", so partners who ' +
-      'answer it go straight on to ' + next + (into.type === 'thank_you' ? ', the ending of another route (' :
-      ', which starts another route (') + PP_mdlWordList_(jumpers, 'and') + ' ' + (jumpers.length === 1 ? 'jumps' : 'jump') +
-      ' there). Choose where question ' + (i + 1) + ' goes (Edit it > After this question > Usually go to), for ' +
-      'example to an ending of its own, or add an ending between them. If both routes should carry on there, choose ' +
-      'it under "Usually go to" to say so. (Its code is "' + row.id + '"; question ' + (k + 1) + '\'s code is "' +
-      into.id + '".)');
-  }
 }
 
 /** A warning when the list of codes partners have answered nears the 9 KB limit of one Script Property. */
@@ -2929,19 +2975,53 @@ function PP_mdlReportRouteFinding_(model, finding, report, answerWords) {
 }
 
 /**
- * The checker's technical words, the panel's way: "strings.json" (the GitHub
- * copy's file) is "Texts & translations", an "id" a "code", "next" the
- * panel's "usually go to"; a jump is added under "After this question"; the
- * start of the route is simply the first screen.
+ * The checker's technical words, the way the route table says them (since 27
+ * Oct 2026 the route is changed only by pasting that table, Questions >
+ * Paste a route; these are the words of the table's own Check, PP.flowPanel
+ * tableWords, so both say the same): "strings.json" (the GitHub copy's file)
+ * is "Texts & translations", an "id" a "code", "next" the table's "then go
+ * to", "show_if" its "show only if", a "repeat for" filter its "ask for"; a
+ * jump is written in the "jumps" column; a part of a combined rule is named
+ * by its place ("the 2nd part of its rule"); the tests "at_most",
+ * "at_least", "equals" and "not_equals" are written <=, >=, = and != there
+ * (a "Did you mean" for a misspelt test keeps the Screens tab's word: only a
+ * hand-made change there can misspell one); the start of the route is simply
+ * the first screen. ("Switch it on again" stays: what is hidden may be a
+ * question, an area or a support question.)
  */
 function PP_mdlPanelWords_(text) {
+  const sign = { at_most: '<=', at_least: '>=', equals: '=', not_equals: '!=' };
   return text.replace(/strings\.json/g, 'Texts & translations')
-    .replace(/, or use a jump \("next"\) on this screen\./g, ', or add a jump to this question instead (After this question > Add a jump).')
+    // 'its rule ("show only if") > all > rule 2' -> 'the 2nd part of its rule ("show only if")'
+    .replace(/(its rule \("show only if"\)|its "repeat for" filter \("where"\)|its jump to "[^"]*"|its jump \d+ \(to "[^"]*"\))((?: > (?:all|any) > rule \d+| > not)+)/g,
+      (all, label, path) => {
+        let out = label;
+        path.replace(/> (?:all|any) > rule (\d+)/g, (part, n) => { out = 'the ' + PP_mdlOrdinal_(Number(n)) + ' part of ' + out; return part; });
+        return out;
+      })
+    .replace(/its "repeat for" filter \("where"\)/g, 'its "ask for"')
+    .replace(/"repeat_for" > "where"/g, '"ask for"')
+    .replace(/, or use a jump \("next"\) on this screen\./g, ', or give this question a jump in its "jumps" column instead.')
     .replace(/ must be the first screen \("start"\)/g, ' must be the first screen')
     .replace(/: the id is (\d+) characters long/g, ': its code is $1 characters long')
     .replace(/, so use a shorter id or store_as\./g, ', so use a shorter code.')
     .replace(/, or give one another id \(or store_as\)\./g, ', or give one of them another code.')
-    .replace(/"next"/g, '"usually go to"');
+    .replace(/"usually go to"/g, '"then go to"')
+    .replace(/"next"/g, '"then go to"')
+    .replace(/"show_if"/g, '"show only if"')
+    .replace(/with "(at_most|at_least|not_equals|equals)": /g, (all, test) => 'with ' + sign[test] + ' ')
+    // ... but a suggestion for a misspelt test stays as it is written in the Screens tab ('Did you mean "at_most"?')
+    .replace(/"(at_most|at_least|not_equals|equals)"/g, (all, test, at, whole) =>
+      (whole.slice(Math.max(0, at - 13), at) === 'Did you mean ' ? all : '"' + sign[test] + '"'))
+    .replace(/"answered": true or false/g, '"answered" or "not answered"')
+    .replace(/an ending \(thank_you\)/g, 'an ending (a thank-you row)')
+    .replace(/its default is followed/g, 'its "then go to" is followed');
+}
+
+/** 1st, 2nd, 3rd, 4th, ... 11th, 12th, 13th, 21st. */
+function PP_mdlOrdinal_(n) {
+  const t = n % 100;
+  return n + (t >= 11 && t <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] || 'th'));
 }
 
 /**
@@ -3027,21 +3107,22 @@ function PP_mdlReportDataColumn_(model, finding, report) {
   const sheet = 'the ' + item.column + ' column of every round\'s answers sheet' + item.reader;
   if (at < 0) {
     level('screens', '', 'The question with the code "' + item.id + '" is missing. Its answers fill ' + sheet + ', so ' +
-      'it can be hidden but never deleted or re-coded. Undo the change, or add the question back with exactly that ' +
-      'code.');
+      'it can be hidden but never deleted or re-coded. Put its row back in ' + PP_MDL_ROUTE_TABLE_ + ' with exactly ' +
+      'that code; to stop asking it, write no in its "show" column.');
     return;
   }
   const screen = model.screens[at];
   const name = PP_mdlCapital_(PP_mdlQuestionName_(model, screen, at));
   if (finding.code === 'D1' && !screen.active) {
     level('screens', 'screen ' + (at + 1), name + ' is hidden, so ' + sheet + ' stays empty while it is. Show it ' +
-      'again, unless that is what you want. (Its code is "' + item.id + '".)');
+      'again by writing yes in its "show" column in ' + PP_MDL_ROUTE_TABLE_ + ', unless that is what you want. (Its ' +
+      'code is "' + item.id + '".)');
     return;
   }
   const kind = PP_mdlScreenType_(item.type).label;
   level('screens', 'screen ' + (at + 1), name + ' must stay of the kind "' + kind + '": its answers fill ' + sheet + '. ' +
-    'Change its kind back, or give it another code. (Its code is "' + item.id + '"; its kind is ' +
-    PP_mdlShow_(screen.type) + '.)');
+    'Change its kind back in ' + PP_MDL_ROUTE_TABLE_ + ', or give it another code. (Its code is "' + item.id + '"; its ' +
+    'kind is ' + PP_mdlShow_(screen.type) + '.)');
 }
 
 /**
@@ -3058,14 +3139,15 @@ function PP_mdlReportLostRows_(model, main, lost, report) {
     const after = lost.length;
     report.error('screens', 'screen ' + (main + 1), 'The thank-you screen (question ' + (main + 1) + ') must be the ' +
       'last one, but ' + (after === 1 ? '1 question comes' : after + ' questions come') + ' after it, and no jump ' +
-      'leads there, so partners never see ' + (after === 1 ? 'it' : 'them') + '. Move the thank-you screen to the ' +
-      'end, or move ' + (after === 1 ? 'that question' : 'those questions') + ' above it.');
+      'leads there, so partners never see ' + (after === 1 ? 'it' : 'them') + '. In ' + PP_MDL_ROUTE_TABLE_ + ', move ' +
+      'the "thank you" row to the end, or move ' + (after === 1 ? 'that row' : 'those rows') + ' above it.');
     return;
   }
   lost.sort((a, b) => a - b).forEach(index => {
     report.error('screens', 'screen ' + (index + 1), PP_mdlCapital_(PP_mdlQuestionName_(model, model.screens[index], index)) +
       ' comes after the thank-you screen (question ' + (main + 1) + '), but no jump leads to it, so partners never ' +
-      'see it. Add a jump to it, move it above the thank-you screen, or hide it.');
+      'see it. In ' + PP_MDL_ROUTE_TABLE_ + ', give an earlier question a jump to it (its "jumps" column), move its ' +
+      'row above the "thank you" row, or write no in its "show" column.');
   });
 }
 
@@ -3358,9 +3440,15 @@ function PP_mdlCheckLiveCodes_(model, liveDoc, report, everLive) {
   const gone = (section, ref, subject, entry, code, isToday, isOption) => {
     const what = subject + (isToday ? ' is live today but is no longer in the draft.' :
       ' was answered in an earlier published version but is no longer in the draft.');
-    const keep = isOption ? ' Put it back in the list of answers: an answer can\'t be hidden, so once partners have ' +
-      'picked it, it stays on its question. To reword it, rename its label (its text) and keep the code.' :
-      ' To reword it, rename its label (its text) and keep the code; to stop asking it, hide it instead of deleting it.';
+    // a question and its answers are changed in the route table (27 Oct 2026); areas, problems and support questions in their own sections
+    let keep = ' To reword it, rename its label (its text) and keep the code; to stop asking it, hide it instead of deleting it.';
+    if (isOption) {
+      keep = ' Put it back in its question\'s "answers" cell in ' + PP_MDL_ROUTE_TABLE_ + ': an answer can\'t be hidden, ' +
+        'so once partners have picked it, it stays on its question. To reword it, change its words and keep the code.';
+    } else if (section === 'screens') {
+      keep = ' Put its row back in ' + PP_MDL_ROUTE_TABLE_ + ' with the same code. To reword it, change its words and ' +
+        'keep the code; to stop asking it, write no in its "show" column instead of deleting the row.';
+    }
     if (PP_mdlHas_(answered, '#' + entry)) {
       report.error(section, ref, what + ' Partners answered it in a real round, so it can never be deleted or re-coded, ' +
         'and Publish waits until it is back.' + keep + ' (Its code is "' + code + '".)');
@@ -3419,6 +3507,85 @@ function PP_mdlCheckLiveCodes_(model, liveDoc, report, everLive) {
       }
     });
   });
+}
+
+/**
+ * A question partners already answered keeps its kind (27 Oct 2026, review
+ * W8 finding 3). Its answers are stored under its code and the dashboard
+ * compares rounds by that code, so a voice/typing question that became a
+ * faces question (or a pick-one question, ...) would mix two meanings under
+ * one code. Since the route table, that is a one-cell change, so it is
+ * checked here: for every screen of the live version whose kind stores an
+ * answer, the draft's row with that code (shown or hidden) must be of the
+ * same kind, otherwise it is an ERROR and Publish waits. Not told here: a
+ * code gone from the draft (PP_mdlCheckLiveCodes_ tells it), a row of a kind
+ * the form does not know (PP_mdlCheckScreens_), and a shown "nps" or
+ * "support_gate" of another kind (the route check's D2 tells it with its
+ * answers column). liveDoc is given only once a real round has opened
+ * (Code.gs PP_liveDocForChecks_), like the rest of the codes lock. The kinds
+ * are named as the route table names them. The route table's Check says the
+ * same (PP.flowPanel.fromTable, its opts.liveKinds: PP_mdlLiveKinds_).
+ * Not covered: a question that was hidden in the live version (a published
+ * version holds only the shown screens, and CODES_EVER_LIVE holds codes,
+ * not kinds).
+ */
+function PP_mdlCheckLiveKinds_(model, liveDoc, report) {
+  const kinds = PP_mdlLiveKinds_(liveDoc);
+  if (!Object.keys(kinds).length) return;
+  const lib = PP_mdlFlowLib_();
+  const seen = {};
+  model.screens.forEach((screen, index) => {
+    const code = PP_mdlTrim_(screen.id);
+    if (!code || !PP_mdlHas_(kinds, code) || PP_mdlHas_(seen, '#' + code)) return;
+    seen['#' + code] = true;   // the first row with that code (a second one is an error of its own)
+    const was = kinds[code];
+    if (screen.type === was || !PP_mdlScreenType_(screen.type) || !PP_mdlStoresAnswer_(lib, was)) return;
+    if (screen.active && PP_MDL_DATA_COLUMNS_.some(column => column.id === code)) return;   // the route check's D2 tells it
+    const fix = screen.active ? 'Keep its kind in ' + PP_MDL_ROUTE_TABLE_ + ', or write no in its "show" column and add ' +
+      'the new question in a new row with a new code.' : 'Keep its kind in ' + PP_MDL_ROUTE_TABLE_ + '; the row can ' +
+      'stay hidden. Add the new question in a new row with a new code.';
+    report.error('screens', 'screen ' + (index + 1), PP_mdlCapital_(PP_mdlQuestionName_(model, screen, index)) +
+      ' is now of the kind "' + PP_mdlTableKind_(screen) + '", but partners have already answered it as a question of ' +
+      'the kind "' + PP_mdlTableKind_({ id: code, type: was }) + '", so its kind can\'t change: the dashboard compares ' +
+      'rounds by its code. ' + fix + ' (Its code is "' + code + '".)');
+  });
+}
+
+/**
+ * The kind of every screen of a published version, as the Screens tab names
+ * it: { code: type } ({ one_fix: "free_text", fn_ratings: "function_ratings" }).
+ * The route may be the old list or a graph (group bodies included). Empty
+ * when doc is not a published version. The route table's Check needs the
+ * same (PP.flowPanel.fromTable, opts.liveKinds).
+ */
+function PP_mdlLiveKinds_(doc) {
+  const out = {};
+  if (!PP_mdlIsCompiledDoc_(doc)) return out;
+  const flow = doc.survey.flow;
+  (PP_mdlIsGraph_(flow) ? PP_mdlGraphNodes_(flow) : PP_mdlList_(flow)).forEach(entry => {
+    const code = PP_mdlTrim_(entry.id);
+    const type = PP_mdlTrim_(entry.type);
+    if (!code || !type || !PP_mdlSafeKey_(code) || PP_mdlHas_(out, code)) return;
+    out[code] = PP_mdlHas_(PP_MDL_NODE_TYPES_, type) ? PP_MDL_NODE_TYPES_[type] : type;
+  });
+  return out;
+}
+
+/**
+ * True when a row of this kind (the Screens tab's type) stores an answer
+ * partners give: its description in the route code (PP.types, Flow.gs) has
+ * an "answer". The language buttons, the "What changed" card, information
+ * cards and thank-you screens store none. A kind the route code does not
+ * know counts as storing none, as in the route table's Check.
+ */
+function PP_mdlStoresAnswer_(lib, type) {
+  const T = lib && lib.types;
+  let found = null;
+  (T && typeof T.list === 'function' ? T.list() : []).forEach(name => {
+    const d = T.get(name);
+    if (!found && PP_mdlIsObject_(d) && PP_mdlIsObject_(d.row) && (PP_mdlTrim_(d.row.type) || name) === type) found = d;
+  });
+  return Boolean(found && found.answer);
 }
 
 /** The English of a text in the live version, shortened ('' when it has none). */

@@ -25,8 +25,12 @@
                   POST /control/live_unknown {on}             the live codes can't be read (Drive hiccup)
                   POST /control/publish_warnings {warnings}   the next Publish answers these warnings
                   POST /control/model {model}                 a whole draft saved in the Sheet at once
-                  POST /control/flow_code {older, failing}    panelFlowCode sends the route code as before 26 Oct 2026,
-                                                              or one whose answersAt fails
+                  POST /control/flow_code {older, failing,    panelFlowCode sends the route code as before 26 Oct 2026,
+                           noTable, refused}                  one whose answersAt fails, or one without the route
+                                                              table (a Flow.gs from before 27 Oct 2026; the server's
+                                                              panelRouteTable then has none either); refused: route
+                                                              code the window can't run (panelRouteTable still works,
+                                                              unless noTable too)
                   POST /control/screen_types {types}          panelLoad's list of kinds of screen (null: the real one)
                   POST /control/reset
                   GET  /control/state                         server-side state
@@ -141,7 +145,9 @@ function handler(req, res) {
       else if (what === 'live_unknown') backend.setLiveUnknown(b.on === undefined ? true : b.on);
       else if (what === 'publish_warnings') backend.setPublishWarnings(b.warnings);
       else if (what === 'model') out = backend.setModel(b.model);
-      else if (what === 'flow_code') backend.setFlowCode(b.older ? 'older' : b.failing ? 'failing' : 'current');
+      else if (what === 'flow_code') {
+        backend.setFlowCode(b.older ? 'older' : b.failing ? 'failing' : b.refused ? (b.noTable ? 'refused_no_table' : 'refused') : b.noTable ? 'no_table' : 'current');
+      }
       else if (what === 'screen_types') backend.setScreenTypes(b.types);
       else if (what === 'reset') backend.reset();
       else if (what === 'state') {

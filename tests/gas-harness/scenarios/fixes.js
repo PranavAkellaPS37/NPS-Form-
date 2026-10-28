@@ -663,7 +663,7 @@ module.exports = function register(add) {
     const people = [['', 'an anonymous visitor'], ['colleague@example.com', 'a colleague who is not an editor'],
       ['coadmin@example.com', 'an editor of the Sheet'], ['admin@example.com', 'the owner']];
     for (const [who, label] of people) {
-      for (const [fn, args] of [['panelGetSecret', ['SHOW']], ['panelLoad', []], ['panelGenerateLinks', ['2026-R1', {}]], ['panelPublish', ['x', 'note']], ['ppSetup', []], ['ppShareFolder', []], ['ppMenuOpenPanel', []]]) {
+      for (const [fn, args] of [['panelGetSecret', ['SHOW']], ['panelLoad', []], ['panelGenerateLinks', ['2026-R1', {}]], ['panelPublish', ['x', 'note']], ['ppSetup', []], ['ppShareFolder', []], ['ppMenuOpenPanel', []], ['panelRouteTable', [{ tool: 'status' }]]]) {
         const r = h.exec(fn, args, { context: 'webapp', activeUser: who });
         s.ok(!r.ok && /This can only be done from the Partner Pulse Sheet itself/.test(r.error.message), `${label}: ${fn} is refused on a page the web app serves`, K.show(r.ok ? 'it ran' : r.error.message));
       }

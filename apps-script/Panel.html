@@ -9,6 +9,11 @@ WHAT THIS IS
   Editor can use it to change the whole questionnaire without touching code:
   questions, areas and their problem lists, support questions, every text in
   every language, colours, rounds, partner links, and publishing.
+  Since 27 Oct 2026 the questions and their route are changed as ONE TABLE
+  (Questions > "Paste a route"): copy the current route, change it in Excel
+  or Google Sheets (or let Claude or ChatGPT write it with the instruction
+  the panel gives), paste it back, Check, Use this route. Questions are no
+  longer added, moved or edited one by one here.
 
 HOW TO INSTALL IT
   In the Apps Script editor this is the HTML file named "Panel" (paste this
@@ -16,8 +21,9 @@ HOW TO INSTALL IT
   apps-script/README.md for the exact names).
 
 HOW TO USE IT (short version; the full guide is docs/control-panel.md)
-  1. Make changes in any section on the left. The top bar then says
-     "Unsaved changes" (with "Discard" to go back to the last save).
+  1. Make changes in any section on the left (the questions themselves:
+     Questions > Paste a route). The top bar then says "Unsaved changes"
+     (with "Discard" to go back to the last save).
   2. Press Save (or Ctrl+S, Cmd+S on a Mac). Your changes go into the Sheet's
      tabs as the DRAFT. Partners never see the draft.
   3. Press Preview to try the draft form yourself. Nothing you answer is stored.
@@ -32,7 +38,8 @@ WHAT IT READS AND WRITES
     panelLoad, panelSave, panelValidate, panelPublish, panelHistory,
     panelRestore, panelSetRoundStatus, panelRoundCounts, panelGenerateLinks,
     panelPreviewUrl, panelNewPreviewKey, panelGetSecret, panelImport, panelExport,
-    panelSetWebAppUrl, panelFlowCode, panelFlowStatus, panelLiveSurvey.
+    panelSetWebAppUrl, panelFlowCode, panelFlowStatus, panelLiveSurvey,
+    panelRouteTable.
   While you edit, the whole questionnaire is held in this window (the "model",
   described in docs/control-panel-design.md, section 4). Save sends it back
   in one piece.
@@ -41,9 +48,12 @@ WHAT IT READS AND WRITES
   files every partner's phone runs (web/js/flow.js, flow-panel.js and
   flow-check.js). panelFlowCode sends their text (Flow.gs) to this window
   once, and PART 5b runs it here. The panel never has a second copy of a
-  route rule. If that code can't be loaded, the panel still works; only the
-  map, "Try a path", the jumps and the route badges are missing, and a short
-  note in Questions says why.
+  route rule: the route table of "Paste a route" is read and written by that
+  code too (PP.flowPanel.fromTable / toTable). If this window can't run that
+  code, the panel still works: pasting a route then runs on the server
+  instead (panelRouteTable: the same code, from Flow.gs; a few seconds
+  slower), and only the map, "Try a path" and the route badges are missing.
+  A note in Questions says why, with Try again.
 
 SAFETY
   - Nothing is saved until you press Save. Nothing reaches partners until you
@@ -51,12 +61,14 @@ SAFETY
     asks you to confirm that first.
   - If someone else saved in the meantime, Save stops and asks what to do, so
     nobody overwrites another person's work by accident.
-  - Deleting always asks first, and a short message offers "Undo" right after.
+  - Deleting always asks first, and a short message offers "Undo" right after
+    (so does "Use this route", which replaces the questions).
     Once the first real round has opened, anything already live (its code is
     stored in partners' answers) can only be hidden, not deleted, so rounds
-    stay comparable on the dashboard. Test rounds (names starting with
-    SMOKE, DEMO or TEST) never lock anything, and the panel says so when
-    you open one.
+    stay comparable on the dashboard: a pasted route table without a live
+    question or answer is refused by its check (write "no" in its "show"
+    column to hide it). Test rounds (names starting with SMOKE, DEMO or TEST)
+    never lock anything, and the panel says so when you open one.
   - Opening a round publishes nothing. When partners would get something
     other than the draft, the panel says which version they get and offers
     "Publish first".
@@ -95,22 +107,24 @@ FOR WHOEVER MAINTAINS THIS FILE
   - The script is split into numbered parts. Search for "PART" to jump:
       1 talking to the server      2 what the panel remembers
       3 small helpers              4 questionnaire helpers (and the recovery copy)
-      5 "show this question only if" rules (and the jumps' conditions)
+      5 "show this question only if" rules, as sentences
       5b the route tools: the form's own engine and checker in this window
       6 the frame (top bar, menu, banner)
-      7 Home          8 Questions (list, editor, Map, Try a path)
+      7 Home          8 Questions (Paste a route, the read-only list, Map,
+                        Try a path)
       9 Areas & problems   10 Support
-      11 the text boxes for every language, used by all the editors
+      11 the text boxes for every language, used by the other sections
       12 Texts & translations    13 Look & feel    14 Rounds    15 Links
       16 Publish and Settings    17 loading, saving, previewing, publishing
       18 pop-ups and messages    19 start-up
   - The server's catalogue (Model.gs: PP_SETTINGS_SCHEMA, PP_SCREEN_TYPES)
     gives the names, help texts and fields shown here. To reword a setting's
     name or help, change it there, not in this file. The kinds of screen
-    ("Add a question": their names, icons, order, editor fields, standard
-    codes) come only from PP_SCREEN_TYPES, which is made from the form's
-    catalogue of question types (web/config/types.json; docs/config-guide.md,
-    "How to add a question type"), so this file keeps no list of them.
+    (their names and icons on the cards in Questions) come only from
+    PP_SCREEN_TYPES, which is made from the form's catalogue of question
+    types (web/config/types.json; docs/config-guide.md, "How to add a
+    question type"), so this file keeps no list of them. The kinds' names in
+    the route table are flow-panel.js's (KINDS).
   - Every button, box and switch has a data-test="..." name so automatic tests
     can find it. Keep these names when you change things.
   - On a small laptop screen the window shrinks itself to fit (Google's
@@ -406,26 +420,25 @@ input[readonly] { background: var(--surface); }
 .qtype { font-weight: 700; }
 .qtext { margin-top: 3px; font-size: 14px; }
 .qtext-2 { margin-top: 1px; font-size: 13px; color: var(--muted); }
-.qactions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+/* The read-only list (no buttons on the cards since 27 Oct 2026). */
+.qcard.is-readonly { grid-template-columns: 28px 38px minmax(0, 1fr); }
+.qrow { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.qnotes { font-size: 12.5px; color: var(--muted); }
 .flash { animation: pp-flash 2.2s ease-out; }
 @keyframes pp-flash { 0%, 30% { box-shadow: 0 0 0 4px rgba(227, 155, 0, 0.6); } 100% { box-shadow: 0 0 0 0 rgba(227, 155, 0, 0); } }
 
-/* ---- Question editor ------------------------------------------------------ */
-.editor-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-.editor-head h1 { font-size: 20px; margin: 0; }
-.editor-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.editor-foot { display: flex; gap: 8px; margin-top: 6px; }
-.option-row, .chip-row, .item-row, .bullet-row {
+/* ---- Rows of the other editors (problems, support items, bullets) ----------- */
+.chip-row, .item-row, .bullet-row {
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #FDFCFE;
 }
-.option-row + .option-row, .chip-row + .chip-row, .item-row + .item-row, .bullet-row + .bullet-row { margin-top: 8px; }
+.chip-row + .chip-row, .item-row + .item-row, .bullet-row + .bullet-row { margin-top: 8px; }
 .row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .row-head .name { font-weight: 700; }
 .row-head .btn-group { margin-left: auto; }
 .chip-row.is-off, .item-row.is-off { background: #F7F7F8; border-style: dashed; }
 .fixed-chip { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--surface); margin-top: 8px; font-size: 13px; }
 
-/* ---- Rule builder --------------------------------------------------------- */
+/* ---- Radio cards (Map and Try a path: which route) -------------------------- */
 .radio-cards { display: flex; gap: 10px; flex-wrap: wrap; }
 .radio-card {
   position: relative; display: flex; align-items: center; gap: 8px; cursor: pointer;
@@ -433,39 +446,19 @@ input[readonly] { background: var(--surface); }
 }
 .radio-card input { margin: 0; accent-color: var(--primary); }
 .radio-card.is-on { border-color: var(--primary); background: var(--primary-soft); }
-.cond {
-  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.3fr) 34px; gap: 8px; align-items: start;
-  padding: 10px; border-radius: 10px; background: var(--surface); margin-top: 8px;
-}
-.cond .cond-problem { grid-column: 1 / -1; }
-/* The remove button stays a small square at every width (never stretched). */
-.cond .cond-remove { width: 34px; height: 34px; min-width: 34px; padding: 0; justify-self: end; }
-.pills { display: flex; flex-wrap: wrap; gap: 6px; }
-.pill {
-  position: relative; display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
-  border: 1px solid var(--border-strong); background: #fff; cursor: pointer; font-size: 12.5px; font-weight: 600;
-}
-.pill input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-.pill.is-on { background: var(--primary); border-color: var(--primary); color: #fff; }
-.pill:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
-.sentence {
-  margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--info-soft); color: #173E7A;
-  border: 1px solid #C6D6F5; font-size: 13.5px;
-}
-.sentence strong { color: #0F2F5F; }
 
-/* ---- The route: jumps, repeats, endings, Map, Try a path ------------------ */
+/* ---- The route: Paste a route, badges, Map, Try a path --------------------- */
+.tool-list .btn { flex: none; }
+.tool-list .help { flex: 1; min-width: 0; padding-top: 4px; }
+.paste-box { width: 100%; min-height: 150px; max-height: 420px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 .badge-route { background: #EAF2FB; color: #1A4FA0; border-color: #C6D6F5; }
 .badge-end { background: var(--success-soft); color: var(--success); }
 .qsection-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 22px 0 4px; }
 .qsection-head h2 { font-size: 15.5px; margin: 0; }
 .qsection-help { margin: 0 0 10px; color: var(--muted); font-size: 13px; max-width: 760px; }
-.jump-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #FDFCFE; margin-top: 10px; }
-.jump-row .cond { background: #F7F5FB; }
-.jump-goto { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: center; margin-top: 8px; }
-.jump-goto .field-label { white-space: nowrap; }
 .route-list { margin: 6px 0 0; padding-left: 18px; }
 .route-list li + li { margin-top: 4px; }
+.text-changes li { overflow-wrap: anywhere; }
 .map-frame { display: block; width: 100%; height: 480px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 /* While the drawing loads, its frame stays out of sight (but laid out, so the drawing library can measure its text). */
 .map-frame.is-loading { height: 2px; opacity: 0; border: 0; pointer-events: none; }
@@ -480,18 +473,6 @@ input[readonly] { background: var(--surface); }
 .try-steps li { padding: 3px 0; }
 .try-steps li .badge { margin-left: 6px; }
 .try-sent pre { max-height: 320px; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-
-/* ---- Type picker ---------------------------------------------------------- */
-.type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.type-opt {
-  display: flex; gap: 10px; align-items: flex-start; text-align: left; cursor: pointer;
-  padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
-}
-.type-opt:hover { border-color: var(--border-strong); background: #FDFCFE; }
-.type-opt.is-on { border-color: var(--primary); background: var(--primary-soft); }
-.type-opt .qicon { width: 34px; height: 34px; font-size: 17px; flex: none; }
-.type-opt strong { display: block; }
-.type-opt span.desc { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
 /* ---- Areas ---------------------------------------------------------------- */
 .area-card.is-off { background: #FBFBFC; border-style: dashed; }
@@ -679,17 +660,12 @@ details.group > .group-body { padding: 0 16px 14px; }
   .layout { grid-template-columns: 172px minmax(0, 1fr); }
   .main { padding: 16px 16px 60px; }
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
-  .type-grid { grid-template-columns: minmax(0, 1fr); }
   .setting { grid-template-columns: minmax(0, 1fr); }
   .round-grid { grid-template-columns: 1fr 1fr; }
   .round-grid > .field:last-child { grid-column: 1 / -1; }
   .toasts { width: 156px; }
-  /* Two rows: the answer (with the remove square at its right), then the test and the value. */
-  .cond { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px; grid-template-areas: "answer answer remove" "test value value"; }
-  .cond > .cond-answer { grid-area: answer; }
-  .cond > .cond-test { grid-area: test; }
-  .cond > .cond-value { grid-area: value; }
-  .cond > .cond-remove { grid-area: remove; }
+  /* The table tools: the button above its explanation. */
+  .tool-list li { flex-wrap: wrap; }
   .try-grid { grid-template-columns: minmax(0, 1fr); }
 }
 /* Short windows (small laptops): a tighter menu, so every section's button
@@ -824,7 +800,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     model: null,               // the whole questionnaire (design doc section 4)
     catalog: { settings_schema: [], screen_types: [], form_text_keys: [] },
     live: null,                // { version, config_version, published_at, published_by, note } or null
-    liveIds: { screens: [], areas: [], chips: {}, support: [], options: {} },
+    liveIds: { screens: [], areas: [], chips: {}, support: [], options: {}, kinds: {} },
     codesLocked: true,         // false until the first real round opens: then nothing is locked yet
     draftDiffers: false,       // saved draft differs from the live version
     savedKey: '',              // the questionnaire's content as last saved (contentKey), to spot unsaved content changes
@@ -843,14 +819,28 @@ details.group > .group-body { padding: 0 16px 14px; }
     changeSeq: 0,              // goes up on every edit
     undo: null,                // { snapshot, seq } for the "Undo" button after a delete
     /* The route code (PART 5b): the form's own engine, panel helpers and
-       checker, run in this window. lib = { flow, flowPanel, flowCheck }. */
-    flow: { lib: null, loading: false, error: '', fingerprint: '' },
+       checker, run in this window. lib = { flow, flowPanel, flowCheck }.
+       server: when this window can't run it, can the server run the route
+       table's tools instead (panelRouteTable)? state '' (not asked),
+       'checking', 'ready', 'old' (its Flow.gs is older than the route
+       table) or 'failed' (error = why). */
+    flow: { lib: null, loading: false, error: '', fingerprint: '', server: { state: '', error: '' } },
     flowStatus: null,          // panelFlowStatus: does the form on GitHub run the same route code?
     ui: {
       qview: 'list',           // Questions: 'list', 'map' or 'try' (Try a path)
+      /* Map and Try a path: which route ('draft', 'pasted' = the last clean
+         Check of "Paste a route", or for the Map 'live'). */
       map: { which: 'draft', live: null, liveLoading: false, liveError: '' },
-      tryPath: { answers: {}, lang: '', langInUrl: false, wc: '0', round: '' },
-      editing: null,           // Questions: code of the question open in the editor
+      tryPath: { which: 'draft', answers: {}, lang: '', langInUrl: false, wc: '0', round: '' },
+      /* Questions > Paste a route (PART 8): the text in the box, the last
+         Check (fromTable's result; null = none), the draft as it would be
+         with that route (for the preview), the change number it was checked
+         at, stale = the box changed since, used = the note after "Use this
+         route" (usedWarnings = that check's warnings, still shown), last =
+         { survey } of the last clean Check (for the tests), checking = the
+         server is checking the table right now. */
+      paste: { text: '', result: null, model: null, seq: -1, stale: false, used: '', usedWarnings: [], last: null, checking: false },
+      fixNote: null,           // Questions: { id, text } after Publish's "Go there": which row of the table to change
       openArea: null,          // Areas: code of the area that is open
       texts: { q: '', lang: null, onlyTodo: false },
       lookLang: 'en',
@@ -866,7 +856,6 @@ details.group > .group-body { padding: 0 16px 14px; }
       exportFiles: null,
       counts: {},              // round id -> { loading, data, error }
       publishNote: '',
-      lastRule: {},            // screen code -> rule, kept when "Always show it" is picked
       pendingFocus: null       // { test, flash } to show after the next render
     }
   };
@@ -1118,9 +1107,10 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* Copies text. Falls back to the older copy command, and finally to a
-     pop-up where the person can copy by hand. */
-  function copyText(text, what) {
-    function done() { toast((what || 'Text') + ' copied.', { kind: 'ok' }); }
+     pop-up where the person can copy by hand. more (optional) is a sentence
+     added to the "copied" message. */
+  function copyText(text, what, more) {
+    function done() { toast((what || 'Text') + ' copied.' + (more ? ' ' + more : ''), { kind: 'ok', timeout: more ? 7000 : undefined }); }
     function manual() {
       var ta = h('textarea', { rows: 6, test: 'copy-manual', readonly: true, value: text });
       openModal({
@@ -1190,20 +1180,9 @@ details.group > .group-body { padding: 0 16px 14px; }
     ur: 'Urdu', ne: 'Nepali', kok: 'Konkani', mai: 'Maithili', sd: 'Sindhi', sa: 'Sanskrit'
   };
 
-  /* The kinds of screen, their icons, order and standard codes: only the
-     server's catalogue (S.catalog.screen_types = Model.gs PP_SCREEN_TYPES,
-     made from web/config/types.json). See typeInfo and allTypes. */
-
-  /* Texts that built-in screens show, so they can be edited with the screen. */
-  var BUILTIN_SCREEN_TEXTS = {
-    language_picker: [['lang.title', 'Title']],
-    whats_changed: [['wc.title', 'Title']],
-    function_ratings: [['q.fn_rating', 'Question under each area name'], ['rating.na', '“I don’t handle this” button']],
-    function_deep_dives: [['q.deep_dive', 'Question'], ['dd.your_rating', '“Your rating” line'],
-      ['q.tell_more', 'Invitation to add detail'], ['q.tell_more_required', 'Invitation when detail is required'],
-      ['dd.other_needs_detail', 'Message when “Other” needs detail']],
-    thank_you: [['thanks.title', 'Title'], ['thanks.body', 'Message'], ['thanks.close', 'Closing line']]
-  };
+  /* The kinds of screen, their names and icons: only the server's catalogue
+     (S.catalog.screen_types = Model.gs PP_SCREEN_TYPES, made from
+     web/config/types.json). See typeInfo. */
 
   /* Friendly names for settings, used only when the server's catalogue has no
      "label" for one (Model.gs normally provides them). */
@@ -1329,8 +1308,8 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* A row's jumps: a list of { when, goto }, or { unreadable: "the text as
-     typed" } when the jumps column could not be read (the editor then offers
-     to remove them). */
+     typed" } when the jumps column could not be read (its card then says
+     "the jumps can't be read"; pasting the route table again replaces them). */
   function normaliseJumps(j) {
     if (j === null || j === undefined || j === '') return [];
     if (typeof j === 'string') {
@@ -1343,9 +1322,16 @@ details.group > .group-body { padding: 0 16px 14px; }
   function jumpsOf(s) { return Array.isArray(s.jumps) ? s.jumps : []; }
   function jumpsUnreadable(s) { return !!s.jumps && !Array.isArray(s.jumps); }
 
+  /* panelLoad's live_ids. kinds = { code: kind } of the live version's
+     screens (since 27 Oct 2026; {} when nothing is locked or the server is
+     older): "Paste a route" refuses a new kind for a question partners
+     answered (fromTable's liveKinds). */
   function normaliseLiveIds(x) {
     x = obj(x);
-    return { screens: arr(x.screens), areas: arr(x.areas), chips: obj(x.chips), support: arr(x.support), options: obj(x.options) };
+    var kinds = {};
+    var given = obj(x.kinds);
+    Object.keys(given).forEach(function (code) { if (typeof given[code] === 'string' && given[code]) kinds[code] = given[code]; });
+    return { screens: arr(x.screens), areas: arr(x.areas), chips: obj(x.chips), support: arr(x.support), options: obj(x.options), kinds: kinds };
   }
 
   var isLive = {
@@ -1381,21 +1367,25 @@ details.group > .group-body { padding: 0 16px 14px; }
      never lock the codes: the same rule as the server (Code.gs, PP_isTestRound_). */
   function isTestRound(id) { return /^(SMOKE|DEMO|TEST)/i.test(String(id || '')); }
 
-  /* Two questions fill their own columns of every round's answers sheet:
-     their codes never change and they can't be deleted, only hidden
-     (Pranav's decision, 21 Oct 2026). If one goes missing anyway (an edit in
-     the Sheet), Publish's check says so: the flow checker's D1 and D2 in
-     Flow.gs, worded by Model.gs PP_mdlReportDataColumn_ (deleted or re-typed:
-     an error, so Publish waits; hidden: a warning). */
-  var DATA_COLUMN_SCREENS = { nps: 'nps', support_gate: 'support_contacted' };
-  function isDataColumnScreen(id) { return Object.prototype.hasOwnProperty.call(DATA_COLUMN_SCREENS, id); }
+  /* Two questions, nps and support_gate, fill their own columns of every
+     round's answers sheet: their codes never change and they can't be
+     removed, only hidden (Pranav's decision, 21 Oct 2026). A pasted route
+     table without them is refused by its check (PP.flowPanel.fromTable); if
+     one goes missing anyway (an edit in the Sheet), Publish's check says so:
+     the flow checker's D1 and D2 in Flow.gs, worded by Model.gs
+     PP_mdlReportDataColumn_ (deleted or re-typed: an error, so Publish waits;
+     hidden: a warning). */
 
   /* Every code of a questionnaire, shaped like panelLoad's live_ids. Used to
      keep everything locked while the live version can't be read
      (panelLoad's live_ids_unknown). */
   function idsOfModel(m) {
-    var out = { screens: [], areas: [], chips: {}, support: [], options: {} };
-    arr(m.screens).forEach(function (s) { out.screens.push(s.id); if (arr(s.options).length) out.options[s.id] = arr(s.options).slice(); });
+    var out = { screens: [], areas: [], chips: {}, support: [], options: {}, kinds: {} };
+    arr(m.screens).forEach(function (s) {
+      out.screens.push(s.id);
+      if (arr(s.options).length) out.options[s.id] = arr(s.options).slice();
+      if (s.id && s.type && !Object.prototype.hasOwnProperty.call(out.kinds, s.id)) out.kinds[s.id] = s.type;
+    });
     arr(m.areas).forEach(function (a) { out.areas.push(a.id); });
     arr(m.chips).forEach(function (c) { (out.chips[c.area] = out.chips[c.area] || []).push(c.code); });
     arr(m.support).forEach(function (s) { out.support.push(s.code); });
@@ -1557,15 +1547,6 @@ details.group > .group-body { padding: 0 16px 14px; }
     return out;
   }
   function takenSet(list) { var t = {}; list.forEach(function (x) { t[x] = true; }); return t; }
-  function takenScreenIds() {
-    var t = takenSet(M().screens.map(function (s) { return s.id; }));
-    t.support_comment = true;   // reserved: it means "the comment under the support ratings"
-    Object.keys(M().texts).forEach(function (k) {
-      var m = /^q\.([a-z0-9_]+)(\.|$)/.exec(k) || /^choice\.([a-z0-9_]+)\./.exec(k);
-      if (m) t[m[1]] = true;    // q.<code> or choice.<code>.* already used by another text
-    });
-    return t;
-  }
   function takenAreaIds() {
     var t = takenSet(M().areas.map(function (a) { return a.id; }));
     Object.keys(M().texts).forEach(function (k) { var m = /^(fn|issue)\.([a-z0-9_]+)\./.exec(k); if (m) t[m[2]] = true; });
@@ -1583,11 +1564,6 @@ details.group > .group-body { padding: 0 16px 14px; }
     Object.keys(M().texts).forEach(function (k) { if (k.indexOf('support.') === 0) t[k.slice(8)] = true; });
     return t;
   }
-  function takenOptionCodes(s) {
-    var t = takenSet(s.options);
-    Object.keys(M().texts).forEach(function (k) { if (k.indexOf('choice.' + s.id + '.') === 0) t[k.slice(('choice.' + s.id + '.').length)] = true; });
-    return t;
-  }
 
   /* ---- Screens, areas, chips, support ---------------------------------------- */
 
@@ -1603,15 +1579,6 @@ details.group > .group-body { padding: 0 16px 14px; }
     out.fields = arr(found && found.fields);
     out.icon = found && typeof found.icon === 'string' && found.icon ? found.icon : '❓';
     return out;
-  }
-  /* Every kind of screen in the catalogue, in its "order" (then the catalogue's own). */
-  function allTypes() {
-    var seen = {}, out = [];
-    arr(S.catalog.screen_types).forEach(function (t, i) {
-      if (t && typeof t.type === 'string' && !seen[t.type]) { seen[t.type] = true; out.push({ type: t.type, order: typeof t.order === 'number' ? t.order : 1e6, i: i }); }
-    });
-    out.sort(function (a, b) { return (a.order - b.order) || (a.i - b.i); });
-    return out.map(function (x) { return x.type; });
   }
   function findScreen(id) { return M().screens.filter(function (s) { return s.id === id; })[0] || null; }
   function screenPos(id) {
@@ -1646,23 +1613,6 @@ details.group > .group-body { padding: 0 16px 14px; }
     var list = M().screens;
     for (var i = 0; i < list.length; i++) if (list[i].type === 'thank_you') return i;
     return -1;
-  }
-  function isExtraEnding(s, i) { return s.type === 'thank_you' && i !== mainEndIndex(); }
-
-  /* Every row whose "usually go to" or a jump points at this code: [{ s, index, how }]. */
-  function arrowsInto(id) {
-    var out = [];
-    M().screens.forEach(function (s, i) {
-      if (s.id === id) return;
-      if (s.next === id) out.push({ s: s, index: i, how: 'next' });
-      jumpsOf(s).forEach(function (j) { if (j && j['goto'] === id) out.push({ s: s, index: i, how: 'jump' }); });
-    });
-    return out;
-  }
-  function arrowNames(list) {
-    var seen = {};
-    return list.filter(function (a) { if (seen[a.index]) return false; seen[a.index] = true; return true; })
-      .map(function (a) { return 'question ' + (a.index + 1); });
   }
 
   /* What a question says in English (or a plain description for built-ins). */
@@ -1730,8 +1680,9 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   function snapshot() { return clone(M()); }
 
-  /* After a delete: a message with an Undo button (until the next change). */
-  function offerUndo(snap, message) {
+  /* After a delete (or "Use this route"): a message with an Undo button
+     (until the next change). onUndo (optional) runs after the draft is put back. */
+  function offerUndo(snap, message, onUndo) {
     S.undo = { snapshot: snap, seq: S.changeSeq };
     S.undo.remove = toast(message, {
       action: {
@@ -1742,6 +1693,7 @@ details.group > .group-body { padding: 0 16px 14px; }
           }
           S.model = S.undo.snapshot;
           S.undo = null;
+          if (onUndo) onUndo();
           changed({ rerender: true });
           toast('Undone.', { kind: 'ok' });
         }
@@ -1808,34 +1760,35 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* ==========================================================================
-     PART 5. "SHOW THIS QUESTION ONLY IF..." RULES
+     PART 5. "SHOW THIS QUESTION ONLY IF..." RULES (shown as sentences)
      --------------------------------------------------------------------------
      A rule tests earlier answers, for example
        { "answer": "support_gate", "equals": "yes" }
        { "any": [ { "answer": "nps", "at_most": 6 }, { "answer": "fn_rating:payments", "in": [1, 2] } ] }
-     The panel shows each rule as a sentence and edits simple ones (one
-     condition, or a list joined by "all of these" / "any of these").
+     The route table writes them in a few words ("support_gate = yes",
+     docs/flow-engine.md section 9). The panel shows every rule as a
+     sentence on the question's card and in its badges, and says when a
+     rule tests an answer that can't exist there yet (ruleProblems). Rules
+     are no longer built here (since 27 Oct 2026: "Paste a route", PART 8).
      ========================================================================== */
 
-  var TEST_LABELS = {
-    equals: 'is', not_equals: 'is not', at_most: 'is at most', at_least: 'is at least',
-    'in': 'is one of', answered: 'was answered', not_answered: 'was not answered'
-  };
+  /* The tests a rule can make on each kind of answer (simpleCondition reads
+     the facts' list). */
   var TESTS_FOR = {
     number: ['equals', 'not_equals', 'at_most', 'at_least', 'in', 'answered', 'not_answered'],
     choice: ['equals', 'not_equals', 'in', 'answered', 'not_answered'],
     text: ['answered', 'not_answered'],
     fact: ['equals', 'not_equals', 'in']
   };
-  /* "Show this question only if…" also offers the language and the round,
-     like the jumps: since 26 Oct 2026 the server checks every rule with the
-     form's own checker (Model.gs PP_validate through Flow.gs, docs/flow-
-     engine.md 9.4), which knows those facts, and the form's engine tests
-     them on phones. */
+  /* A "show only if" rule may also test the partner's language and the
+     round, like the jumps: since 26 Oct 2026 the server checks every rule
+     with the form's own checker (Model.gs PP_validate through Flow.gs,
+     docs/flow-engine.md 9.4), which knows those facts, and the form's engine
+     tests them on phones. */
   var SHOW_IF_FACTS = true;
 
-  /* The facts a jump can test besides answers (docs/flow-engine.md 2.3). In
-     the builder they look like answers whose code starts with "@", which no
+  /* The facts a rule or a jump can test besides answers (docs/flow-engine.md
+     2.3). Here they look like answers whose code starts with "@", which no
      real answer code can (codes are a-z, 0-9 and _). */
   function factAnswers() {
     var out = [];
@@ -1956,9 +1909,9 @@ details.group > .group-body { padding: 0 16px 14px; }
     return quote(str(v));
   }
 
-  /* One condition as the builder edits it: { answer, test, value }. A fact
-     the builder knows (the language, the round) gets the answer "@lang" or
-     "@round". Anything else is "complex" and shown only as a sentence. */
+  /* One simple condition as { answer, test, value }. A fact the panel knows
+     (the language, the round) gets the answer "@lang" or "@round". Anything
+     else is "complex" and shown only as a sentence. */
   function simpleCondition(o) {
     if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
     var subject = typeof o.answer === 'string' ? 'answer' :
@@ -1974,7 +1927,8 @@ details.group > .group-body { padding: 0 16px 14px; }
     return { answer: ref, test: t, value: o[t] };
   }
 
-  /* Turns a stored rule into what the builder edits. */
+  /* A stored rule as a list of simple conditions ({ mode: 'rules', combine,
+     conds }), or { mode: 'always' } / { mode: 'complex' } (for the badges). */
   function parseRule(rule) {
     if (!rule) return { mode: 'always', combine: 'all', conds: [] };
     var keys = Object.keys(rule);
@@ -1986,22 +1940,6 @@ details.group > .group-body { padding: 0 16px 14px; }
     }
     var one = simpleCondition(rule);
     return one ? { mode: 'rules', combine: 'all', conds: [one] } : { mode: 'complex' };
-  }
-
-  function conditionObject(c) {
-    var o = str(c.answer).charAt(0) === '@' ? { fact: c.answer.slice(1) } : { answer: c.answer };
-    if (c.test === 'answered') o.answered = true;
-    else if (c.test === 'not_answered') o.answered = false;
-    else o[c.test] = c.value;
-    return o;
-  }
-  function buildRule(p) {
-    if (p.mode !== 'rules' || !p.conds.length) return null;
-    var list = p.conds.map(conditionObject);
-    if (list.length === 1) return list[0];
-    var r = {};
-    r[p.combine] = list;
-    return r;
   }
 
   function conditionSentence(c) {
@@ -2040,17 +1978,17 @@ details.group > .group-body { padding: 0 16px 14px; }
   function ruleProblems(s, idx) {
     if (!s.show_if) return [];
     var ok = {};
-    ruleAnswers(s, idx, 'show_if').forEach(function (a) { ok[a.ref] = true; });
+    ruleAnswers(s, idx).forEach(function (a) { ok[a.ref] = true; });
     var bad = [];
     walkRule(s.show_if, function (c) { if (!ok[c.answer] && bad.indexOf(c.answer) === -1) bad.push(c.answer); });
     if (s.show_if.unreadable) bad.push('(unreadable rule)');
     return bad;
   }
-  function problemText(ref, idx, forJump) {
+  /* Why a rule can't work, and what to change in the route table. */
+  function problemText(ref) {
     var ans = describeAnswer(ref);
-    if (!ans) return 'It tests ' + quote(ref) + ', which no longer exists. Pick another answer.';
-    if (forJump) return 'It tests ' + ans.subject + ', which partners can’t have answered when they leave this question (it comes later, on another route, or is hidden). Pick another answer.';
-    return 'It tests ' + ans.subject + ', which comes later or is hidden. Pick another answer, or move this question further down.';
+    if (!ans) return 'Its rule (“show only if”) tests ' + quote(ref) + ', which no screen stores any more. Change the rule in the table.';
+    return 'Its rule (“show only if”) tests ' + ans.subject + ', which comes later or is hidden. In the table, test an earlier answer, or move this row further down.';
   }
 
   /* ==========================================================================
@@ -2071,19 +2009,25 @@ details.group > .group-body { padding: 0 16px 14px; }
      From the draft in this window the panel then makes the route
      (flowInfo: the same converter Publish uses), checks it, and asks the
      checker which answers a rule may test where (routeAnswers, through
-     PP.flowCheck.answersAt). The map, "Try a path", the jump builder and
-     the warning badges all use that; the checker's findings say which rule
-     or jump they are about (site, target, index), so no message is read.
+     PP.flowCheck.answersAt). The map, "Try a path" and the warning badges
+     of the read-only list all use that; the checker's findings say which
+     rule or jump they are about (site, target, index), so no message is
+     read. "Paste a route" (PART 8) reads and writes the route as a table
+     with the same code (PP.flowPanel.fromTable, toTable, templateCsv,
+     aiInstruction; a Flow.gs from before 27 Oct 2026 has none of them, and
+     the panel then says the Flow file needs updating).
      Kinds of question added in web/js/types/ come with the Sheet's list of
      kinds (each added row's "catalogue", Model.gs PP_SCREEN_TYPES): the
      window teaches them to its route code too (teachKinds).
-     If the route code can't be loaded, the rest of the panel works as
-     before and Questions shows a short note (routeNote).
+     If the route code can't be loaded or run here, the rest of the panel
+     works as before and Questions shows a short note with Try again
+     (routeNote); pasting a route then asks the server, when it can run the
+     same code (probeServerTables, PanelServer.gs panelRouteTable).
      ========================================================================== */
 
   var FLOW_FOOTER = "}(typeof window !== 'undefined' ? window : globalThis));";
-  /* Can a question of this kind be asked once per area (the repeat card and
-     badge)? Its kind says so in the list of kinds: "repeatable" (Model.gs
+  /* Can a question of this kind be asked once per area (its "Repeats for
+     each area" badge)? Its kind says so in the list of kinds: "repeatable" (Model.gs
      PP_SCREEN_TYPES, made from web/config/types.json), the same flag
      flow-panel.js reads when it makes the route. So the six ordinary
      questions can, and so can a kind added in web/js/types/ that says so. */
@@ -2103,10 +2047,13 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   var flowCache = null;   // the last flowInfo(), reused until the route changes
 
-  /* Asks the server for the route code (once per window) and runs it. */
+  /* Asks the server for the route code (once per window) and runs it. If it
+     can't run here, asks whether the server can run the route table's tools
+     instead (probeServerTables), so "Paste a route" keeps working. */
   function loadFlowCode() {
     if (S.flow.loading || S.flow.lib) return;
     S.flow.loading = true;
+    S.flow.server = { state: '', error: '' };
     call('panelFlowCode').then(function (res) {
       res = obj(res);
       S.flow.lib = runFlowCode(res.source);
@@ -2114,13 +2061,45 @@ details.group > .group-body { padding: 0 16px 14px; }
       S.flow.error = '';
     }).catch(function (e) {
       S.flow.lib = null;
-      S.flow.error = (e && e.message) || String(e);
+      S.flow.error = flowCodeError(e);
     }).then(function () {
       S.flow.loading = false;
       flowCache = null;
-      try {
-        if (S.loaded && S.section === 'questions') renderMain(true);
-      } catch (e) { /* the next render shows it */ }
+      if (!S.flow.lib) probeServerTables();
+      rerenderQuestions();
+    });
+  }
+
+  function rerenderQuestions() {
+    try {
+      if (S.loaded && S.section === 'questions') renderMain(true);
+    } catch (e) { /* the next render shows it */ }
+  }
+
+  /* Why the route code could not start, in plain words. A browser that
+     refuses to run code made from text (a security setting of the window)
+     says so in technical words: those are put plainly. */
+  function flowCodeError(e) {
+    var msg = (e && e.message) || String(e);
+    if (/unsafe-eval|Refused to evaluate|EvalError|Content Security Policy/i.test(msg)) {
+      return 'this window is not allowed to run the route code (a security setting of Google’s window refused it).';
+    }
+    return msg;
+  }
+
+  /* This window can't run the route code: can the server run the route
+     table's tools (PanelServer.gs panelRouteTable, the same code from
+     Flow.gs)? 'ready' = Check, Use this route and the three table buttons
+     ask the server; 'old' = its Flow.gs is older than the route table;
+     'failed' = it can't either (for example, the Flow file is missing). */
+  function probeServerTables() {
+    S.flow.server = { state: 'checking', error: '' };
+    call('panelRouteTable', { tool: 'status' }).then(function (res) {
+      S.flow.server = { state: obj(res).tables === true ? 'ready' : 'old', error: '' };
+    }, function (e) {
+      S.flow.server = { state: 'failed', error: (e && e.message) || String(e) };
+    }).then(function () {
+      if (!S.flow.lib) rerenderQuestions();
     });
   }
 
@@ -2361,8 +2340,8 @@ details.group > .group-body { padding: 0 16px 14px; }
     if (added.length) flowCache = null;   // the route is worked out again with them
   }
 
-  /* One catalogue entry described for the drop-downs (labels in English, as
-     the rule builder always showed them), or null for codes rules can't test. */
+  /* One catalogue entry described for Try a path's drop-downs and the rule
+     sentences (labels in English), or null for codes rules can't test. */
   function describeEntry(info, e) {
     var n = e.node, t = n.type;
     var rowIdx = info.rowOfNode['#' + e.owner];
@@ -2452,19 +2431,18 @@ details.group > .group-body { padding: 0 16px 14px; }
     return out;
   }
 
-  /* The answers (and, for a jump, the facts) a rule of row idx may test.
-     where = 'show_if': answers that can exist before the screen;
-     where = 'jump': those, the screen's own answers, the language and the
-     round. A hidden row gets what exists after the nearest shown question
-     above it. Without the route code: the older list of earlier rows. */
-  function ruleAnswers(s, idx, where) {
+  /* The answers (and facts: the language, the round) the "show only if"
+     rule of row idx may test: the answers that can exist before the screen.
+     A hidden row gets what exists after the nearest shown question above it
+     (that question's "jump" list: its own answers too). Without the route
+     code: the older list of earlier rows. Used by ruleProblems (the badge
+     "the rule tests a later or hidden answer"). */
+  function ruleAnswers(s, idx) {
     var info = flowInfo();
-    var facts = where === 'jump' || SHOW_IF_FACTS ? factAnswers() : [];
-    if (!info || !info.ok || !info.avail.ok) {
-      return (where === 'jump' ? availableAnswers(idx + 1) : availableAnswers(idx)).concat(facts);
-    }
+    var facts = SHOW_IF_FACTS ? factAnswers() : [];
+    if (!info || !info.ok || !info.avail.ok) return availableAnswers(idx).concat(facts);
     var nodeId = info.nodeOfRow[idx];
-    var keepOwn = where === 'jump';
+    var keepOwn = false;
     if (!nodeId) {
       for (var j = idx - 1; j >= 0 && !nodeId; j--) if (info.nodeOfRow[j]) nodeId = info.nodeOfRow[j];
       if (!nodeId) return facts;
@@ -2474,14 +2452,6 @@ details.group > .group-body { padding: 0 16px 14px; }
     var avail = (keepOwn ? at.jump : at.show_if) || {};
     var list = catalogAnswers(function (e) { return avail['#' + e.key] === true; }) || [];
     return list.concat(facts);
-  }
-
-  /* The answers a row itself stores (for a new jump's first condition). */
-  function ownAnswers(idx) {
-    var info = flowInfo();
-    var nodeId = info && info.ok ? info.nodeOfRow[idx] : null;
-    if (!nodeId) return [];
-    return catalogAnswers(function (e) { return e.owner === nodeId; }) || [];
   }
 
   /* JSON with sorted keys: two rules that mean the same give the same text. */
@@ -2495,8 +2465,10 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   /* What flow-panel.js says while it makes the route that stops Publish
      (Model.gs PP_MDL_FLOW_ERRORS_: an arrow to nowhere or back, settings it
-     had to leave out); its other notes, and any it marks level "warning",
-     are warnings. Only the colour of a badge depends on it here. */
+     had to leave out), and any note it marks level "error" (G5, since 27 Oct
+     2026: a route below the thank-you screen that runs on into another
+     route); its other notes, and any it marks level "warning", are
+     warnings. Only the colour of a badge depends on it here. */
   var FLOW_NOTE_ERRORS = { G2: true, G3: true, F1: true };
 
   /* What is wrong with a row's arrows, from the form's own code:
@@ -2513,7 +2485,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     info.notes.forEach(function (n) {
       if (!n || n.row !== idx) return;
       out.row.push(str(n.message));
-      if (n.level !== 'warning' && FLOW_NOTE_ERRORS[n.code]) out.rowError = true;
+      if (n.level === 'error' || (n.level !== 'warning' && FLOW_NOTE_ERRORS[n.code])) out.rowError = true;
     });
     var nodeId = info.nodeOfRow[idx];
     if (!nodeId) { out.any = out.row.length > 0; return out; }
@@ -2547,7 +2519,11 @@ details.group > .group-body { padding: 0 16px 14px; }
     return out;
   }
 
-  /* A short note in Questions while the route tools are missing. */
+  /* A short note in Questions while the route tools are missing in this
+     window, with Try again. It says whether pasting a route still works
+     through the server (S.flow.server: panelRouteTable) or is off too; the
+     Map, Try a path and the route badges always need this window's code.
+     data-server (for the bench) = the server's state. */
   function routeNote() {
     if (S.flow.lib) {
       var info = flowInfo();
@@ -2558,11 +2534,34 @@ details.group > .group-body { padding: 0 16px 14px; }
       return null;
     }
     if (S.flow.loading || (!S.flow.error && !S.flow.lib)) {
-      return h('div', { class: 'callout small', style: 'margin-bottom:14px', test: 'flow-loading-note' }, h('p', null, h('span', { class: 'spinner is-small' }), ' Loading the route tools (map, Try a path, jumps)…'));
+      return h('div', { class: 'callout small', style: 'margin-bottom:14px', test: 'flow-loading-note' }, h('p', null, h('span', { class: 'spinner is-small' }), ' Loading the route tools (pasting a route, the map, Try a path)…'));
     }
-    return h('div', { class: 'callout is-warn small', style: 'margin-bottom:14px', test: 'flow-unavailable-note' },
-      h('p', { text: 'The route tools (the map, Try a path, jumps, “asked for each area” and extra endings) could not start: ' + S.flow.error +
-        ' Everything else works. Close the panel and open it again; if this keeps happening, ask whoever set up the Sheet to paste the latest Flow.gs (apps-script/README.md).' }));
+    var sv = S.flow.server;
+    var what;
+    if (sv.state === 'ready') {
+      what = h('p', { text: 'Pasting a route still works: Check, Use this route and the table buttons ask Google instead, so they take a few seconds longer. ' +
+        'The Map, Try a path and the route badges need the route tools in this window, so they are switched off for now. Everything else works. ' +
+        'Press Try again. If this keeps happening, tell whoever set up the Sheet (apps-script/README.md).' });
+    } else if (sv.state === 'checking' || !sv.state) {
+      what = h('p', null, h('span', { class: 'spinner is-small' }), ' Checking whether pasting a route can work through Google instead… The Map and Try a path are switched off for now.');
+    } else {
+      what = h('p', { text: 'Pasting a route, the Map and Try a path need them, so they are switched off for now. Everything else works. ' +
+        'Press Try again. If this keeps happening, ask whoever set up the Sheet to paste the latest Flow.gs into the Apps Script project (apps-script/README.md).' +
+        (sv.state === 'failed' && sv.error && sv.error !== S.flow.error ? ' (Google could not check a pasted table either: ' + sv.error + ')' : '') });
+    }
+    return h('div', { class: 'callout is-warn small', style: 'margin-bottom:14px', test: 'flow-unavailable-note', 'data-server': sv.state || 'none' },
+      h('p', { text: 'The route tools could not start: ' + S.flow.error }),
+      what,
+      h('p', null, btn('Try again', 'flow-retry', retryFlowCode, { small: true })));
+  }
+
+  /* Asks the server for the route code once more (after it failed). */
+  function retryFlowCode() {
+    S.flow.error = '';
+    S.flow.lib = null;
+    S.flow.server = { state: '', error: '' };
+    loadFlowCode();
+    renderMain(true);
   }
 
   /* A target code in words: 'question 9 (“…”)', 'question 4 (Area ratings)' or 'the ending “…”'. */
@@ -2820,7 +2819,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       nav.appendChild(h('button', {
         type: 'button', class: 'nav-btn', test: 'nav-' + sec.id, 'aria-current': S.section === sec.id ? 'page' : null,
         onClick: function () {
-          if (sec.id === 'questions') { S.ui.editing = null; S.ui.qview = 'list'; }   // the menu item always opens the list
+          if (sec.id === 'questions') { stopMapFrame(); S.ui.qview = 'list'; }   // the menu item always opens the list
           go(sec.id);
         }
       }, h('span', { class: 'nav-icon', 'aria-hidden': 'true', text: sec.icon }), h('span', { text: sec.label }),
@@ -3153,56 +3152,110 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* ==========================================================================
-     PART 8. QUESTIONS: the list, the editor and "Add a question"
+     PART 8. QUESTIONS: "Paste a route", the route as a read-only list, the
+     Map and Try a path
+     --------------------------------------------------------------------------
+     Since 27 Oct 2026 (Pranav's decision, docs/spec.md section 4) questions
+     and their route are no longer made one by one in this window. The whole
+     route is ONE TABLE, one row per screen (format pp-route-table/1; the
+     form's own route code makes and reads it: PP.flowPanel.toTable and
+     fromTable in web/js/flow-panel.js, docs/flow-engine.md section 9):
+       1. "Copy the current route" puts today's route on the clipboard as that
+          table. "Download the Excel template" gives the same table as a CSV
+          file. "Copy the instruction for Claude/ChatGPT" gives the text to
+          paste into an AI before notes, an Excel sheet or a flowchart picture.
+       2. The owner changes the table in Excel or Google Sheets (or lets the
+          AI write it) and pastes it into "Paste a route".
+       3. Check reads the table and checks it with the same checker Publish
+          uses. Problems name the table's row (the header row is row 1, as
+          Excel shows it) and column. Nothing changes yet: a clean table can
+          first be looked at on the Map and in Try a path, and "Compared
+          with your draft" lists every text that would change (old → new;
+          it opens by itself when a translation would change, because only
+          a person may write those).
+       4. "Use this route" replaces the draft's questions (the Screens rows)
+          and their texts. Everything else stays as it is: areas, problems,
+          support questions, other texts, settings, rounds. Undo puts the
+          draft back. Then Save, Preview and Publish work as before.
+     Check gives the table's checker what partners already answered (the
+     live codes and, since 27 Oct 2026, their kinds: a question partners
+     answered keeps its kind) and the draft's rounds (a rule on a round
+     that does not exist is a warning).
+     When this window can't run the route code, the table's tools run on the
+     server instead (runTableTool -> PanelServer.gs panelRouteTable, the same
+     code from Flow.gs, with the same request: tableRequest), with a busy
+     box; only the Map and Try a path are then off.
+     The list under the paste box is read only: every screen in order, with
+     its badges (rules, jumps, repeats, endings, hidden, and what the
+     checker found wrong). Codes partners already answered can't leave the
+     table: the check says so (write "no" in its "show" column to hide it).
      ========================================================================== */
 
+  var QUESTIONS_HELP = 'To change the questions: Copy the current route, edit it in Excel (or ask Claude/ChatGPT with the instruction), paste it back here, Check, Use this route, then Save, Preview and Publish.';
+  /* The name of the downloaded template (the table as a CSV file). */
+  var ROUTE_TEMPLATE_FILE = 'partner-pulse-route.csv';
+  /* The Screens fields a row of the table sets (Model.gs PP_mdlNormalizeScreen_),
+     to tell what "Use this route" would change. */
+  var SCREEN_FIELDS = ['id', 'type', 'text', 'required', 'show_if', 'skip_if', 'options', 'low_label', 'high_label', 'scale_hint', 'body', 'active', 'next', 'jumps', 'repeat'];
+
   VIEWS.questions = function () {
-    if (S.ui.editing !== null) {
-      var s = findScreen(S.ui.editing);
-      if (s) return screenEditor(s);
-      S.ui.editing = null;
-    }
     if (S.ui.qview === 'map' && S.flow.lib) return mapView();
     if (S.ui.qview === 'try' && S.flow.lib) return tryView();
     S.ui.qview = 'list';
     var screens = M().screens;
     var end = mainEndIndex();
     var mainRows = end === -1 ? screens : screens.slice(0, end + 1);
-    var noTools = S.flow.loading ? 'The route tools are still loading. Try again in a moment.' : 'The route tools could not start: see the note below the title.';
+    var noTools = S.flow.loading || (!S.flow.error && !S.flow.lib) ? 'The route tools are still loading. Try again in a moment.'
+      : 'The route tools could not start: see the note below the title.';
     return [
       sectionHead('Questions', 'Every screen partners go through, in order. Changes reach partners after you save and publish.', [
-        S.flow.lib ? btn('Map', 'open-map', function () { S.ui.qview = 'map'; renderMain(false); }, { small: true, title: 'See the whole route as a diagram' })
+        S.flow.lib ? btn('Map', 'open-map', function () { openRouteView('map', null); }, { small: true, title: 'See the whole route as a diagram' })
           : lockedBtn('Map', 'open-map', noTools),
-        S.flow.lib ? btn('Try a path', 'open-try', function () { S.ui.qview = 'try'; renderMain(false); }, { small: true, title: 'Pick answers and see the screens a partner gets' })
-          : lockedBtn('Try a path', 'open-try', noTools),
-        btn('Add a question', 'add-question', addQuestionFlow, { kind: 'primary', icon: '+' })]),
+        S.flow.lib ? btn('Try a path', 'open-try', function () { openRouteView('try', null); }, { small: true, title: 'Pick answers and see the screens a partner gets' })
+          : lockedBtn('Try a path', 'open-try', noTools)]),
+      h('div', { class: 'callout is-info small', style: 'margin-bottom:14px', test: 'questions-help' }, h('p', { text: QUESTIONS_HELP })),
       codesNote(),
       routeNote(),
-      screens.length
-        ? h('div', { class: 'qlist', test: 'main-route' }, mainRows.map(function (s2, i) { return screenCard(s2, i); }))
-        : emptyState('No questions yet', 'Start from the questionnaire stored in GitHub (Settings > Import from GitHub), or add questions one by one.',
-          btn('Add a question', 'add-question-empty', addQuestionFlow, { kind: 'primary' })),
+      tableToolsCard(),
+      pasteCard(),
+      h('section', { test: 'route-now' },
+        h('div', { class: 'qsection-head' }, h('h2', { text: 'The route now' }), badge('Read only', null, 'route-read-only')),
+        h('p', { class: 'qsection-help', text: 'Your draft, screen by screen (unsaved changes included). To change it, use the table above. The row number in the table is shown on each card.' }),
+        screens.length
+          ? h('div', { class: 'qlist', test: 'main-route' }, mainRows.map(function (s2, i) { return screenCard(s2, i); }))
+          : emptyState('No questions yet', 'First copy the questionnaire stored in GitHub (Settings > Import from GitHub): it also brings the languages, areas, support questions and texts. Then change the route here with the table.',
+            btn('Go to Settings', 'questions-empty-import', function () { go('settings', { test: 'import-go' }); }, { kind: 'primary' }))),
       end === -1 ? null : otherRoutes(screens, end)
     ];
   };
+
+  /* Opens the Map or Try a path. which = 'draft', 'pasted' (the route of the
+     last clean Check, before it is used) or null (keep the choice, but never
+     an old pasted route). */
+  function openRouteView(view, which) {
+    stopMapFrame();
+    var st = view === 'map' ? S.ui.map : S.ui.tryPath;
+    if (which) st.which = which;
+    else if (st.which === 'pasted') st.which = 'draft';
+    S.ui.qview = view;
+    renderMain(false);
+  }
 
   /* Rows after the main thank-you screen: other routes and endings, which
      partners reach only through a jump (docs/flow-engine.md 9.1). */
   function otherRoutes(screens, end) {
     var rows = screens.slice(end + 1);
-    if (!rows.length && !S.flow.lib) return null;
+    if (!rows.length) return null;
     return h('section', { test: 'other-routes' },
-      h('div', { class: 'qsection-head' }, h('h2', { text: 'Other routes and endings' }),
-        S.flow.lib ? btn('Add an ending', 'add-ending', addEndingFlow, { small: true, icon: '+', title: 'Another thank-you screen, reached by a jump' }) : null),
-      h('p', { class: 'qsection-help', text: rows.length
-        ? 'These screens come after the main thank-you screen, so partners reach them only through a jump (Edit a question > After this question > Add a jump). Every ending sends the answers.'
-        : 'Nothing here yet. Add an ending (another thank-you screen) or a question below the thank-you screen, then send partners there with a jump from an earlier question.' }),
-      rows.length ? h('div', { class: 'qlist' }, rows.map(function (s, k) { return screenCard(s, end + 1 + k); })) : null);
+      h('div', { class: 'qsection-head' }, h('h2', { text: 'Other routes and endings' })),
+      h('p', { class: 'qsection-help', text: 'These screens come after the main thank-you screen, so partners reach them only through a jump (the table’s “jumps” or “then go to” column of an earlier row). Every ending sends the answers.' }),
+      h('div', { class: 'qlist' }, rows.map(function (s, k) { return screenCard(s, end + 1 + k); })));
   }
 
   /* The route badges of a card: where the screen goes, repeats, endings,
-     and what the form's own checker found wrong with its arrows. */
-  function routeBadges(s, i) {
+     and what the form's own checker found wrong with its arrows. The
+     checker's words go into notes too (shown under the badges). */
+  function routeBadges(s, i, notes) {
     var out = [];
     if (!S.flow.lib) return out;
     if (s.type === 'thank_you') {
@@ -3213,7 +3266,7 @@ details.group > .group-body { padding: 0 16px 14px; }
         out.push(badge('↪ goes to ' + targetShort(j['goto']) + ' when ' + shortRule(j.when), 'route', 'screen-jump-' + s.id + '-' + k,
           'If ' + ruleSentence(j.when) + ', partners go to ' + targetName(j['goto']) + '.'));
       });
-      if (s.next) out.push(badge('↪ then goes to ' + targetShort(s.next), 'route', 'screen-next-' + s.id, 'After this question partners usually go to ' + targetName(s.next) + '.'));
+      if (s.next) out.push(badge('↪ then goes to ' + targetShort(s.next), 'route', 'screen-next-' + s.id, 'Partners who answer it then go to ' + targetName(s.next) + ' (its “then go to” in the route table).'));
       if (s.repeat && REPEAT_LABELS[s.repeat] && canRepeat(s.type)) {
         out.push(badge(s.repeat === 'each_low_area' ? 'Repeats for each area rated low' : 'Repeats for each area', 'req', 'screen-repeat-' + s.id,
           'Asked once for each area' + (s.repeat === 'each_low_area' ? ' rated at or below its limit' : '') + ', with the area’s name above it.'));
@@ -3222,68 +3275,66 @@ details.group > .group-body { padding: 0 16px 14px; }
     var rp = routeProblems(s, i);
     var jumpMsgs = [];
     Object.keys(rp.jumps).forEach(function (k) { jumpMsgs = jumpMsgs.concat(rp.jumps[k]); });
+    if (Object.keys(rp.dropped).length) jumpMsgs.unshift('A jump of this question is not used by the form: its target is missing, above it or hidden, or its condition is incomplete.');
     if (Object.keys(rp.dropped).length || jumpMsgs.length) {
-      out.push(badge('⚠ this jump can never happen', 'error', 'screen-jump-problem-' + s.id, jumpMsgs.concat(rp.row).join(' ') || 'Open the question to see why.'));
+      out.push(badge('⚠ this jump can never happen', 'error', 'screen-jump-problem-' + s.id, jumpMsgs.concat(rp.row).join(' ')));
     } else if (rp.row.length) {
-      out.push(badge('⚠ ' + (jumpsUnreadable(s) ? 'the jumps can’t be read' : rp.rowError ? 'route problem: see the editor' : 'route note: see the editor'),
+      out.push(badge('⚠ ' + (jumpsUnreadable(s) ? 'the jumps can’t be read' : rp.rowError ? 'route problem: see below' : 'route note: see below'),
         rp.rowError ? 'error' : 'warn', 'screen-route-problem-' + s.id, rp.row.join(' ')));
     }
-    if (rp.unreached) out.push(badge('⚠ nothing leads here: add a jump to it', 'error', 'screen-unreached-' + s.id, rp.unreached));
+    if (rp.unreached) out.push(badge('⚠ nothing leads here', 'error', 'screen-unreached-' + s.id, rp.unreached));
+    if (notes) {
+      jumpMsgs.concat(rp.row).forEach(function (m) { if (m && notes.indexOf(m) === -1) notes.push(m); });
+      if (rp.unreached && notes.indexOf(rp.unreached) === -1) notes.push(rp.unreached);
+    }
     return out;
   }
 
+  /* One screen of the read-only list. */
   function screenCard(s, i) {
     var t = typeInfo(s.type);
-    var screens = M().screens;
     var end = mainEndIndex();
-    var isMainEnd = i === end;
-    var extraEnd = s.type === 'thank_you' && !isMainEnd;
-    var other = end !== -1 && i > end;
-    var lastMain = end === -1 ? screens.length - 1 : end - 1;
-    var canUp = !isMainEnd && (other ? i > end + 1 : i > 0);
-    var canDown = !isMainEnd && (other ? i < screens.length - 1 : i < lastMain);
+    var extraEnd = s.type === 'thank_you' && i !== end;
     var second = secondLang();
     var english = cardEnglish(s, t);
     var secondText = s.text && second && !isTodo(textValue(s.text, second.code)) ? textValue(s.text, second.code) : '';
     var problems = s.type === 'thank_you' ? [] : ruleProblems(s, i);
+    var notes = [];
 
     var badges = [];
-    if (t.builtin && !extraEnd) badges.push(badge('Built-in', null, null, 'Part of every questionnaire: it can be hidden but not deleted.'));
+    if (t.builtin && !extraEnd) badges.push(badge('Built-in', null, null, 'Part of every questionnaire: it can be hidden (no in the table’s “show” column) but not removed.'));
     if (hasRequired(s)) badges.push(effectiveRequired(s) ? badge('Required', 'req') : badge('Optional (Skip button)', null));
     if (s.show_if) badges.push(badge('Only if ' + ruleSentence(s.show_if), 'rule', 'screen-rule-' + s.id));
-    if (problems.length) badges.push(badge('⚠ The rule tests a later or hidden answer: edit it', 'error', 'screen-rule-problem-' + s.id, problemText(problems[0], i)));
+    if (problems.length) {
+      badges.push(badge('⚠ The rule tests a later or hidden answer', 'error', 'screen-rule-problem-' + s.id, problemText(problems[0])));
+      notes.push(problemText(problems[0]));
+    }
     if (s.skip_if === 'lang_in_url') badges.push(badge('Skipped when the link already says the language', null));
     if (s.skip_if === 'empty') badges.push(badge('Skipped when there is nothing to show', null));
-    badges = badges.concat(routeBadges(s, i));
-    if (!s.active) badges.push(badge('Hidden: partners don’t see it', 'hidden'));
+    badges = badges.concat(routeBadges(s, i, notes));
+    if (!s.active) badges.push(badge('Hidden: partners don’t see it', 'hidden', 'screen-hidden-' + s.id));
 
-    var upWhy = isMainEnd ? 'The thank-you screen always stays at the end of the main route.'
-      : other ? 'Screens below the thank-you screen stay there: partners reach them only through a jump.' : 'This is already the first screen.';
-    var downWhy = isMainEnd ? 'The thank-you screen always stays at the end of the main route.'
-      : other ? 'This is already the last screen.' : 'Nothing can come after the thank-you screen.';
-    var actions = [
-      canUp ? btn('', 'screen-up-' + s.id, function () { moveScreen(i, -1); }, { small: true, icon: '↑', aria: 'Move up', title: 'Move up' })
-        : lockedBtn('↑', 'screen-up-' + s.id, upWhy),
-      canDown ? btn('', 'screen-down-' + s.id, function () { moveScreen(i, 1); }, { small: true, icon: '↓', aria: 'Move down', title: 'Move down' })
-        : lockedBtn('↓', 'screen-down-' + s.id, downWhy),
-      btn('Edit', 'screen-edit-' + s.id, function () { openEditor(s.id); }, { small: true }),
-      isMainEnd ? lockedBtn('Hide', 'screen-toggle-' + s.id, 'The thank-you screen sends the answers, so it can’t be hidden.')
-        : btn(s.active ? 'Hide' : 'Show', 'screen-toggle-' + s.id, function () { toggleScreen(s); }, { small: true }),
-      t.builtin && !extraEnd ? lockedBtn('Delete', 'screen-delete-' + s.id, 'Built-in screens can’t be deleted. Hide it instead.', { kind: 'danger' })
-        : isDataColumnScreen(s.id) ? lockedBtn('Delete', 'screen-delete-' + s.id, 'This question fills the ' + DATA_COLUMN_SCREENS[s.id] + ' column of the answers sheet, so it can’t be deleted and its code never changes. Hide it instead.', { kind: 'danger' })
-        : isLive.screen(s.id) ? lockedBtn('Delete', 'screen-delete-' + s.id, 'Live questions can’t be deleted (past answers use the code). Hide it instead.', { kind: 'danger' })
-        : btn('Delete', 'screen-delete-' + s.id, function () { deleteScreenFlow(s); }, { small: true, kind: 'danger' })
-    ];
-
-    return h('article', { class: 'qcard' + (s.active ? '' : ' is-hidden'), test: 'screen-card-' + s.id },
+    return h('article', { class: 'qcard is-readonly' + (s.active ? '' : ' is-hidden'), test: 'screen-card-' + s.id },
       h('div', { class: 'qnum', text: String(i + 1) }),
       h('div', { class: 'qicon', 'aria-hidden': 'true', text: t.icon }),
       h('div', { class: 'qbody' },
-        h('div', { class: 'qtitle-row' }, h('span', { class: 'qtype', text: extraEnd ? 'Another ending' : t.label }), codeChip(s.id, isLive.screen(s.id), 'this screen')),
+        h('div', { class: 'qtitle-row' }, h('span', { class: 'qtype', text: extraEnd ? 'Another ending' : t.label }), codeChip(s.id, isLive.screen(s.id), 'this screen'),
+          h('span', { class: 'qrow', test: 'screen-row-' + s.id, title: 'Its row in the route table (the header is row 1)', text: 'row ' + (i + 2) + ' in the table' })),
         english ? h('div', { class: 'qtext', text: english }) : null,
         secondText ? h('div', { class: 'qtext-2', lang: second.code, text: secondText }) : null,
-        h('div', { class: 'badges' }, badges)),
-      h('div', { class: 'qactions' }, actions));
+        h('div', { class: 'badges' }, badges),
+        notes.length ? h('ul', { class: 'route-list qnotes', test: 'screen-notes-' + s.id }, notes.map(function (n) { return h('li', { text: n }); })) : null,
+        fixNoteFor(s)));
+  }
+
+  /* After Publish's "Go there": a note in the question's card naming the row
+     and column of the route table to change, with Close. */
+  function fixNoteFor(s) {
+    var f = S.ui.fixNote;
+    if (!f || f.id !== s.id) return null;
+    return h('div', { class: 'callout is-warn small', style: 'margin-top:10px', test: 'screen-fix-note-' + s.id },
+      h('p', { text: f.text }),
+      h('p', null, btn('Close', 'screen-fix-note-close-' + s.id, function () { S.ui.fixNote = null; renderMain(true); }, { small: true })));
   }
 
   function cardEnglish(s, t) {
@@ -3300,282 +3351,513 @@ details.group > .group-body { padding: 0 16px 14px; }
     return t.description;
   }
 
-  /* Arrows only go down the list (docs/flow-engine.md 9.1), except to an
-     ending, which is fine anywhere. After a move, say which arrows now point
-     up: the form leaves those out. */
-  function backwardArrows() {
+  /* ---- The table tools: copy the route, the template, the AI instruction --- */
+
+  /* The longest pasted text Check sends to the server, in characters (about
+     300 KB: PanelServer.gs PP_ROUTE_TABLE_MAX_CHARS_ is the same). */
+  var ROUTE_TABLE_MAX_CHARS = 300000;
+  var OLD_FLOW_TABLES = 'The route code in this Sheet (the Apps Script file Flow) is older than this control panel, so it can’t read or write a route table. ' +
+    'Ask whoever set up the Sheet to paste the latest Flow.gs into the Apps Script project (apps-script/README.md), then open the panel again.';
+
+  /* Does a copy of the route code have the four tools of the route table? */
+  function hasTableTools(P) {
+    return !!P && typeof P.fromTable === 'function' && typeof P.toTable === 'function' && typeof P.templateCsv === 'function' &&
+      typeof P.aiInstruction === 'function';
+  }
+
+  /* Where the route table's tools run: 'window' (this window's route code),
+     'server' (this window can't run the route code, but the server can:
+     PanelServer.gs panelRouteTable, the same code from Flow.gs) or ''
+     (neither, for now: tableToolsProblem says why). */
+  function tableToolsWhere() {
+    if (S.flow.lib) return hasTableTools(S.flow.lib.flowPanel) ? 'window' : '';
+    return !S.flow.loading && S.flow.error && S.flow.server.state === 'ready' ? 'server' : '';
+  }
+
+  /* Can the route table be read and written? '' when it can (in this window
+     or on the server), else why not, in plain words. A Flow.gs from before
+     27 Oct 2026 has the route tools but not the table. */
+  function tableToolsProblem() {
+    if (tableToolsWhere()) return '';
+    if (S.flow.lib) return OLD_FLOW_TABLES;
+    if (S.flow.loading || !S.flow.error) return 'The route tools are still loading. Try again in a moment.';
+    var sv = S.flow.server;
+    if (sv.state === 'old') return OLD_FLOW_TABLES;
+    if (sv.state === 'checking' || !sv.state) return 'Checking whether pasting a route can work through Google instead. Try again in a moment.';
+    return 'Pasting a route needs the route tools, which could not start. Press Try again in the note at the top of Questions.';
+  }
+
+  /* The draft's round ids: the table's check warns about a rule on another
+     round, and the AI instruction's example rule uses the first. */
+  function roundIds() {
+    return M().rounds.map(function (r) { return str(r.id).trim(); }).filter(Boolean);
+  }
+
+  /* What one tool of the route table gets: the draft as it is now (saved or
+     not). The same request goes to the server when this window can't run
+     the route code (PanelServer.gs panelRouteTable), so both give the same
+     answer. tool: 'fromTable' (Check), 'toTable' (Copy the current route),
+     'templateCsv' (the Excel template) or 'aiInstruction' (the instruction
+     for Claude/ChatGPT). */
+  function tableRequest(tool, text) {
+    var req = { tool: tool, survey: draftSurvey(), strings: M().texts, rows: M().screens };
+    if (tool === 'fromTable') {
+      req.text = str(text);
+      req.live_codes = liveCodeList();
+      req.live_kinds = clone(S.liveIds.kinds);
+    }
+    if (tool === 'fromTable' || tool === 'aiInstruction') req.rounds = roundIds();
+    return req;
+  }
+
+  /* The tool's arguments, from a request: exactly the lists PanelServer.gs
+     (PP_routeTableArgs_) makes from it on the server. */
+  function tableArgs(req) {
+    if (req.tool === 'fromTable') return [req.text, req.survey, req.strings, { rows: req.rows, liveCodes: req.live_codes, liveKinds: req.live_kinds, rounds: req.rounds }];
+    if (req.tool === 'toTable') return [req.rows, req.strings, req.survey];
+    if (req.tool === 'templateCsv') return [req.survey, req.strings, { rows: req.rows }];
+    return [req.survey, req.strings, { rows: req.rows, rounds: req.rounds }];
+  }
+
+  /* What the busy box says while the server works on the table. */
+  var TABLE_BUSY = {
+    fromTable: 'Google is checking the table…', toTable: 'Google is making the table…',
+    templateCsv: 'Google is making the template…', aiInstruction: 'Google is making the instruction…'
+  };
+
+  /* The message for a pasted text longer than the server checks (PanelServer.gs PP_routeTableTooLong_ words it the same). */
+  function tooLongText(length) {
+    return 'The pasted text is too long to check: about ' + Math.ceil(length / 1000) + ' KB, and the control panel checks at most ' +
+      (ROUTE_TABLE_MAX_CHARS / 1000) + ' KB. Paste only the route table, header row first (not a whole workbook or a long chat).';
+  }
+
+  /* Runs one tool of the route table, then done(its answer), or fail(error).
+     In this window when its route code runs (at once); otherwise on the
+     server (panelRouteTable: a few seconds, with the busy box). */
+  function runTableTool(req, done, fail, busyText) {
+    if (S.flow.lib) {
+      var out;
+      try {
+        teachKinds(S.flow.lib);   // kinds added in web/js/types/ are kinds of the table too
+        out = S.flow.lib.flowPanel[req.tool].apply(null, tableArgs(req));
+      } catch (e) {
+        fail(e);
+        return;
+      }
+      done(out);
+      return;
+    }
+    if (req.tool === 'fromTable' && str(req.text).length > ROUTE_TABLE_MAX_CHARS) {
+      fail(new Error(tooLongText(str(req.text).length)));
+      return;
+    }
+    withBusy(busyText || TABLE_BUSY[req.tool], function () { return call('panelRouteTable', req); }).then(function (res) {
+      res = obj(res);
+      if (res.ok !== true) throw new Error('Google sent back no answer this time. Please try again.');
+      done(res.result);
+    }).then(null, fail);
+  }
+
+  function tableToolsCard() {
+    var why = tableToolsProblem();
+    function tool(label, test, run, o) { return why ? lockedBtn(label, test, why, o) : btn(label, test, run, o); }
+    return card({ title: '1. Get the route as a table', sub: 'One row per screen, in the order partners see them. Change it in Excel or Google Sheets, or let Claude or ChatGPT write it, then paste it into “Paste a route”.', test: 'route-table-card' },
+      h('ul', { class: 'step-list tool-list' },
+        h('li', null, tool('Copy the current route', 'route-copy', copyCurrentRoute, { kind: 'primary', small: true }),
+          h('span', { class: 'help', text: 'Today’s questions as a table. In Excel or Google Sheets click the first cell and paste. Change what you need, then copy all the rows (with the header row) and paste them below.' })),
+        h('li', null, tool('Download the Excel template', 'route-template', downloadRouteTemplate, { small: true }),
+          h('span', { class: 'help', text: 'The same table as a file that opens in Excel with the Hindi intact.' })),
+        h('li', null, tool('Copy the instruction for Claude/ChatGPT', 'route-instruction', copyRouteInstruction, { small: true }),
+          h('span', { class: 'help', text: 'Paste it into Claude or ChatGPT first, then your notes, your Excel sheet or a picture of your flowchart. The AI answers with a table: paste that below. Nothing is translated: only the Hindi you write is used, the other languages stay marked [TRANSLATE].' }))));
+  }
+
+  /* A problem of a table tool. On the server it may be a passing one (Google
+     busy or out of reach), so the message offers Try again. */
+  function tableToolFailed(title, again) {
+    return function (e) { showError(title, e, S.flow.lib ? null : again); };
+  }
+
+  function copyCurrentRoute() {
+    runTableTool(tableRequest('toTable'), function (text) {
+      copyText(str(text), 'The current route', 'Paste it into Excel or Google Sheets (' + plural(M().screens.length, 'row') + ' and the header).');
+    }, tableToolFailed('The route could not be turned into a table', copyCurrentRoute));
+  }
+
+  function downloadRouteTemplate() {
+    runTableTool(tableRequest('templateCsv'), function (text) {
+      download(ROUTE_TEMPLATE_FILE, str(text).replace(/^﻿/, ''), 'text/csv');   // download() adds the one mark Excel needs for Hindi
+      toast('Template downloaded (' + ROUTE_TEMPLATE_FILE + '). Open it in Excel, change the rows, then copy them all, header too, and paste them under “Paste a route”.', { kind: 'ok', timeout: 9000 });
+    }, tableToolFailed('The template could not be made', downloadRouteTemplate));
+  }
+
+  function copyRouteInstruction() {
+    runTableTool(tableRequest('aiInstruction'), function (text) {
+      copyText(str(text), 'The instruction', 'Paste it into Claude or ChatGPT, then add your notes, your Excel sheet or a picture of your flowchart.');
+    }, tableToolFailed('The instruction could not be made', copyRouteInstruction));
+  }
+
+  /* ---- "Paste a route" ------------------------------------------------------- */
+
+  /* The codes partners already answered under, as the table checker wants
+     them: "nps", and "option:<question>/<answer>" for answers of pick-one
+     questions (panelLoad's live_ids; empty until the first real round). */
+  function liveCodeList() {
+    var out = S.liveIds.screens.slice();
+    Object.keys(S.liveIds.options).forEach(function (q) {
+      arr(S.liveIds.options[q]).forEach(function (o) { out.push('option:' + q + '/' + o); });
+    });
+    return out;
+  }
+
+  /* Reads and checks the pasted table against the draft as it is now
+     (fromTable, with the codes and kinds partners answered and the draft's
+     rounds; in this window, or on the server when this window can't run the
+     route code). Changes nothing in the draft. Then done(result): fromTable's
+     result ({ ok, rows, texts, problems, warnings, survey }), also kept in
+     S.ui.paste. In this window that happens at once. When the server could
+     not answer, a message says so (with Try again) and done is not called. */
+  function checkPastedTable(done, busyText) {
+    var P = S.ui.paste;
+    if (P.checking) return;   // the server is still checking (Ctrl+Enter again in the box): one check at a time
+    var seq = S.changeSeq;
+    var text = P.text;
+    P.checking = !S.flow.lib;
+    runTableTool(tableRequest('fromTable', text), function (raw) {
+      P.checking = false;
+      done(adoptPasteCheck(raw, seq, text));
+    }, function (e) {
+      P.checking = false;
+      if (S.flow.lib) {   // this window's own code failed on the table: a problem of the table
+        done(adoptPasteCheck({ ok: false, rows: [], texts: {}, warnings: [], survey: null,
+          problems: [{ row: null, column: null, code: null, message: 'The table could not be read (' + ((e && e.message) || e) + '). Check that it is the whole table, header row first.' }] }, seq, text));
+        return;
+      }
+      showError('The table could not be checked', e, function () { checkPastedTable(done, busyText); });
+    }, busyText);
+  }
+
+  /* Keeps the answer of a check in S.ui.paste and returns it, tidied. seq and
+     text: the draft's change number and the box's text it was checked with
+     (while the server works they could change: the result is then stale). */
+  function adoptPasteCheck(raw, seq, text) {
+    var P = S.ui.paste;
+    raw = obj(raw);
+    var res = { ok: !!raw.ok, format: str(raw.format), rows: arr(raw.rows), texts: obj(raw.texts), problems: arr(raw.problems), warnings: arr(raw.warnings), survey: raw.survey || null };
+    if (res.ok && !res.survey) {
+      res.ok = false;
+      res.problems = [{ row: null, column: null, code: null, message: 'The route could not be checked here, so it can’t be used yet. Close the panel, open it again and press Check once more.' }];
+    }
+    P.result = res;
+    P.model = res.ok ? pastedModel(res) : null;
+    P.seq = seq;
+    P.stale = P.text !== text;
+    P.used = '';
+    P.usedWarnings = [];
+    P.last = res.ok ? { survey: res.survey } : P.last;
+    return res;
+  }
+
+  /* The draft as it would be with the pasted route: the same questionnaire,
+     with the table's rows and its texts. */
+  function pastedModel(res) {
+    var m = clone(M());
+    m.screens = res.rows.map(normaliseScreen);
+    Object.keys(res.texts).forEach(function (k) { m.texts[k] = Object.assign({}, obj(m.texts[k]), obj(res.texts[k])); });
+    return m;
+  }
+
+  /* The pasted route for the Map and Try a path: { survey, model } after a
+     clean Check of the table as it is now, else null. */
+  function pastedPreview() {
+    var P = S.ui.paste;
+    if (!P.result || !P.result.ok || !P.model || P.stale || P.seq !== S.changeSeq) return null;
+    return { survey: P.result.survey, model: P.model };
+  }
+
+  function pasteCard() {
+    var P = S.ui.paste;
+    var why = tableToolsProblem();
+    var box = h('textarea', { rows: 9, class: 'paste-box', test: 'paste-box', spellcheck: 'false', value: P.text,
+      placeholder: 'Paste the whole table here, header row first: rows copied from Excel or Google Sheets, the text of a CSV file, or the table Claude or ChatGPT wrote.',
+      'aria-label': 'The route table to check' });
+    var result = h('div', { test: 'paste-result', 'aria-live': 'polite' });
+    box.addEventListener('input', function () {
+      P.text = box.value;
+      if (P.result && !P.stale) { P.stale = true; redraw(result, pasteResult); }
+    });
+    box.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !why) { e.preventDefault(); runPasteCheck(); }
+    });
+    appendKids(result, [pasteResult()]);
+    return card({ title: '2. Paste a route', sub: 'Check shows any problems, with their row and column, and lets you see the pasted route on the Map and in Try a path. Nothing changes until you press Use this route.', test: 'paste-card' },
+      why === OLD_FLOW_TABLES ? h('div', { class: 'callout is-warn small', style: 'margin-bottom:10px', test: 'paste-old-tools' }, h('p', { text: why })) : null,
+      box,
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        why ? lockedBtn('Check', 'paste-check', why, { kind: 'primary' }) : btn('Check', 'paste-check', runPasteCheck, { kind: 'primary', title: 'Ctrl+Enter in the box does the same' }),
+        P.text || P.result || P.used ? btn('Clear', 'paste-clear', function () {
+          P.text = ''; P.result = null; P.model = null; P.stale = false; P.used = ''; P.usedWarnings = [];
+          renderMain(true);
+        }, { small: true, kind: 'ghost' }) : null,
+        h('span', { class: 'help', text: 'Tab-separated rows from Excel or Google Sheets, a CSV file, or a Markdown table from an AI: all work.' })),
+      result);
+  }
+
+  function runPasteCheck() {
+    var P = S.ui.paste;
+    if (!P.text.trim()) {
+      toast('Paste the table into the box first (with its header row), then press Check.', { kind: 'info' });
+      var b = byTest('paste-box');
+      if (b) b.focus();
+      return;
+    }
+    checkPastedTable(function () {
+      S.ui.pendingFocus = { test: 'paste-result', flash: false };
+      renderMain(true);
+    });
+  }
+
+  /* What the last Check found, or what "Use this route" did. */
+  function pasteResult() {
+    var P = S.ui.paste;
+    var res = P.result;
+    if (!res) {
+      if (!P.used) return null;
+      return [h('div', { class: 'callout is-ok small', style: 'margin-top:12px', test: 'paste-used' }, h('p', { text: P.used })),
+        P.usedWarnings.length ? pasteWarnings(P.usedWarnings) : null];
+    }
     var out = [];
-    M().screens.forEach(function (s, i) {
-      var targets = [];
-      if (s.next) targets.push(s.next);
-      jumpsOf(s).forEach(function (j) { if (j && j['goto']) targets.push(j['goto']); });
-      targets.forEach(function (to) {
-        var p = screenPos(to);
-        if (p !== -1 && p <= i && !(p < i && isFixedEnding(M().screens[p]))) out.push({ from: i, to: p });
+    var stale = P.stale || P.seq !== S.changeSeq;
+    if (stale) {
+      out.push(h('div', { class: 'callout is-warn small', style: 'margin-top:12px', test: 'paste-stale' },
+        h('p', { text: P.stale ? 'The table in the box changed since this check: press Check again.' : 'Your draft changed since this check: press Check again.' })));
+    }
+    if (res.problems.length) {
+      out.push(h('div', { class: 'callout is-error', style: 'margin-top:12px', test: 'paste-problems-head' },
+        h('p', null, h('strong', { text: plural(res.problems.length, 'problem') + ' to fix' }), ' before this route can be used. Nothing has changed in your draft. Fix them in your table (or ask the AI to), paste it again and press Check.')));
+      out.push(h('div', { style: 'margin-top:8px', test: 'paste-problems' }, res.problems.map(function (p, i) { return tableIssue(p, 'error', i); })));
+    } else {
+      out.push(pasteOk(res, stale));
+    }
+    if (res.warnings.length) out.push(pasteWarnings(res.warnings));
+    return out;
+  }
+
+  /* The warnings of a check (shown after "Use this route" too): worth
+     reading, nothing blocks. */
+  function pasteWarnings(list) {
+    return h('details', { style: 'margin-top:10px', open: list.length <= 6 ? true : null, test: 'paste-warnings' },
+      h('summary', { class: 'field-label', style: 'cursor:pointer', test: 'paste-warnings-toggle' }, plural(list.length, 'warning') + ': worth reading, they don’t stop you'),
+      h('div', { style: 'margin-top:8px' }, list.map(function (w, i) { return tableIssue(w, 'warn', i); })));
+  }
+
+  /* One problem or warning of a pasted table: where (row and column; the
+     header row is row 1) and the plain-English message. */
+  function tableIssue(it, kind, i) {
+    it = obj(it);
+    var where = it.row ? 'Row ' + it.row + (it.column ? ' · ' + it.column : '') : (it.column ? 'Column “' + it.column + '”' : 'The whole table');
+    return h('div', { class: 'issue is-' + kind, test: 'paste-' + (kind === 'error' ? 'problem' : 'warning') + '-' + i,
+      'data-row': it.row ? String(it.row) : null, 'data-column': it.column ? String(it.column) : null },
+      h('span', { class: 'where', test: 'paste-' + (kind === 'error' ? 'problem' : 'warning') + '-where-' + i, text: where }),
+      h('span', { class: 'msg', text: str(it.message) }));
+  }
+
+  /* After a clean Check: what would change, the preview and "Use this route". */
+  function pasteOk(res, stale) {
+    var ch = routeChanges(res);
+    var shown = res.rows.filter(function (r) { return r.active !== false; }).length;
+    var lines = [];
+    if (ch.same) lines.push('This is the same route as your draft: using it changes nothing.');
+    else {
+      var parts = [];
+      if (ch.added.length) parts.push(plural(ch.added.length, 'screen') + ' added (' + ch.added.join(', ') + ')');
+      if (ch.removed.length) parts.push(plural(ch.removed.length, 'screen') + ' removed (' + ch.removed.join(', ') + ')');
+      if (ch.changed.length) parts.push(plural(ch.changed.length, 'screen') + ' changed (' + ch.changed.join(', ') + ')');
+      if (ch.moved) parts.push('the order changed');
+      if (ch.texts) parts.push(plural(ch.texts, 'text') + ' new or reworded');
+      lines.push('Compared with your draft: ' + joinWith(parts, 'and') + '.');
+    }
+    var locked = stale ? 'Press Check again first: the table or your draft changed since this check.' : '';
+    function act(label, test, run, o) { return locked ? lockedBtn(label, test, locked, o) : btn(label, test, run, o); }
+    /* The Map and Try a path need the route code in this window (when the server checked the table, they can't show it). */
+    var noPreview = S.flow.lib ? '' : 'The Map and Try a path need the route tools in this window, which could not start (see the note at the top of Questions). You can still use this route.';
+    function preview(label, test, run) { return noPreview && !locked ? lockedBtn(label, test, noPreview, { small: true }) : act(label, test, run, { small: true }); }
+    return h('div', { class: 'callout is-ok', style: 'margin-top:12px', test: 'paste-ok' },
+      h('p', null, h('strong', { text: '✔ No problems.' }), ' The route has ' + plural(res.rows.length, 'screen') + (shown !== res.rows.length ? ' (' + shown + ' shown)' : '') + '. Nothing has changed in your draft yet.'),
+      h('p', { test: 'paste-changes', text: lines.join(' ') }),
+      textChangesBox(textChanges(res)),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        preview('Map of the pasted route', 'paste-preview-map', function () { openRouteView('map', 'pasted'); }),
+        preview('Try a path on it', 'paste-preview-try', function () { openRouteView('try', 'pasted'); }),
+        h('span', { class: 'spacer' }),
+        act('Use this route', 'paste-use', usePastedRoute, { kind: 'primary' })));
+  }
+
+  /* The texts "Use this route" would add or change, one line per text and
+     language, in the table's order: { key, lang, old, now, isNew, person }
+     (old and now: '' for "still to translate"). A language that only gets
+     the "[TRANSLATE]" mark, before and after, is left out: nobody wrote it.
+     person: a translation would get new words or lose its words. Only a
+     person may write those (never an AI: the project never machine-
+     translates), so the list then opens by itself. */
+  function textChanges(res) {
+    var out = [];
+    var order = M().languages.map(function (l) { return l.code; });
+    Object.keys(res.texts).forEach(function (key) {
+      var now = obj(res.texts[key]);
+      var had = Object.prototype.hasOwnProperty.call(M().texts, key);
+      var old = had ? obj(M().texts[key]) : {};
+      var codes = order.filter(function (c) { return Object.prototype.hasOwnProperty.call(now, c); });
+      Object.keys(now).forEach(function (c) { if (c.charAt(0) !== '_' && codes.indexOf(c) === -1) codes.push(c); });
+      codes.forEach(function (c) {
+        var a = str(old[c]), b = str(now[c]);
+        if (a === b) return;
+        var english = c === 'en';
+        if (!english && isTodo(a) && isTodo(b)) return;
+        out.push({ key: key, lang: c, old: english || !isTodo(a) ? a : '', now: english || !isTodo(b) ? b : '', isNew: !had, person: !english });
       });
     });
     return out;
   }
-  function warnBackward(movedId) {
-    var at = screenPos(movedId);
-    var bad = backwardArrows().filter(function (a) { return a.from === at || a.to === at; });
-    if (!bad.length) return;
-    toast('Question ' + (bad[0].from + 1) + ' now has an arrow back up to question ' + (bad[0].to + 1) +
-      '. Arrows only go down the list, so the form leaves it out: move the question back, or change the jump.', { kind: 'info', timeout: 9000 });
+
+  /* The fold-out under "Compared with your draft": every text that would
+     change, old → new. Open by itself when a translation would change. */
+  function textChangesBox(list) {
+    if (!list.length) return null;
+    var person = list.some(function (x) { return x.person; });
+    function words(v, lang) { return v ? quote(shorten(v, 70)) : (lang === 'en' ? '(empty)' : '(to be translated)'); }
+    return h('details', { class: 'text-changes', style: 'margin-top:8px', open: person ? true : null, test: 'paste-texts' },
+      h('summary', { class: 'field-label', style: 'cursor:pointer', test: 'paste-texts-toggle' },
+        'The texts that would change (' + list.length + ')' + (person ? ', translations too: check them' : '')),
+      person ? h('p', { class: 'help', test: 'paste-texts-note', text: 'Keep a translation only if a person wrote it: an AI must never translate. To keep today’s words, leave that cell empty in your table.' }) : null,
+      h('ul', { class: 'route-list', test: 'paste-texts-list' }, list.map(function (x, i) {
+        return h('li', { test: 'paste-text-' + i, 'data-key': x.key, 'data-lang': x.lang },
+          h('strong', { text: x.key }), ' · ' + englishName(x.lang) + (x.isNew ? ' (new): ' : ': '),
+          x.isNew ? '' : words(x.old, x.lang) + ' → ', words(x.now, x.lang));
+      })));
   }
 
-  function moveScreen(i, delta) {
-    moveItem(M().screens, i, i + delta);
-    var s = M().screens[i + delta];
-    changed();
-    S.ui.pendingFocus = { test: 'screen-card-' + s.id, focusTest: 'screen-' + (delta < 0 ? 'up-' : 'down-') + s.id, flash: false };
-    renderMain(true);
-    warnBackward(s.id);
+  /* What "Use this route" would change: screens added, removed or changed,
+     the order, and the number of texts that are new or reworded. */
+  function routeChanges(res) {
+    var before = M().screens;
+    var after = res.rows.map(normaliseScreen);
+    var old = {};
+    before.forEach(function (s) { old['#' + s.id] = s; });
+    var now = {};
+    var out = { added: [], removed: [], changed: [], moved: false, texts: Object.keys(res.texts).length, same: false };
+    function fields(s) { var o = {}; SCREEN_FIELDS.forEach(function (f) { o[f] = s[f] === undefined ? null : s[f]; }); return canonJson(o); }
+    after.forEach(function (s) {
+      now['#' + s.id] = true;
+      if (!old['#' + s.id]) out.added.push(s.id);
+      else if (fields(old['#' + s.id]) !== fields(s)) out.changed.push(s.id);
+    });
+    before.forEach(function (s) { if (!now['#' + s.id]) out.removed.push(s.id); });
+    var a = after.filter(function (s) { return old['#' + s.id]; }).map(function (s) { return s.id; });
+    var b = before.filter(function (s) { return now['#' + s.id]; }).map(function (s) { return s.id; });
+    out.moved = a.join('\n') !== b.join('\n');
+    out.same = !out.added.length && !out.removed.length && !out.changed.length && !out.moved && !out.texts;
+    return out;
   }
 
-  /* Hides or shows a screen. Hiding an ending that partners reach first says
-     what will happen and asks (confirmed = true skips that: the person
-     already read it, for example in the delete dialog's "Hide it instead"). */
-  function toggleScreen(s, confirmed) {
-    if (s.active && s.type === 'thank_you' && !confirmed) {
-      /* A hidden ending still ends its route, at the main thank-you screen
-         (flow-panel.js): partners never run on into the screens below it. */
-      var e = endingNotes(s);
-      if (e.reach.length) {
-        openModal({ title: 'Hide this ending?', test: 'confirm-hide-ending',
-          body: [h('p', { test: 'hide-ending-note', text: 'While it is hidden, partners who would reach it (' + e.reach.join('; ') + ') end at ' + e.mainName +
-            ' instead. Their answers are still sent, and they never go on to the screens below it.' })],
-          buttons: [{ label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } },
-            { label: 'Hide it', kind: 'primary', test: 'modal-confirm', onClick: function (c) { c(); toggleScreen(s, true); } }] });
+  /* The texts a row uses: its own text boxes and its answers' labels. */
+  function ownTextKeys(s) {
+    var keys = ['text', 'low_label', 'high_label', 'scale_hint', 'body'].map(function (f) { return str(s[f]); }).filter(Boolean);
+    arr(s.options).forEach(function (o) { keys.push('choice.' + s.id + '.' + o); });
+    return keys;
+  }
+  /* Is this text named after the row's own code (q.<code>, q.<code>.…,
+     choice.<code>.…, end.<code>.…)? Only such texts go when the row or the
+     answer goes; a built-in screen's standard texts always stay. */
+  function namedAfter(key, id) {
+    return key === 'q.' + id || ['q.', 'choice.', 'end.'].some(function (p) { return key.indexOf(p + id + '.') === 0; });
+  }
+
+  /* Where a new text goes in the Texts tab: after the texts that start the
+     same way (choice.<code>. first, then choice.), so the tab stays tidy. */
+  function nearPrefixOf(key) {
+    var parts = key.split('.');
+    var keys = Object.keys(M().texts);
+    for (var n = parts.length - 1; n >= 1; n--) {
+      var prefix = parts.slice(0, n).join('.') + '.';
+      if (keys.some(function (k) { return k.indexOf(prefix) === 0; })) return prefix;
+    }
+    return undefined;
+  }
+
+  /* "Use this route": checks the table once more against the draft as it is
+     now (in this window, or on the server when this window can't run the
+     route code), then replaces the draft's screens with its rows and adds or
+     rewords its texts. Texts named after a removed row (or a removed answer)
+     that nothing else uses are removed too, as deleting a question did
+     before. Everything else stays. Undo puts the whole draft back. */
+  function usePastedRoute() {
+    checkPastedTable(function (res) {
+      if (!res.ok) {
+        renderMain(true);
+        toast('The table was checked once more and now has problems (see the list), so nothing was changed.', { kind: 'error', timeout: 8000 });
         return;
       }
-    }
-    s.active = !s.active;
-    changed({ rerender: true });
-    if (s.active) return;
-    if (s.type === 'thank_you') {
-      toast('Ending hidden. Partners who would reach it now end at ' + endingNotes(s).mainName + '.', { kind: 'info', timeout: 7000 });
-      return;
-    }
-    var users = rulesUsing(function (ref) { return ref === s.id || isRepeatedRef(ref, s.id); }, true);
-    var into = arrowNames(arrowsInto(s.id));
-    var parts = [];
-    if (users.length) parts.push('A rule or jump on ' + users.join(', ') + ' tests this hidden question: change it too.');
-    if (into.length) parts.push(capitalFirst(joinWith(into, 'and')) + (into.length === 1 ? ' goes' : ' go') + ' to this question: while it is hidden, partners go where it would have gone instead.');
-    if (parts.length) toast(parts.join(' '), { kind: 'info', timeout: 9000 });
-  }
-  function capitalFirst(text) { return text.charAt(0).toUpperCase() + text.slice(1); }
-
-  /* What hiding or deleting an ending (thank-you screen) s changes:
-       reach     how partners get there: 'question 3 jumps here', 'question 10,
-                 just above it, goes on to it'
-       above     the shown question just above it whose route runs into it
-                 (no "usually go to" of its own), as { index }, or null
-       below     the first shown screen below it, as { index, route: true when
-                 a jump of another question leads there }, or null
-       mainName  the main thank-you screen, as the messages name it */
-  function endingNotes(s) {
-    var list = M().screens;
-    var pos = screenPos(s.id);
-    var out = { reach: [], above: null, below: null, mainName: 'the main thank-you screen' };
-    var main = list.filter(function (x) { return x !== s && isFixedEnding(x); })[0];
-    if (main) out.mainName = 'the main thank-you screen (question ' + (screenPos(main.id) + 1) + ')';
-    arrowsInto(s.id).forEach(function (a) {
-      var what = 'question ' + (a.index + 1) + (a.how === 'jump' ? ' jumps here' : ' goes here');
-      if (out.reach.indexOf(what) === -1) out.reach.push(what);
-    });
-    for (var k = pos - 1; k >= 0; k--) {
-      if (!list[k].active) continue;
-      if (list[k].type !== 'thank_you' && !list[k].next && k > mainEndIndex()) {
-        out.above = { index: k };
-        out.reach.push('question ' + (k + 1) + ', just above it, goes on to it');
+      if (S.ui.paste.stale || S.ui.paste.seq !== S.changeSeq) {   // only while the server was checking
+        renderMain(true);
+        toast('The table or your draft changed while the table was being checked, so nothing was changed. Press Check again.', { kind: 'error', timeout: 8000 });
+        return;
       }
-      break;
-    }
-    var aboveAt = out.above ? out.above.index : -1;
-    for (var b = pos + 1; b < list.length; b++) {
-      if (!list[b].active) continue;
-      var id = list[b].id;
-      out.below = { index: b, route: list.some(function (x, i) {
-        return i !== aboveAt && x.active && jumpsOf(x).some(function (j) { return j && j['goto'] === id; });
-      }) };
-      break;
-    }
-    return out;
+      applyPastedRoute(res);
+    }, 'Google is checking the table once more…');
   }
 
-  function openEditor(id) {
-    S.ui.editing = id;
-    S.ui.qview = 'list';   // "← All questions" goes back to the list
-    stopMapFrame();
-    go('questions');
-    $('#main').scrollTop = 0;
-  }
-
-  function deleteScreenFlow(s) {
-    var live = isLive.screen(s.id);
-    var ending = s.type === 'thank_you';
-    var e = ending ? endingNotes(s) : null;
-    var users = rulesUsing(function (ref) { return ref === s.id || isRepeatedRef(ref, s.id); });
-    var body = [h('p', { text: 'This removes ' + quote(shorten(screenEnglish(s) || s.id, 70)) + ' and its texts in every language.' })];
-    if (live) {
-      // Live questions are never deleted: earlier rounds' answers use the code,
-      // and the dashboard compares rounds with it. Hiding keeps the history intact.
-      body = [h('div', { class: 'callout is-warn' }, h('p', { text: ending
-        ? 'This ending is live: answers from earlier rounds name it, so the dashboard compares rounds with it. It can’t be deleted, but you can hide it.'
-        : 'This question is live: answers from earlier rounds use its code, so the dashboard compares rounds with it. It can’t be deleted, but you can hide it: partners stop seeing it and its past answers stay readable.' }))];
-      if (ending && s.active) body.push(h('p', { test: 'hide-ending-note', text: 'While it is hidden, partners who would reach it' + (e.reach.length ? ' (' + e.reach.join('; ') + ')' : '') + ' end at ' + e.mainName + ' instead. Their answers are still sent, and they never go on to the screens below it.' }));
-      var liveButtons = [{ label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } }];
-      if (s.active) liveButtons.push({ label: 'Hide it instead', kind: 'primary', test: 'modal-hide-instead', onClick: function (c) { c(); toggleScreen(s, true); } });
-      openModal({ title: ending ? 'This ending can’t be deleted' : 'This question can’t be deleted', test: 'confirm-delete-screen', body: body, buttons: liveButtons });
-      return;
-    }
-    if (users.length) body.push(h('p', { class: 'field-warn', text: 'The rule on ' + users.join(', ') + ' tests this question and will need a new rule.' }));
-    var into = arrowNames(arrowsInto(s.id));
-    if (into.length) body.push(h('p', { class: 'field-warn', test: 'delete-arrows-note', text: capitalFirst(joinWith(into, 'and')) + (into.length === 1 ? ' goes' : ' go') + ' to this ' + (ending ? 'ending' : 'question') + '. ' + (into.length === 1 ? 'That arrow is' : 'Those arrows are') + ' removed too: partners then go ' + (ending ? 'where that question usually goes.' : 'on to the next question in the list.') }));
-    if (ending && e.above) {
-      /* The route above it would no longer stop here (flow-panel.js only stops at endings that are still in the list). */
-      var aboveName = 'question ' + (e.above.index + 1);
-      var then = !e.below ? 'it then goes to the thank-you screen the form adds at the end'
-        : 'it then goes on to question ' + (e.below.index + 1) + ' (' + quote(shorten(screenEnglish(M().screens[e.below.index]) || M().screens[e.below.index].id, 50)) + ')' +
-          (e.below.route ? ', which starts another route, so Publish refuses until you choose where ' + aboveName + ' goes' : '');
-      body.push(h('div', { class: 'callout is-warn', test: 'delete-ending-note' },
-        h('p', { text: capitalFirst(aboveName) + ', just above this ending, has no “Usually go to”: ' + then + '. To keep its route ending here, hide this ending instead (partners then end at ' + e.mainName + '), or set ' + aboveName + '’s “Usually go to” first (Edit it > After this question).' })));
-    }
-    var buttons = [{ label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } }];
-    if (ending && e.above && s.active) buttons.push({ label: 'Hide it instead', test: 'modal-hide-instead', onClick: function (c) { c(); toggleScreen(s, true); } });
-    buttons.push({ label: 'Delete', kind: 'danger-solid', test: 'modal-confirm', onClick: function (c) { c(); deleteScreen(s); } });
-    openModal({ title: ending ? 'Delete this ending?' : 'Delete this question?', test: 'confirm-delete-screen', body: body, buttons: buttons });
-  }
-
-  function deleteScreen(s) {
+  /* The second half of "Use this route": res is a clean check of the table
+     against the draft as it is now. */
+  function applyPastedRoute(res) {
+    var P = S.ui.paste;
+    var before = M().screens;
     var snap = snapshot();
-    var pos = screenPos(s.id);
-    M().screens.splice(pos, 1);
-    /* Arrows to it go too (Undo brings them back). */
-    var removed = 0;
-    M().screens.forEach(function (x) {
-      if (x.next === s.id) { x.next = ''; removed++; }
-      if (Array.isArray(x.jumps)) {
-        var keep = x.jumps.filter(function (j) { return !(j && j['goto'] === s.id); });
-        removed += x.jumps.length - keep.length;
-        x.jumps = keep;
-      }
-    });
-    var own = ['text', 'low_label', 'high_label', 'scale_hint', 'body'].map(function (f) { return s[f]; })
-      .concat(s.options.map(function (o) { return 'choice.' + s.id + '.' + o; }));
-    removeUnusedTexts(own);
-    if (S.ui.editing === s.id) S.ui.editing = null;
-    changed();
-    go('questions');
-    offerUndo(snap, (s.type === 'thank_you' ? 'Ending deleted.' : 'Question deleted.') + (removed ? ' ' + plural(removed, 'arrow') + ' to it removed too.' : ''));
-  }
-
-  /* Removes texts that nothing else uses any more. */
-  function removeUnusedTexts(keys) {
+    var ch = routeChanges(res);
+    M().screens = res.rows.map(normaliseScreen);
+    Object.keys(res.texts).forEach(function (k) { addTextKey(k, clone(res.texts[k]), nearPrefixOf(k)); });
+    var keep = {};
+    M().screens.forEach(function (s) { ownTextKeys(s).forEach(function (k) { keep[k] = true; }); });
     var need = neededTextKeys();
-    var stillUsed = {};
-    M().screens.forEach(function (s) {
-      ['text', 'low_label', 'high_label', 'scale_hint', 'body'].forEach(function (f) { if (s[f]) stillUsed[s[f]] = true; });
+    var gone = [];
+    before.forEach(function (s) {
+      ownTextKeys(s).forEach(function (k) {
+        if (!keep[k] && !need[k] && namedAfter(k, s.id) && M().texts[k] && gone.indexOf(k) === -1) gone.push(k);
+      });
     });
-    keys.forEach(function (k) { if (k && !need[k] && !stillUsed[k]) removeTextKey(k); });
+    gone.forEach(removeTextKey);
+    P.result = null;
+    P.model = null;
+    S.ui.fixNote = null;
+    P.usedWarnings = res.warnings;
+    P.used = 'This route is now your draft (' + plural(M().screens.length, 'screen') + '). It is not saved yet: press Save, then Preview and Publish as usual.' +
+      (gone.length ? ' ' + plural(gone.length, 'text') + ' that only the removed screens or answers used ' + (gone.length === 1 ? 'was' : 'were') + ' removed too.' : '');
+    S.ui.qview = 'list';
+    changed();
+    S.ui.pendingFocus = { test: 'paste-used', flash: false };
+    renderMain(true);
+    offerUndo(snap, ch.same ? 'Route used: nothing changed.' : 'Route used: your questions were replaced.', function () { P.used = ''; P.usedWarnings = []; });
   }
 
-  /* ---- The editor --------------------------------------------------------- */
+  /* ---- Questions > Map ----------------------------------------------------- */
 
-  function screenEditor(s) {
-    var t = typeInfo(s.type);
-    var idx = screenPos(s.id);
-    var screens = M().screens;
-    var prev = screens[idx - 1], next = screens[idx + 1];
-    var extraEnd = isExtraEnding(s, idx);
-    var out = [
-      h('div', { class: 'editor-head' },
-        btn('← All questions', 'editor-back', function () { S.ui.editing = null; S.ui.pendingFocus = { test: 'screen-card-' + s.id }; go('questions'); }, { small: true }),
-        h('div', { class: 'editor-title' },
-          h('span', { class: 'qicon', 'aria-hidden': 'true', text: t.icon }),
-          h('h1', { text: 'Question ' + (idx + 1) + ': ' + (extraEnd ? 'Another ending' : t.label) }),
-          codeChip(s.id, isLive.screen(s.id), 'this screen'),
-          !isLive.screen(s.id) && (!t.builtin || extraEnd) && !isDataColumnScreen(s.id) ? btn('Change code', 'screen-rename', function () { renameScreenFlow(s); }, { small: true, kind: 'ghost' }) : null,
-          s.active ? null : badge('Hidden', 'hidden')))
-    ];
-    if (extraEnd) out.push(h('p', { class: 'muted', style: 'margin:-6px 0 14px', text: 'Another thank-you screen. Partners get here only through a jump; it sends their answers, like the main one.' }));
-    else if (t.description) out.push(h('p', { class: 'muted', style: 'margin:-6px 0 14px', text: t.description }));
-    if (t.needs_text) out.push(card({ title: s.type === 'info_card' ? 'Title of the card' : 'Question', sub: 'What partners read. English is needed; other languages show English until they are translated.', test: 'editor-text-card' },
-      langFields(screenKeyRef(s, 'text', 'q.' + s.id), { test: 'editor-text', label: 'Question', multiline: true })));
-    if (extraEnd) out.push(endingTextsCard(s));
-    var answerCard = answerSettings(s, t);
-    if (answerCard) out.push(answerCard);
-    var settingsCard = builtinSettingsCard(s);
-    if (settingsCard) out.push(settingsCard);
-    var builtinTexts = builtinTextsCard(s);
-    if (builtinTexts) out.push(builtinTexts);
-    var pointer = builtinPointer(s);
-    if (pointer) out.push(pointer);
-    var repeat = repeatCard(s, idx);
-    if (repeat) out.push(repeat);
-    if (s.type !== 'thank_you') out.push(ruleCard(s, idx));
-    var after = afterCard(s, idx);
-    if (after) out.push(after);
-    out.push(h('div', { class: 'editor-foot' },
-      prev ? btn('← Previous question', 'editor-prev', function () { openEditor(prev.id); }, { small: true }) : null,
-      next ? btn('Next question →', 'editor-next', function () { openEditor(next.id); }, { small: true }) : null,
-      h('span', { class: 'spacer' }),
-      s.type === 'thank_you' && !extraEnd ? null : btn((s.active ? 'Hide this ' : 'Show this ') + (extraEnd ? 'ending' : 'question'), 'editor-toggle', function () { toggleScreen(s); }, { small: true }),
-      t.builtin && !extraEnd ? null : btn(extraEnd ? 'Delete this ending' : 'Delete this question', 'editor-delete', function () { deleteScreenFlow(s); }, { small: true, kind: 'danger' })));
-    return out;
+  function backToList() {
+    return btn('← All questions', 'qview-back', function () {
+      var fromPaste = (S.ui.qview === 'map' ? S.ui.map.which : S.ui.tryPath.which) === 'pasted';
+      stopMapFrame();
+      S.ui.qview = 'list';
+      if (fromPaste) S.ui.pendingFocus = { test: 'paste-card', flash: false };
+      renderMain(false);
+    }, { small: true });
   }
 
-  /* An extra ending's own title and message (end.<code>.title / .body). */
-  function endingTextsCard(s) {
-    return card({ title: 'What this ending says', sub: 'English is needed; other languages show English until they are translated. The closing line under it is the main thank-you screen’s (Texts & translations: thanks.close).', test: 'ending-texts-card' },
-      h('div', { class: 'group-label', text: 'Title' }),
-      langFields(screenKeyRef(s, 'text', 'end.' + s.id + '.title'), { test: 'ending-title', label: 'Title', compact: true }),
-      h('div', { class: 'group-label', style: 'margin-top:12px', text: 'Message' }),
-      langFields(screenKeyRef(s, 'body', 'end.' + s.id + '.body'), { test: 'ending-body', label: 'Message', multiline: true }));
-  }
-
-  /* The Settings that belong to one built-in screen, shown in its editor
-     (decision 7 of the flow-graph proposal): the SAME Settings entries, so a
-     change here is a change in Settings (and in Support questions). */
-  function builtinSettingsCard(s) {
-    var parts = [];
-    function sw(key, label, after) {
-      return h('div', { class: 'row', style: 'margin-top:8px' }, switchCtl({
-        test: 'editor-setting-' + key, checked: settingBool(key), label: label,
-        onChange: function (v) { setSetting(key, v); if (after) renderMain(true); }
-      }));
-    }
-    if (s.type === 'function_ratings') {
-      parts.push(sw('rating.allow_not_applicable', 'Offer “I don’t handle this” under each area rating'));
-      parts.push(h('p', { class: 'help', text: 'Answers “I don’t handle this” are left out of the averages, and never count as a low rating.' }));
-    } else if (s.type === 'function_deep_dives') {
-      var when = settingRaw('deep_dive.when') === 'immediate' ? 'immediate' : 'after_all_ratings';
-      var labels = CHOICE_LABELS['deep_dive.when'];
-      parts.push(h('div', { class: 'field-label', text: 'Where the problem screens go' }));
-      parts.push(h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'Where the problem screens go', style: 'margin-top:6px' },
-        ['after_all_ratings', 'immediate'].map(function (v) {
-          return choiceCard('editor-dd-when', v, when === v, labels[v], 'editor-dd-when-' + v, function () { setSetting('deep_dive.when', v); renderMain(true); });
-        })));
-      if (when === 'immediate') {
-        parts.push(h('div', { class: 'callout is-info small', style: 'margin-top:10px', test: 'editor-dd-immediate-note' },
-          h('p', { text: 'Each area’s problem screen now comes straight after its rating, inside the area ratings. This row’s place in the list, its rule and its arrows are then not used.' })));
-      }
-      parts.push(sw('deep_dive.require_chip', 'Partners must pick a problem'));
-      parts.push(sw('deep_dive.require_detail_if_other', '“Other” needs a voice note or typed detail'));
-    } else if (s.type === 'support_block') {
-      var commentKey = str(settingRaw('support.comment_text')) || 'q.support_comment';
-      parts.push(sw('support.allow_not_applicable', 'Offer “Doesn’t apply” on each row', true));
-      if (settingBool('support.allow_not_applicable')) parts.push(h('div', { style: 'margin:8px 0 6px' }, langFields('support.not_applicable', { test: 'editor-support-na-label', label: 'Doesn’t apply', compact: true })));
-      parts.push(sw('support.allow_comment', 'Ask for a comment after the ratings (voice note or typing)', true));
-      if (settingBool('support.allow_comment')) {
-        parts.push(h('div', { style: 'margin-top:8px' }, h('div', { class: 'group-label', text: 'The comment question' }),
-          langFields(commentKey, { test: 'editor-support-comment-text', label: 'Comment question', multiline: true })));
-      }
-    } else {
-      return null;
-    }
-    return card({ title: 'Settings of this screen', sub: 'The same settings as in Settings' + (s.type === 'support_block' ? ' and Support questions' : '') + ': a change here is a change there.', test: 'editor-settings-card' }, parts);
+  /* The choice "Your draft / The pasted route / The live version" above the Map and Try a path. */
+  function whichRoute(st, name, withLive) {
+    var pasted = pastedPreview();
+    if (st.which === 'pasted' && !pasted) st.which = 'draft';
+    return h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'Which route' },
+      choiceCard(name, 'draft', st.which === 'draft', 'Your draft (unsaved changes included)', name + '-draft', function () { st.which = 'draft'; renderMain(true); }),
+      pasted ? choiceCard(name, 'pasted', st.which === 'pasted', 'The pasted route (not used yet)', name + '-pasted', function () { st.which = 'pasted'; renderMain(true); }) : null,
+      withLive ? choiceCard(name, 'live', st.which === 'live', 'The live version (what partners get now)', name + '-live', function () { st.which = 'live'; renderMain(true); }) : null);
   }
 
   /* One choice of a set of radio cards (the cards look like buttons). */
@@ -3585,546 +3867,14 @@ details.group > .group-body { padding: 0 16px 14px; }
     return h('label', { class: 'radio-card' + (on ? ' is-on' : '') }, input, label);
   }
 
-  /* "Ask this question: once / for each area / for each area rated low"
-     (the Screens tab's repeat column; only kinds that may repeat: canRepeat). */
-  function repeatCard(s, idx) {
-    if (!canRepeat(s.type) || !S.flow.lib) return null;
-    if (isDataColumnScreen(s.id)) {
-      return card({ title: 'Ask this question', test: 'repeat-card' }, h('p', { class: 'help', test: 'repeat-locked', text: 'Once. This question fills the ' + DATA_COLUMN_SCREENS[s.id] + ' column of the answers sheet, so it is always asked once.' }));
-    }
-    var cur = REPEAT_LABELS[s.repeat] ? s.repeat : '';
-    var cards = h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'How often to ask this question' },
-      ['', 'each_area', 'each_low_area'].map(function (v) {
-        return choiceCard('repeat-' + s.id, v || 'once', cur === v, v === 'each_low_area' ? 'For each area rated low (at or below its limit)' : REPEAT_LABELS[v],
-          'repeat-' + (v || 'once'), function () { s.repeat = v; changed({ rerender: true }); });
-      }));
-    var parts = [cards];
-    if (cur) {
-      parts.push(h('p', { class: 'help', style: 'margin-top:10px', test: 'repeat-help', text: 'Partners see it once for each area' + (cur === 'each_low_area' ? ' they rated at or below its limit' : '') +
-        ', with the area’s name above it. The answers are stored as ' + s.id + ':<area>, for example ' + s.id + ':' + ((M().areas.filter(function (a) { return a.active; })[0] || { id: 'payments' }).id) + '.' +
-        (cur === 'each_low_area' ? ' Put it below the area ratings: the ratings must come first.' : '') }));
-      if (isLive.screen(s.id)) parts.push(h('div', { class: 'callout is-warn small', style: 'margin-top:8px' }, h('p', { text: 'Partners already answered this question once per survey. Asked per area, its answers get new names, so earlier rounds can’t be compared with them directly.' })));
-    }
-    return card({ title: 'Ask this question', sub: 'Once, or once for every area (Areas & problems).', test: 'repeat-card' }, parts);
-  }
-
-  /* A text that may not exist yet: it is created (with the standard name) the
-     moment someone types into it. */
-  function screenKeyRef(s, fieldName, defaultKey) {
-    return {
-      get: function () { return s[fieldName]; },
-      create: function () {
-        var key = defaultKey;
-        var n = 2;
-        while (M().texts[key] && !isOwnKey(s, key)) { key = defaultKey + '_' + n; n++; }
-        s[fieldName] = key;
-        addTextKey(key, {}, 'q.');
-        return key;
-      }
-    };
-  }
-  function isOwnKey(s, key) { return ['text', 'low_label', 'high_label', 'scale_hint', 'body'].some(function (f) { return s[f] === key; }); }
-
-  function answerSettings(s, t) {
-    var parts = [];
-    if (hasRequired(s)) {
-      parts.push(h('div', { class: 'row' }, switchCtl({
-        test: 'editor-required', checked: effectiveRequired(s), label: 'Partners must answer',
-        onText: 'Yes, required', offText: 'No: a Skip button is shown',
-        onChange: function (v) { s.required = v; changed({ rerender: true }); }
-      }), typeof s.required !== 'boolean' ? h('span', { class: 'help', text: '(the standard for this kind of question)' }) : null));
-    }
-    if (t.fields.indexOf('options') !== -1) parts.push(optionsEditor(s));
-    if (t.fields.indexOf('low_label') !== -1 || t.fields.indexOf('high_label') !== -1) {
-      parts.push(h('div', { class: 'group-label', text: 'Words at the two ends of the scale' }));
-      parts.push(h('div', { class: 'help', text: 'Left end (0):' }));
-      parts.push(langFields(screenKeyRef(s, 'low_label', 'q.' + s.id + '.low'), { test: 'editor-low', label: 'Left end', compact: true }));
-      parts.push(h('div', { class: 'help', style: 'margin-top:8px', text: 'Right end (10):' }));
-      parts.push(langFields(screenKeyRef(s, 'high_label', 'q.' + s.id + '.high'), { test: 'editor-high', label: 'Right end', compact: true }));
-    }
-    if (t.fields.indexOf('scale_hint') !== -1) {
-      parts.push(h('div', { class: 'group-label', text: 'Hint read aloud with the scale' }));
-      parts.push(langFields(screenKeyRef(s, 'scale_hint', 'q.' + s.id + '.hint'), { test: 'editor-hint', label: 'Hint', compact: true }));
-    }
-    if (t.fields.indexOf('body') !== -1) parts.push(bodyEditor(s));
-    if (t.fields.indexOf('skip_if') !== -1) parts.push(skipEditor(s));
-    if (!parts.length) return null;
-    return card({ title: s.type === 'info_card' ? 'Card text' : (t.fields.indexOf('skip_if') !== -1 ? 'When to skip it' : 'Answers'), test: 'editor-answers-card' }, parts);
-  }
-
-  function skipEditor(s) {
-    var what = s.type === 'language_picker'
-      ? ['lang_in_url', 'Skip this screen when the partner’s link already says the language']
-      : ['empty', 'Skip this screen when the round has nothing to show'];
-    return h('div', { class: 'row' }, switchCtl({
-      test: 'editor-skip', checked: s.skip_if === what[0], label: what[1], onText: 'Yes', offText: 'No, always show it',
-      onChange: function (v) { s.skip_if = v ? what[0] : ''; changed(); }
-    }));
-  }
-
-  function bodyEditor(s) {
-    var has = !!s.body;
-    var box = h('div', null,
-      h('div', { class: 'row' }, switchCtl({
-        test: 'editor-body-toggle', checked: has, label: 'Add a longer explanation under the title', onText: 'Yes', offText: 'No',
-        onChange: function (v) {
-          if (v) { screenKeyRef(s, 'body', 'q.' + s.id + '.body').create(); }
-          else { var k = s.body; s.body = ''; removeUnusedTexts([k]); }
-          changed({ rerender: true });
-        }
-      })));
-    if (has) box.appendChild(h('div', { style: 'margin-top:10px' }, langFields(s.body, { test: 'editor-body', label: 'Explanation', multiline: true })));
-    return box;
-  }
-
-  function optionsEditor(s) {
-    var wrap = h('div', { test: 'options-editor' }, h('div', { class: 'group-label', text: 'Answers partners can pick' }));
-    if (!s.options.length) wrap.appendChild(h('div', { class: 'callout is-warn' }, h('p', { text: 'There are no answers yet. Add at least two.' })));
-    s.options.forEach(function (code, i) {
-      var live = isLive.option(s.id, code);
-      wrap.appendChild(h('div', { class: 'option-row', test: 'option-' + code },
-        h('div', { class: 'row-head' },
-          h('span', { class: 'name', text: optionLabel(s.id, code) }), codeChip(code, live, 'this answer'),
-          h('div', { class: 'btn-group' },
-            i > 0 ? btn('', 'option-up-' + code, function () { moveItem(s.options, i, i - 1); changed({ rerender: true }); }, { small: true, icon: '↑', aria: 'Move up' }) : null,
-            i < s.options.length - 1 ? btn('', 'option-down-' + code, function () { moveItem(s.options, i, i + 1); changed({ rerender: true }); }, { small: true, icon: '↓', aria: 'Move down' }) : null,
-            live ? null : btn('Change code', 'option-rename-' + code, function () { renameOptionFlow(s, code); }, { small: true, kind: 'ghost' }),
-            live ? lockedBtn('Remove', 'option-remove-' + code, LIVE_OPTION_REASON, { kind: 'danger' })
-              : btn('Remove', 'option-remove-' + code, function () { removeOptionFlow(s, code); }, { small: true, kind: 'danger' }))),
-        langFields('choice.' + s.id + '.' + code, { test: 'option-' + code, label: 'Answer', compact: true })));
-    });
-    wrap.appendChild(h('div', { style: 'margin-top:10px' }, btn('Add an answer', 'option-add', function () { addOptionFlow(s); }, { small: true, icon: '+' })));
-    return wrap;
-  }
-
-  function builtinTextsCard(s) {
-    var list = BUILTIN_SCREEN_TEXTS[s.type];
-    if (!list || isExtraEnding(s, screenPos(s.id))) return null;
-    var formKeys = arr(S.catalog.form_text_keys);
-    var shownList = list.filter(function (p) { return M().texts[p[0]] || formKeys.indexOf(p[0]) !== -1; });
-    if (!shownList.length) return null;
-    return card({ title: 'Texts on this screen', sub: 'These texts belong to the form itself. You can reword them here or in Texts & translations.', test: 'editor-builtin-texts' },
-      shownList.map(function (p) {
-        return h('div', { style: 'margin-bottom:12px' }, h('div', { class: 'group-label', text: p[1] }), langFields(p[0], { test: 'builtin-' + p[0], label: p[1], compact: true }));
-      }));
-  }
-
-  function builtinPointer(s) {
-    var map = {
-      function_ratings: ['The areas, their order and their problems are edited in Areas & problems.', 'areas', 'Go to Areas & problems'],
-      function_deep_dives: ['Each area’s list of problems is edited in Areas & problems. The limit that triggers these screens is in Settings > Problem screens.', 'areas', 'Go to Areas & problems'],
-      support_block: ['The support items themselves are edited in Support questions.', 'support', 'Go to Support questions'],
-      whats_changed: ['The bullets for each round are edited in Rounds > What changed.', 'rounds', 'Go to Rounds'],
-      language_picker: ['The languages and their order are edited in Settings > Languages.', 'settings', 'Go to Settings']
-    }[s.type];
-    if (!map) return null;
-    return h('div', { class: 'callout is-info', style: 'margin-bottom:14px' }, h('p', null, map[0], ' ', h('button', { type: 'button', class: 'link-btn', test: 'editor-pointer', onClick: function () { go(map[1]); } }, map[2])));
-  }
-
-  /* ---- The rule builder ("Show this question only if...") -------------------- */
-
-  function ruleCard(s, idx) {
-    var box = h('div', { test: 'rule-builder' });
-    function draw() { redraw(box, function () { return ruleBody(s, idx, draw); }); }
-    draw();
-    return card({ title: 'When to show this question', sub: 'Use a rule to show it only to some partners, for example only to those who rated Payments low.', test: 'rule-card' }, box);
-  }
-
-  function ruleBody(s, idx, draw) {
-    var answers = ruleAnswers(s, idx, 'show_if');
-    /* A new condition starts from the latest earlier answer; only when there
-       is none, from the language or the round (SHOW_IF_FACTS). */
-    var realAnswers = answers.filter(function (a) { return a.kind !== 'fact'; });
-    var starter = realAnswers[realAnswers.length - 1] || answers[0];
-    var parsed = parseRule(s.show_if);
-    var name = 'rule-mode-' + s.id;
-    /* Switching to "Always" remembers the rule, so switching back restores it. */
-    function setMode(mode) {
-      if (mode === 'always') {
-        if (s.show_if) S.ui.lastRule[s.id] = s.show_if;
-        s.show_if = null;
-      } else if (!s.show_if) {
-        if (S.ui.lastRule[s.id]) s.show_if = S.ui.lastRule[s.id];
-        else if (!answers.length) { toast('No earlier answers to test here. Move the question further down first.', { kind: 'info' }); draw(); return; }
-        else s.show_if = conditionObject(defaultCondition(starter));
-      }
-      changed();
-      draw();
-    }
-    var modes = h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'When to show this question' },
-      radioCard(name, 'always', parsed.mode === 'always', 'Always show it', 'rule-mode-always', setMode),
-      radioCard(name, 'if', parsed.mode !== 'always', 'Only show it if…', 'rule-mode-if', setMode));
-    var out = [modes];
-    if (parsed.mode === 'complex') {
-      out.push(h('div', { class: 'callout is-warn', style: 'margin-top:12px' },
-        h('p', null, 'This rule was written by hand in the Sheet and is too detailed for this editor: ', h('strong', { text: ruleSentence(s.show_if) }), '.'),
-        h('p', null, btn('Replace it with a simple rule', 'rule-replace', function () {
-          if (!answers.length) { toast('There are no earlier answers to test here.', { kind: 'info' }); return; }
-          s.show_if = conditionObject(defaultCondition(starter)); changed(); draw();
-        }, { small: true }), ' ', btn('Remove the rule', 'rule-clear', function () { s.show_if = null; changed(); draw(); }, { small: true, kind: 'danger' }))));
-      return out;
-    }
-    if (parsed.mode === 'always') {
-      if (!realAnswers.length) out.push(h('p', { class: 'help', style: 'margin-top:10px', text: answers.length ? 'No earlier answers can be tested here, because this is near the start (only the partner’s language or the round). Questions further down can depend on it.' : 'No earlier answers can be tested here, because this is near the start. Questions further down can depend on it.' }));
-      return out;
-    }
-    function commit() { s.show_if = buildRule(parsed); changed(); draw(); }
-    if (parsed.conds.length > 1) {
-      out.push(h('div', { class: 'row', style: 'margin-top:12px' }, h('span', { text: 'Show it when' }),
-        selectCtl([{ value: 'all', label: 'all of these are true' }, { value: 'any', label: 'any of these is true' }], parsed.combine, 'rule-combine',
-          function (v) { parsed.combine = v; commit(); }, { aria: 'All or any of the conditions', inline: true })));
-    }
-    parsed.conds.forEach(function (c, i) { out.push(conditionRow(c, i, answers, idx, parsed, commit, null)); });
-    out.push(h('div', { style: 'margin-top:10px' }, btn('Add another condition', 'rule-add', function () {
-      if (!answers.length) return;
-      parsed.conds.push(defaultCondition(starter));
-      commit();
-    }, { small: true, icon: '+' })));
-    out.push(h('div', { class: 'sentence', test: 'rule-sentence' }, 'Partners see this question only if ', h('strong', { text: ruleSentence(s.show_if) }), '.'));
-    return out;
-  }
-
-  function radioCard(name, value, on, label, test, onPick) {
-    var input = h('input', { type: 'radio', name: name, value: value, checked: on, test: test });
-    input.addEventListener('change', function () { if (input.checked) onPick(value === 'always' ? 'always' : 'if'); });
-    return h('label', { class: 'radio-card' + (on ? ' is-on' : '') }, input, label);
-  }
-
-  /* A sensible first condition for an answer: low scores for numbers, the
-     first choice for lists, "was answered" for typed answers. */
-  function defaultCondition(ans) {
-    if (ans.kind === 'text') return { answer: ans.ref, test: 'answered', value: null };
-    if (ans.kind === 'number') return { answer: ans.ref, test: 'at_most', value: ans.max === 10 ? 6 : 2 };
-    return { answer: ans.ref, test: 'equals', value: ans.values.length ? ans.values[0].v : '' };
-  }
-
-  /* One condition of a rule or of a jump. o (optional) = { prefix: the start
-     of the data-test names ('rule-' by default), forJump: true for a jump's
-     condition, keepOne: the last condition can't be removed }. */
-  function conditionRow(c, i, answers, idx, parsed, commit, o) {
-    o = o || {};
-    var P = o.prefix || 'rule-';
-    var ans = null;
-    answers.forEach(function (a) { if (a.ref === c.answer) ans = a; });
-    var answerOptions = answers.map(function (a) { return { value: a.ref, label: a.label, group: a.group }; });
-    if (!ans) {
-      var d = describeAnswer(c.answer);
-      answerOptions.unshift({ value: c.answer, label: '⚠ ' + (d ? d.label : c.answer) + ' (can’t be used here)' });
-    }
-    var answerSel = selectCtl(answerOptions, c.answer, P + 'answer-' + i, function (v) {
-      var a = null;
-      answers.forEach(function (x) { if (x.ref === v) a = x; });
-      if (a) parsed.conds[i] = defaultCondition(a);
-      commit();
-    }, { aria: o.forJump ? 'Which answer' : 'Which earlier answer' });
-    var known = ans || describeAnswer(c.answer);   // for labels, even when it can't be used here
-    var kind = known && TESTS_FOR[known.kind] ? known.kind : 'choice';
-    var tests = TESTS_FOR[kind].slice();
-    if (tests.indexOf(c.test) === -1) tests.unshift(c.test);
-    var testSel = selectCtl(tests.map(function (t) { return { value: t, label: TEST_LABELS[t] || t }; }), c.test, P + 'test-' + i, function (v) {
-      parsed.conds[i] = convertTest(c, v, known);
-      commit();
-    }, { aria: 'Test' });
-    var valueCtl = conditionValue(c, i, known, commit, P) || h('span');
-    var remove = btn('', P + 'remove-' + i, function () {
-      if (o.keepOne && parsed.conds.length === 1) { toast('A jump needs at least one condition. To drop it, remove the whole jump.', { kind: 'info' }); return; }
-      parsed.conds.splice(i, 1);
-      if (!parsed.conds.length) parsed.mode = 'always';
-      commit();
-    }, { small: true, icon: '✕', aria: 'Remove this condition', title: 'Remove this condition' });
-    /* Classes place the parts on narrow windows (see .cond in the look). */
-    answerSel.classList.add('cond-answer');
-    testSel.classList.add('cond-test');
-    valueCtl.classList.add('cond-value');
-    remove.classList.add('cond-remove');
-    return h('div', { class: 'cond', test: P + 'cond-' + i },
-      answerSel, testSel, valueCtl, remove,
-      ans ? null : h('div', { class: 'cond-problem field-error', text: problemText(c.answer, idx, o.forJump) }));
-  }
-
-  /* Keeps the chosen value sensible when the test changes ("is" <-> "is one of"). */
-  function convertTest(c, test, ans) {
-    var out = { answer: c.answer, test: test, value: null };
-    var first = ans && ans.values.length ? ans.values[0].v : '';
-    var current = Array.isArray(c.value) ? c.value[0] : c.value;
-    if (test === 'answered' || test === 'not_answered') return out;
-    if (test === 'in') { out.value = current !== null && current !== undefined && current !== '' ? [current] : [first]; return out; }
-    if (test === 'at_most' || test === 'at_least') {
-      out.value = typeof current === 'number' ? current : (ans ? (ans.max === 10 ? 6 : 2) : 2);
-      return out;
-    }
-    out.value = current !== null && current !== undefined && current !== '' ? current : first;
-    return out;
-  }
-
-  function conditionValue(c, i, ans, commit, prefix) {
-    var P = prefix || 'rule-';
-    if (c.test === 'answered' || c.test === 'not_answered') return null;
-    var values = ans ? ans.values : [];
-    if (c.test === 'at_most' || c.test === 'at_least') values = values.filter(function (v) { return typeof v.v === 'number'; });
-    function toValue(text) {
-      for (var k = 0; k < values.length; k++) if (String(values[k].v) === text) return values[k].v;
-      return text;
-    }
-    if (c.test === 'in') {
-      var chosen = arr(c.value).map(String);
-      return h('div', { class: 'pills', test: P + 'value-' + i, role: 'group', 'aria-label': 'Possible answers' }, values.map(function (v) {
-        var on = chosen.indexOf(String(v.v)) !== -1;
-        var input = h('input', { type: 'checkbox', checked: on, test: P + 'value-' + i + '-' + v.v, 'aria-label': v.label });
-        input.addEventListener('change', function () {
-          var set = values.filter(function (x) {
-            return x === v ? input.checked : chosen.indexOf(String(x.v)) !== -1;
-          }).map(function (x) { return x.v; });
-          if (!set.length) { input.checked = true; toast('Keep at least one answer ticked.', { kind: 'info' }); return; }
-          c.value = set;
-          commit();
-        });
-        return h('label', { class: 'pill' + (on ? ' is-on' : '') }, input, v.label);
-      }));
-    }
-    var options = values.map(function (v) { return { value: String(v.v), label: v.label }; });
-    if (!values.some(function (v) { return String(v.v) === String(c.value); })) options.unshift({ value: String(c.value), label: '⚠ ' + str(c.value) + ' (not a possible answer)' });
-    return selectCtl(options, String(c.value), P + 'value-' + i, function (v) { c.value = toValue(v); commit(); }, { aria: 'Answer value' });
-  }
-
-  /* ---- "After this question": where partners go next (jumps) ----------------
-     The Screens tab's "next" (usually go to) and "jumps" (exceptions, checked
-     in order before "next"). Only LATER rows are offered, so arrows can never
-     go round in circles. The answers a jump may test come from the form's
-     own checker (ruleAnswers: answers before this screen, its own answers,
-     the language and the round). */
-
-  /* A shown thank-you screen without a rule always ends the route, so an
-     arrow may point at it from anywhere, also from a question below it (an
-     ending never goes on, so no circle is possible: flow-panel.js does the
-     same). */
-  function isFixedEnding(x) { return !!x && x.type === 'thank_you' && x.active && !x.show_if && !x.skip_if; }
-
-  /* The rows below row idx a jump or "usually go to" may point at, and the
-     endings above it: [{ value, label, group }]. Hidden rows are left out. */
-  function laterTargets(idx) {
-    var end = mainEndIndex();
-    var out = [];
-    M().screens.forEach(function (x, i) {
-      if (i === idx || !x.active || (i < idx && !isFixedEnding(x))) return;
-      var ending = x.type === 'thank_you';
-      out.push({ value: x.id, label: ending ? (i + 1) + '. ' + (i === end ? 'The thank-you screen' : 'Ending: ' + shorten(screenEnglish(x), 50)) : afterLabel(x, i),
-        group: ending ? 'Endings (send the answers)' : (end !== -1 && i > end ? 'Other routes (below the thank-you screen)' : 'Later questions') });
-    });
-    out.sort(function (a, b) {
-      var rank = { 'Later questions': 0, 'Other routes (below the thank-you screen)': 1, 'Endings (send the answers)': 2 };
-      return rank[a.group] - rank[b.group];
-    });
-    return out;
-  }
-
-  /* Where "the next one in the list" leads from row idx. A hidden ending on
-     the way still ends the route: at the main thank-you screen (flow-panel.js). */
-  function followingName(idx) {
-    var list = M().screens;
-    for (var i = idx + 1; i < list.length; i++) {
-      if (list[i].active) return targetName(list[i].id);
-      if (list[i].type === 'thank_you') {
-        var main = firstFixedEnding();
-        return (main ? targetName(main.id) : 'the end (the form adds a thank-you screen)') + ', because the ending below this question (question ' + (i + 1) + ') is hidden';
-      }
-    }
-    return 'the end (the form adds a thank-you screen)';
-  }
-  /* The main ending as the form's route has it: the first shown thank-you screen without a rule. */
-  function firstFixedEnding() { return M().screens.filter(isFixedEnding)[0] || null; }
-
-  function afterCard(s, idx) {
-    if (!S.flow.lib) return null;
-    var info = flowInfo();
-    if (!info || !info.ok) return null;
-    if (s.type === 'thank_you') {
-      return card({ title: 'After this screen', test: 'after-card' },
-        h('p', { class: 'help', test: 'ending-note', text: 'This is an ending: partners stop here and their answers are sent. Partners reach it ' +
-          (idx === mainEndIndex() ? 'at the end of the main route, or through a jump.' : 'only through a jump from an earlier question (Edit that question > After this question > Add a jump).') }));
-    }
-    var box = h('div', { test: 'after-body' });
-    function draw() { redraw(box, function () { return afterBody(s, idx, draw); }); }
-    draw();
-    return card({ title: 'After this question', sub: 'Where partners go next. Usually the next question in the list; a jump sends some partners elsewhere, for example to an ending.', test: 'after-card' }, box);
-  }
-
-  function afterBody(s, idx, draw) {
-    var out = [];
-    var info = flowInfo();
-    var dd = s.type === 'function_deep_dives' && settingRaw('deep_dive.when') === 'immediate';
-    if (dd) {
-      /* In this mode the form does not use this row at all, so its own arrows
-         are not offered; settings left over from the other mode can be cleared. */
-      out.push(h('div', { class: 'callout is-info small', test: 'after-not-used' }, h('p', { text: 'Not used while the problem screens come straight after each low rating: set where partners go on the area ratings screen instead.' })));
-      if (s.next || jumpsUnreadable(s) || jumpsOf(s).length || s.repeat) {
-        out.push(h('div', { class: 'callout is-warn small', style: 'margin-top:10px', test: 'after-leftovers' },
-          h('p', { text: 'This row still has ' + joinWith([s.next ? 'a “Usually go to”' : '', jumpsUnreadable(s) || jumpsOf(s).length ? 'jumps' : '', s.repeat ? 'an “ask for each area”' : ''].filter(Boolean), 'and') +
-            ' from before. They change nothing for partners in this mode, but the check warns about them until they are cleared.' }),
-          h('p', null, btn('Clear them', 'after-clear', function () { s.next = ''; s.jumps = []; s.repeat = ''; changed(); draw(); }, { small: true }))));
-      }
-      return out;
-    }
-    var rp = routeProblems(s, idx);
-    if (rp.row.length) {
-      out.push(h('div', { class: 'callout is-warn small', style: 'margin-bottom:10px', test: 'route-problems' },
-        h('p', { text: 'The form’s route code says:' }), h('ul', { class: 'route-list' }, rp.row.map(function (m) { return h('li', { text: m }); }))));
-    }
-    var targets = laterTargets(idx);
-    var nextOpts = [{ value: '', label: 'The next one in the list: ' + followingName(idx) }].concat(targets);
-    if (s.next && !targets.some(function (t) { return t.value === s.next; })) {
-      nextOpts.splice(1, 0, { value: s.next, label: '⚠ ' + targetName(s.next) + ' (can’t be used: it is not below this question, or it is hidden)' });
-    }
-    out.push(field('Usually go to', selectCtl(nextOpts, s.next || '', 'next-select', function (v) { s.next = v; changed(); draw(); }, { aria: 'Usually go to' }),
-      'Arrows only go down the list, so a route can never go round in circles.'));
-    if (jumpsUnreadable(s)) {
-      out.push(h('div', { class: 'callout is-warn', style: 'margin-top:12px', test: 'jumps-unreadable' },
-        h('p', { text: 'The jumps of this question were changed by hand in the Sheet and can’t be read: ' + shorten(s.jumps.unreadable, 80) }),
-        h('p', null, btn('Remove them, and build them again here', 'jumps-clear', function () { s.jumps = []; changed(); draw(); }, { small: true, kind: 'danger' }))));
-    } else {
-      jumpsOf(s).forEach(function (j, k) { out.push(jumpRow(s, idx, j, k, draw, targets, rp)); });
-      out.push(h('div', { style: 'margin-top:10px' }, btn('Add a jump', 'jump-add', function () { addJump(s, idx, targets); draw(); }, { small: true, icon: '+' })));
-    }
-    out.push(h('div', { class: 'sentence', test: 'jump-sentence' }, afterSentence(s, idx)));
-    return out;
-  }
-
-  /* A new jump: "if <this question's answer (or the last one before it)> …
-     go to the first ending below it". */
-  function addJump(s, idx, targets) {
-    if (!targets.length) { toast('There is nothing below this question to jump to. Add a question or an ending below it first.', { kind: 'info', timeout: 7000 }); return; }
-    var own = ownAnswers(idx);
-    var answers = ruleAnswers(s, idx, 'jump').filter(function (a) { return a.kind !== 'fact'; });
-    var facts = factAnswers();
-    var first = own[own.length - 1] || answers[answers.length - 1] || facts[0];
-    if (!first) { toast('Nothing can be tested here yet.', { kind: 'info' }); return; }
-    var ending = targets.filter(function (t) { return t.group === 'Endings (send the answers)'; })[0] || targets[0];
-    if (!Array.isArray(s.jumps)) s.jumps = [];
-    s.jumps.push({ when: conditionObject(defaultCondition(first)), 'goto': ending.value });
-    changed();
-  }
-
-  function jumpRow(s, idx, j, k, draw, targets, rp) {
-    var P = 'jump-' + k + '-';
-    var jumps = s.jumps;
-    var head = h('div', { class: 'row-head' }, h('span', { class: 'name', text: 'Jump ' + (k + 1) }),
-      h('span', { class: 'small muted', text: k === 0 ? 'checked first' : 'checked if the jumps above don’t apply' }),
-      h('div', { class: 'btn-group' },
-        k > 0 ? btn('', P + 'up', function () { moveItem(jumps, k, k - 1); changed(); draw(); }, { small: true, icon: '↑', aria: 'Check this jump earlier' }) : null,
-        k < jumps.length - 1 ? btn('', P + 'down', function () { moveItem(jumps, k, k + 1); changed(); draw(); }, { small: true, icon: '↓', aria: 'Check this jump later' }) : null,
-        btn('Remove', P + 'remove', function () { jumps.splice(k, 1); changed(); draw(); }, { small: true, kind: 'danger' })));
-    var body = [head];
-    if (!j || typeof j !== 'object') {
-      body.push(h('p', { class: 'field-error', text: 'This jump can’t be read. Remove it and add it again.' }));
-      return h('div', { class: 'jump-row', test: 'jump-' + k }, body);
-    }
-    var answers = ruleAnswers(s, idx, 'jump');
-    var parsed = parseRule(j.when);
-    function commit() { j.when = buildRule(parsed); changed(); draw(); }
-    if (parsed.mode === 'complex' || parsed.mode === 'always') {
-      body.push(h('div', { class: 'callout is-warn small', test: P + 'complex' },
-        h('p', null, parsed.mode === 'always' ? 'This jump has no condition.' : 'This jump’s condition was written by hand and is too detailed for this editor: ', parsed.mode === 'always' ? null : h('strong', { text: ruleSentence(j.when) })),
-        h('p', null, btn('Replace it with a simple condition', P + 'replace', function () {
-          var first = answers[answers.length - 1];
-          if (!first) { toast('Nothing can be tested here yet.', { kind: 'info' }); return; }
-          j.when = conditionObject(defaultCondition(first)); changed(); draw();
-        }, { small: true }))));
-    } else {
-      body.push(h('div', { class: 'small muted', style: 'margin-top:2px', text: 'If' }));
-      if (parsed.conds.length > 1) {
-        body.push(h('div', { class: 'row', style: 'margin-top:6px' }, h('span', { text: 'Jump when' }),
-          selectCtl([{ value: 'all', label: 'all of these are true' }, { value: 'any', label: 'any of these is true' }], parsed.combine, P + 'combine',
-            function (v) { parsed.combine = v; commit(); }, { aria: 'All or any of the conditions', inline: true })));
-      }
-      parsed.conds.forEach(function (c, i) { body.push(conditionRow(c, i, answers, idx, parsed, commit, { prefix: P, forJump: true, keepOne: true })); });
-      body.push(h('div', { style: 'margin-top:8px' }, btn('Add another condition', P + 'add', function () {
-        var last = answers[answers.length - 1];
-        if (!last) return;
-        parsed.conds.push(defaultCondition(last));
-        commit();
-      }, { small: true, icon: '+' })));
-    }
-    var gotoOpts = targets.slice();
-    if (j['goto'] && !targets.some(function (t) { return t.value === j['goto']; })) {
-      gotoOpts.unshift({ value: j['goto'], label: '⚠ ' + targetName(j['goto']) + ' (can’t be used: it is not below this question, or it is hidden)' });
-    }
-    if (!j['goto']) gotoOpts.unshift({ value: '', label: 'Pick where to go' });
-    var gotoSel = selectCtl(gotoOpts, j['goto'] || '', P + 'goto', function (v) { j['goto'] = v; changed(); draw(); }, { aria: 'Go to' });
-    body.push(h('div', { class: 'jump-goto' }, h('label', { class: 'field-label', for: gotoSel.id = 'jg' + (++uid), text: '→ go to' }), gotoSel));
-    var problems = (rp.jumps[k] || []).slice();
-    if (rp.dropped[k]) problems.unshift('This jump is not used by the form: its question is missing, above this one or hidden, or its condition is incomplete. Pick another question or ending.');
-    if (problems.length) body.push(h('div', { class: 'field-error', style: 'margin-top:6px', test: P + 'problem' }, '⚠ This jump can never happen. ', problems.join(' ')));
-    return h('div', { class: 'jump-row', test: 'jump-' + k }, body);
-  }
-
-  /* "After this question, partners go to …; except: if …, they go to …". */
-  function afterSentence(s, idx) {
-    var usual = s.next ? targetName(s.next) : followingName(idx);
-    var parts = ['After this question, partners go to ', h('strong', { text: usual }), '.'];
-    jumpsOf(s).forEach(function (j) {
-      if (!j || typeof j !== 'object' || !j['goto']) return;
-      parts.push(' Except: if ', h('strong', { text: ruleSentence(j.when) || '(no condition)' }), ', they go to ', h('strong', { text: targetName(j['goto']) }), '.');
-    });
-    if (jumpsOf(s).length > 1) parts.push(' The first jump that applies wins.');
-    return parts;
-  }
-
-  /* ---- "Add an ending": another thank-you screen, reached by a jump -------- */
-
-  function addEndingFlow() {
-    var titleBox = textInput('', 'ending-new-title', null, { placeholder: 'For example: Thank you! Our team will call you this week.' });
-    var bodyBox = h('textarea', { rows: 2, test: 'ending-new-body', placeholder: 'For example: Your answers were sent. You can close this page.', 'aria-label': 'Message in English' });
-    var preview = h('div', { class: 'help', test: 'ending-new-code' });
-    function taken() {
-      var t = takenScreenIds();
-      Object.keys(M().texts).forEach(function (k) { var m = /^end\.([a-z0-9_]+)\./.exec(k); if (m) t[m[1]] = true; });
-      return t;
-    }
-    function upd() { preview.textContent = 'Code in the data: ' + slug(titleBox.value, taken(), 'ending') + ' (' + codeChangeHint() + '). Its texts: end.<code>.title and end.<code>.body.'; }
-    titleBox.addEventListener('input', upd);
-    upd();
-    openModal({
-      title: 'Add an ending', test: 'add-ending-modal',
-      body: [h('p', { class: 'help', text: 'Another thank-you screen. It goes below the main one, and partners get there only through a jump you add to an earlier question. It sends the answers, like the main one.' }),
-        field('Title in English', titleBox, null, preview),
-        field('Message in English', bodyBox, 'The other languages show the English until they are translated (Texts & translations).')],
-      buttons: [
-        { label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } },
-        { label: 'Add ending', kind: 'primary', test: 'ending-new-create', onClick: function (c) {
-          if (!titleBox.value.trim()) { titleBox.classList.add('is-invalid'); titleBox.focus(); toast('Write the title in English first.', { kind: 'info' }); return; }
-          if (!bodyBox.value.trim()) { bodyBox.classList.add('is-invalid'); bodyBox.focus(); toast('Write the message in English too.', { kind: 'info' }); return; }
-          c();
-          var id = slug(titleBox.value, taken(), 'ending');
-          var s = normaliseScreen({ id: id, type: 'thank_you', active: true, required: null, text: 'end.' + id + '.title', body: 'end.' + id + '.body' });
-          addTextKey(s.text, { en: titleBox.value.trim() }, 'end.');
-          addTextKey(s.body, { en: bodyBox.value.trim() }, 'end.');
-          M().screens.push(s);
-          changed();
-          S.ui.qview = 'list';
-          go('questions', { test: 'screen-card-' + id });
-          toast('Ending added below the thank-you screen. Now send partners there with a jump: Edit an earlier question > After this question > Add a jump.', { kind: 'ok', timeout: 9000 });
-        } }
-      ]
-    });
-  }
-
-  /* ---- Questions > Map ----------------------------------------------------- */
-
-  function backToList() {
-    return btn('← All questions', 'qview-back', function () { stopMapFrame(); S.ui.qview = 'list'; renderMain(false); }, { small: true });
-  }
-
   function mapView() {
     var st = S.ui.map;
     var box = h('div', { test: 'map-box', 'data-state': 'starting', style: 'margin-top:12px' });
+    var choice = whichRoute(st, 'map-which', true);
     setTimeout(function () { if (document.body.contains(box)) fillMap(box); }, 0);
     return [
       sectionHead('Map of the route', 'Every screen partners can get and every arrow between them, worked out by the form’s own route code.', backToList()),
-      card({ test: 'map-card' },
-        h('div', { class: 'radio-cards', role: 'radiogroup', 'aria-label': 'Which version' },
-          choiceCard('map-which', 'draft', st.which === 'draft', 'Your draft (unsaved changes included)', 'map-which-draft', function () { st.which = 'draft'; renderMain(true); }),
-          choiceCard('map-which', 'live', st.which === 'live', 'The live version (what partners get now)', 'map-which-live', function () { st.which = 'live'; renderMain(true); })),
-        box)
+      card({ test: 'map-card' }, choice, box)
     ];
   }
 
@@ -4135,7 +3885,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       box.setAttribute('data-state', 'message');
       redraw(box, function () { return h('div', { class: 'callout' + (cls ? ' ' + cls : ''), test: test }, h('p', { text: text }), extra || null); });
     }
-    var survey, strings;
+    var survey, strings, label = 'Your draft';
     if (st.which === 'live') {
       if (!st.live && !st.liveError) {
         say('', 'Loading the live version…', 'map-live-loading');
@@ -4156,6 +3906,11 @@ details.group > .group-body { padding: 0 16px 14px; }
       if (!st.live.live) { say('', 'Nothing is published yet, so partners get the questionnaire stored in GitHub. Switch to your draft to see its map.', 'map-live-none'); return; }
       survey = st.live.survey;
       strings = st.live.strings;
+      label = 'Version ' + str(st.live.live.version);
+    } else if (st.which === 'pasted' && pastedPreview()) {
+      survey = pastedPreview().survey;
+      strings = pastedPreview().model.texts;
+      label = 'The pasted route';
     } else {
       var info = flowInfo();
       if (!info || !info.ok) { say('is-warn', 'The route could not be worked out: ' + (info ? info.error : 'the route tools are not loaded') + '.', 'map-error'); return; }
@@ -4167,7 +3922,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       say('is-error', 'The map could not be made: ' + ((e && e.message) || e), 'map-error');
       return;
     }
-    drawMapFrame(box, code, survey, strings, st.which === 'live' ? 'Version ' + str(st.live.live.version) : 'Your draft');
+    drawMapFrame(box, code, survey, strings, label);
   }
 
   /* The Map: the route as a text outline straight away (with the
@@ -4231,7 +3986,9 @@ details.group > .group-body { padding: 0 16px 14px; }
      tests, plus the language, "the link says the language" and the number of
      "what changed" items. PP.flowCheck.simulate (the form's own engine)
      shows the screens, why the others are skipped, where Next would be
-     blocked and what would be sent. Nothing is sent or saved. */
+     blocked and what would be sent. Nothing is sent or saved. After a clean
+     Check of a pasted table it can also run on that route, before it is
+     used (inModel). */
 
   function testedInputs(info) {
     var F = S.flow.lib.flow;
@@ -4263,15 +4020,44 @@ details.group > .group-body { padding: 0 16px 14px; }
     return { answers: all.filter(function (d) { return keys.indexOf(d.ref) !== -1; }), unknown: keys.filter(function (k) { return !known[k]; }), round: !!facts.round };
   }
 
+  /* Runs fn with M() = model (the questionnaire with the pasted route, for
+     its preview in Try a path), then puts the draft back, also when fn
+     fails. Only for building parts of the page: nothing in fn may change or
+     save the model. The route worked out for the preview (flowInfo) is kept
+     apart from the draft's. model = null: just fn(). */
+  var previewCache = null;
+  function inModel(model, fn) {
+    if (!model || model === S.model) return fn();
+    var keepModel = S.model, keepCache = flowCache;
+    S.model = model;
+    flowCache = previewCache;
+    try {
+      return fn();
+    } finally {
+      previewCache = flowCache;
+      flowCache = keepCache;
+      S.model = keepModel;
+    }
+  }
+
   function tryView() {
+    var st = S.ui.tryPath;
+    var preview = pastedPreview();
+    if (!preview) st.which = 'draft';
+    var choice = preview ? h('div', { class: 'card', test: 'try-which-card' }, whichRoute(st, 'try-which', false)) : null;
+    var model = st.which === 'pasted' && preview ? preview.model : null;
+    return inModel(model, function () { return tryViewOf(model, choice); });
+  }
+
+  function tryViewOf(model, choice) {
     var info = flowInfo();
     var head = sectionHead('Try a path', 'Pick answers and see which screens a partner gets, why the others are skipped, and exactly what would be sent. Nothing is sent or saved.', backToList());
-    if (!info || !info.ok) return [head, routeNote() || h('div', { class: 'callout is-warn', test: 'try-error' }, h('p', { text: 'The route could not be worked out: ' + (info ? info.error : '') }))];
+    if (!info || !info.ok) return [head, choice, routeNote() || h('div', { class: 'callout is-warn', test: 'try-error' }, h('p', { text: 'The route could not be worked out: ' + (info ? info.error : '') }))];
     var st = S.ui.tryPath;
     if (!st.lang || !langByCode(st.lang)) st.lang = defaultLang();
     var tested = testedInputs(info);
     var result = h('div', { test: 'try-result' });
-    function run() { redraw(result, function () { return tryResult(info, st); }); }
+    function run() { redraw(result, function () { return inModel(model, function () { return tryResult(info, st); }); }); }
     var controls = [];
     controls.push(field('Language', selectCtl(activeLangs().map(function (L) { return { value: L.code, label: langLabel(L) }; }), st.lang, 'try-lang',
       function (v) { st.lang = v; run(); }, { aria: 'Language' })));
@@ -4303,9 +4089,9 @@ details.group > .group-body { padding: 0 16px 14px; }
     });
     if (tested.unknown.length) controls.push(h('p', { class: 'field-warn', test: 'try-unknown', text: 'Rules also test ' + tested.unknown.map(quote).join(', ') + ', which no screen stores: Check for problems in Publish.' }));
     run();
-    return [head, h('div', { class: 'try-grid' },
+    return [head, choice, h('div', { class: 'try-grid' },
       card({ title: 'Answers and the link', test: 'try-inputs' }, controls),
-      card({ title: 'What this partner gets', test: 'try-output' }, result))];
+      card({ title: model ? 'What this partner gets on the pasted route' : 'What this partner gets', test: 'try-output' }, result))];
   }
 
   function stepName(info, node, item) {
@@ -4350,202 +4136,6 @@ details.group > .group-body { padding: 0 16px 14px; }
       h('details', { style: 'margin-top:6px' }, h('summary', { test: 'try-sent-toggle', class: 'field-label', style: 'cursor:pointer' }, 'Show the data'),
         h('pre', { test: 'try-sent-json' }, JSON.stringify(sent, null, 2)))));
     return out;
-  }
-
-  /* ---- Add a question ------------------------------------------------------ */
-
-  function addQuestionFlow() {
-    var types = allTypes().filter(function (type) {
-      var t = typeInfo(type);
-      return !t.builtin || !firstOfType(type);
-    });
-    var state = { type: types[0], text: '' };
-    var codePreview = h('div', { class: 'help', test: 'new-question-code' });
-    var textBox = textInput('', 'new-question-text', function (v) { state.text = v; updateCode(); }, { placeholder: 'For example: How easy is it to raise a dispute?' });
-    var textField = field('Write the question in English', textBox, 'You can add the other languages next.', codePreview);
-    var screens = M().screens;
-    var thanksIdx = screens.map(function (s) { return s.type; }).indexOf('thank_you');
-    var defaultAfter = thanksIdx > 0 ? thanksIdx - 1 : screens.length - 1;
-    /* With the route tools, a question may also go below the thank-you screen
-       (another route, reached by a jump). */
-    var afterOptions = screens.map(function (s, i) { return { value: String(i), label: afterLabel(s, i) }; })
-      .filter(function (o, i) { return S.flow.lib ? true : screens[i].type !== 'thank_you'; });
-    afterOptions.unshift({ value: '-1', label: 'At the very start' });
-    var afterSel = selectCtl(afterOptions, String(defaultAfter), 'new-question-after', null, { aria: 'Put it after' });
-    var grid = h('div', { class: 'type-grid', role: 'radiogroup', 'aria-label': 'Kind of question' });
-
-    function updateCode() {
-      var t = typeInfo(state.type);
-      var std = t.default_text;   // the standard text of a built-in kind (support_block: q.support_block)
-      textField.hidden = !t.needs_text || !!(std && en(std));   // its standard text already exists
-      if (t.builtin) { codePreview.textContent = ''; return; }
-      codePreview.textContent = 'Code in the data: ' + slug(state.text, takenScreenIds(), 'question') + ' (' + codeChangeHint() + ')';
-    }
-    function drawTypes() {
-      grid.textContent = '';
-      types.forEach(function (type) {
-        var t = typeInfo(type);
-        var on = state.type === type;
-        grid.appendChild(h('button', {
-          type: 'button', class: 'type-opt' + (on ? ' is-on' : ''), role: 'radio', 'aria-checked': on ? 'true' : 'false', test: 'type-pick-' + type,
-          onClick: function () { state.type = type; drawTypes(); updateCode(); }
-        }, h('span', { class: 'qicon', 'aria-hidden': 'true', text: t.icon }),
-        h('span', null, h('strong', { text: t.label + (t.builtin ? ' (built-in, missing)' : '') }), h('span', { class: 'desc', text: t.description }))));
-      });
-    }
-    drawTypes();
-    updateCode();
-    openModal({
-      title: 'Add a question', test: 'add-question-modal', wide: true,
-      body: [h('div', { class: 'group-label', text: '1. What kind of question?' }), grid,
-        h('div', { class: 'group-label', text: '2. The question' }), textField,
-        h('div', { style: 'margin-top:12px' }, field('Put it after', afterSel))],
-      buttons: [
-        { label: 'Cancel', test: 'modal-cancel', onClick: function (c) { c(); } },
-        { label: 'Add question', kind: 'primary', test: 'new-question-create', onClick: function (c) {
-          if (!textField.hidden && !state.text.trim()) { textBox.classList.add('is-invalid'); textBox.focus(); toast('Write the question in English first.', { kind: 'info' }); return; }
-          c();
-          createScreen(state.type, state.text.trim(), Number(afterSel.value));
-        } }
-      ]
-    });
-  }
-
-  /* One line of the "Put it after" list. Built-in blocks use the name on
-     their card in Questions plus their kind's after_note (for example "4. Area
-     ratings (one screen per area)"); other questions use their English text. */
-  function afterLabel(s, i) {
-    var t = typeInfo(s.type);
-    var name = t.builtin ? t.label + (typeof t.after_note === 'string' ? t.after_note : '') : shorten(screenEnglish(s) || t.label, 60);
-    if (s.type === 'thank_you') {
-      name = i === mainEndIndex() ? t.label + ' (the end of the main route: below it, partners arrive only through a jump)'
-        : 'Ending: ' + shorten(screenEnglish(s), 50);
-    }
-    return (i + 1) + '. ' + name + (s.active ? '' : ' (hidden)');
-  }
-
-  function createScreen(type, english, afterIdx) {
-    var t = typeInfo(type);
-    var id = t.builtin ? slug(t.default_id || type, takenSet(M().screens.map(function (s) { return s.id; })), type) : slug(english, takenScreenIds(), 'question');
-    var s = normaliseScreen({ id: id, type: type, active: true, required: null });
-    if (t.fields.indexOf('required') !== -1) s.required = effectiveRequired(s);   // start from the type's standard
-    if (t.needs_text) {
-      var key = t.default_text || 'q.' + id;
-      s.text = key;
-      if (!M().texts[key]) addTextKey(key, { en: english }, 'q.');
-      else if (english && !en(key)) setText(key, 'en', english);   // never overwrite existing wording
-    }
-    if (t.fields.indexOf('low_label') !== -1) {
-      s.low_label = cloneText('nps.low', 'q.' + id + '.low', 'Not at all likely');
-      s.high_label = cloneText('nps.high', 'q.' + id + '.high', 'Extremely likely');
-    }
-    if (t.fields.indexOf('scale_hint') !== -1) s.scale_hint = cloneText('nps.scale_hint', 'q.' + id + '.hint', '0 means not at all likely, 10 means extremely likely.');
-    if (type === 'language_picker') s.skip_if = 'lang_in_url';
-    if (type === 'whats_changed') s.skip_if = 'empty';
-    var screens = M().screens;
-    var below = false;
-    if (type === 'thank_you') screens.push(s);
-    else {
-      var at = Math.max(0, Math.min(afterIdx + 1, screens.length));
-      var thanks = screens.map(function (x) { return x.type; }).indexOf('thank_you');
-      if (thanks !== -1 && at > thanks && !S.flow.lib) at = thanks;   // without the route tools nothing goes below it
-      below = thanks !== -1 && at > thanks;
-      screens.splice(at, 0, s);
-    }
-    changed();
-    S.ui.editing = id;
-    go('questions');
-    toast('Question added. ' + (type === 'single_choice' ? 'Now add the answers partners can pick.' : 'Check the other languages, then save.') +
-      (below ? ' It is below the thank-you screen, so partners reach it only through a jump from an earlier question.' : ''), { kind: 'ok', timeout: below ? 9000 : undefined });
-  }
-
-  /* Starts a new text as a copy of a standard one (all languages), so new
-     0-10 questions get translated end labels straight away. */
-  function cloneText(fromKey, newKey, englishFallback) {
-    var key = newKey, n = 2;
-    while (M().texts[key]) { key = newKey + '_' + n; n++; }
-    var values = M().texts[fromKey] ? clone(M().texts[fromKey]) : { en: englishFallback };
-    addTextKey(key, values, 'q.');
-    return key;
-  }
-
-  /* ---- Options of a "Pick one answer" question ------------------------------ */
-
-  function addOptionFlow(s) {
-    askName({
-      title: 'Add an answer', test: 'add-option-modal', label: 'The answer in English', placeholder: 'For example: Phone call',
-      taken: function () { return takenOptionCodes(s); }, fallback: 'option', okLabel: 'Add answer', okTest: 'option-add-confirm', inputTest: 'option-new-text'
-    }).then(function (r) {
-      if (!r) return;
-      s.options.push(r.code);
-      addTextKey('choice.' + s.id + '.' + r.code, { en: r.text }, 'choice.' + s.id + '.');
-      changed({ rerender: true });
-    });
-  }
-
-  /* Why a live answer of a pick-one question can't be removed (Publish would
-     refuse it: Model.gs PP_mdlCheckLiveCodes_), and what to do instead. */
-  var LIVE_OPTION_REASON = 'Partners already picked this answer in a real round, so it must stay: an answer can’t be removed or hidden, because the dashboard compares rounds by its code. You can still reword it (change its label in the boxes below).';
-
-  function removeOptionFlow(s, code) {
-    if (isLive.option(s.id, code)) {
-      openModal({ title: 'This answer must stay', test: 'confirm-remove-option',
-        body: [h('div', { class: 'callout is-warn', test: 'option-live-note' }, h('p', { text: LIVE_OPTION_REASON }))],
-        buttons: [{ label: 'OK', kind: 'primary', test: 'modal-cancel', onClick: function (c) { c(); } }] });
-      return;
-    }
-    var users = rulesUsing(function (ref) { return ref === s.id || isRepeatedRef(ref, s.id); });
-    var body = [h('p', { text: 'Remove the answer ' + quote(optionLabel(s.id, code)) + ' and its texts?' })];
-    if (users.length) body.push(h('p', { class: 'field-warn', text: 'Check the rule on ' + users.join(', ') + ': it tests this question.' }));
-    confirmBox({ title: 'Remove this answer?', body: body, ok: 'Remove', danger: true, test: 'confirm-remove-option' }).then(function (ok) {
-      if (!ok) return;
-      var snap = snapshot();
-      s.options.splice(s.options.indexOf(code), 1);
-      removeTextKey('choice.' + s.id + '.' + code);
-      changed({ rerender: true });
-      offerUndo(snap, 'Answer removed.');
-    });
-  }
-
-  function renameOptionFlow(s, code) {
-    askCode({ title: 'Change the answer’s code', current: code, taken: takenOptionCodes(s) }).then(function (nc) {
-      if (!nc) return;
-      s.options[s.options.indexOf(code)] = nc;
-      renameTextKey('choice.' + s.id + '.' + code, 'choice.' + s.id + '.' + nc);
-      renameRuleValue(s.id, code, nc);
-      changed({ rerender: true });
-    });
-  }
-
-  function renameScreenFlow(s) {
-    var taken = takenScreenIds();
-    delete taken[s.id];
-    askCode({ title: 'Change the question’s code', current: s.id, taken: taken }).then(function (nc) {
-      if (!nc) return;
-      var old = s.id;
-      ['text', 'low_label', 'high_label', 'scale_hint', 'body'].forEach(function (f) {
-        var k = s[f];
-        ['q.', 'end.'].forEach(function (pre) {
-          if (k && (k === pre + old || k.indexOf(pre + old + '.') === 0)) {
-            var nk = pre + nc + k.slice((pre + old).length);
-            if (renameTextKey(k, nk)) s[f] = nk;
-          }
-        });
-      });
-      s.options.forEach(function (o) { renameTextKey('choice.' + old + '.' + o, 'choice.' + nc + '.' + o); });
-      forEachCondition(function (c) {
-        if (c.answer === old) c.answer = nc;
-        else if (isRepeatedRef(c.answer, old)) c.answer = nc + c.answer.slice(old.length);
-      });
-      /* Arrows that point at it follow the new code. */
-      M().screens.forEach(function (x) {
-        if (x.next === old) x.next = nc;
-        jumpsOf(x).forEach(function (j) { if (j && j['goto'] === old) j['goto'] = nc; });
-      });
-      s.id = nc;
-      S.ui.editing = nc;
-      changed({ rerender: true });
-    });
   }
 
   /* ==========================================================================
@@ -4807,8 +4397,14 @@ details.group > .group-body { padding: 0 16px 14px; }
         })),
         settingBool('support.allow_comment') ? h('div', { style: 'margin-top:8px' }, h('div', { class: 'group-label', text: 'The comment question' }),
           langFields(commentKey, { test: 'support-comment-text', label: 'Comment question', multiline: true })) : null),
-      h('div', { class: 'callout is-info' }, h('p', null, 'The question that asks whether the partner contacted support, and the title of the support screen, are in ',
-        h('button', { type: 'button', class: 'link-btn', test: 'support-go-questions', onClick: function () { go('questions'); } }, 'Questions'), '.'))
+      h('div', { class: 'callout is-info', test: 'support-where-note' }, h('p', null,
+        'The question that asks whether the partner contacted support (code support_gate) and the title of the support screen (code support) are rows of the route table: change them in ',
+        h('button', { type: 'button', class: 'link-btn', test: 'support-go-questions', onClick: function () { go('questions'); } }, 'Questions'),
+        ' with Paste a route. To change only their words, use ',
+        h('button', { type: 'button', class: 'link-btn', test: 'support-go-texts', onClick: function () {
+          S.ui.texts = { q: 'q.support_', lang: S.ui.texts.lang, onlyTodo: false };
+          go('texts', { test: 'texts-card' });
+        } }, 'Texts & translations'), '.'))
     ];
   };
 
@@ -5740,24 +5336,27 @@ details.group > .group-body { padding: 0 16px 14px; }
       btn('Go there', 'issue-goto-' + kind + '-' + i, function () { goToIssue(it); }, { small: true }));
   }
 
-  /* Is a Questions problem about the question's rule ("Show this question
-     only if…")? Its message quotes the question's own words, as in
-     Question 3 ("…"), and those words may contain "rule", so they are left
-     out of the test. Self-contained on purpose: the panel bench tests it. */
+  /* Is a Questions problem about the question's rule ("show only if": the
+     route table's column of that name)? "Go there" then names that column.
+     Its message quotes the question's own words, as in Question 3 ("…"),
+     and those words may contain "rule", so they are left out of the test.
+     Self-contained on purpose: the panel bench tests it. */
   function isRuleIssue(it) {
     var msg = String((it && it.message) || '').replace(/\("[\s\S]*?"\)/, '');
     return /show_if|\brules?\b/i.test(String((it && it.ref) || '') + ' ' + msg);
   }
 
-  /* Is a Questions problem about where the question goes next (its jumps or
-     its "usually go to", the "After this question" card)? The checker says
-     'its jump to "…"', Flow.gs 'jump 2 goes to …' or 'its "usually go to"
-     arrow', the run-on check 'has no "usually go to"'. Not when the fix is an
+  /* Is a Questions problem about where the question goes next (the route
+     table's "jumps" and "then go to" columns)? "Go there" then names those
+     columns. The checker says 'its jump to "…"', Flow.gs 'jump 2 goes to …',
+     'its "then go to"' or 'has no "then go to"' (a route that runs on into
+     another, since 27 Oct 2026); Publish's older words say "usually go to"
+     for the same column, and are recognised too. Not when the fix is an
      arrow of an EARLIER screen ("nothing leads here"). The question's own
      words are left out, as in isRuleIssue. Self-contained: the bench tests it. */
   function isJumpIssue(it) {
     var msg = String((it && it.message) || '').replace(/\("[\s\S]*?"\)/, '');
-    return /\bits jumps?\b|\bjump \d+\b|"usually go to"|\bgoes on to\b/i.test(msg) && !/\bof an earlier screen\b/i.test(msg);
+    return /\bits jumps?\b|\bjump \d+\b|"usually go to"|"then go to"|\bgoes on to\b/i.test(msg) && !/\bof an earlier screen\b/i.test(msg);
   }
 
   /* Opens the section and the item a problem is about. */
@@ -5796,9 +5395,17 @@ details.group > .group-body { padding: 0 16px 14px; }
         var s = null;
         if ((m = /screen\s+(\d+)/i.exec(ref))) s = M().screens[Number(m[1]) - 1] || null;
         if (!s) M().screens.forEach(function (x) { if (!s && (ref === x.id || ref.indexOf(x.id + ' ') === 0 || ref.indexOf(x.id + '>') === 0 || ref.indexOf(x.id + '/') === 0)) s = x; });
-        if (s) { S.ui.editing = s.id; S.ui.qview = 'list'; go('questions', { test: isJumpIssue(it) ? 'after-card' : isRuleIssue(it) ? 'rule-card' : 'editor-text-card' }); return; }
-        S.ui.editing = null;
-        go('questions');
+        stopMapFrame();
+        S.ui.qview = 'list';
+        if (!s) { go('questions'); return; }
+        /* Questions are changed through the route table (PART 8): open the
+           question's card in the list, with a note in it saying which row and
+           column of the table to change (screenCard shows S.ui.fixNote). */
+        var at = screenPos(s.id);
+        var column = isJumpIssue(it) ? 'its “then go to” or “jumps” column' : isRuleIssue(it) ? 'its “show only if” column' : '';
+        S.ui.fixNote = { id: s.id, text: 'To fix question ' + (at + 1) + ', change row ' + (at + 2) + ' of the route table (code ' + s.id + (column ? ', ' + column : '') +
+          '): Copy the current route, change it in Excel, paste it back under “Paste a route”, Check, then Use this route. The problem: ' + str(it.message) };
+        go('questions', { test: 'screen-card-' + s.id });
         return;
       }
       case 'texts': {
@@ -6217,7 +5824,6 @@ details.group > .group-body { padding: 0 16px 14px; }
       if (hint.indexOf('link') !== -1) S.section = 'links';
       if (hint.indexOf('publish') !== -1) S.section = 'publish';
     }
-    if (S.ui.editing !== null && !findScreen(S.ui.editing)) S.ui.editing = null;
   }
 
   /* Loads can overlap (a background refresh after Save, then a reload after
@@ -6356,6 +5962,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     return withBusy('Checking for problems…', function () { return call('panelValidate', M()); }).then(function (res) {
       res = obj(res);
       S.ui.check = { errors: arr(res.errors), warnings: arr(res.warnings), summary: res.summary || null, seq: S.changeSeq, at: new Date() };
+      S.ui.fixNote = null;   // the note "Go there" left in a question's card belongs to the previous check
       if (S.section === 'publish') renderMain(true);
       updateChrome();
       return S.ui.check;
@@ -6736,11 +6343,20 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* For the local test bench only (tests/panel): its stand-in for Google sets
-     window.__ppTest before this page runs, and gets two read-only views of
-     this window's route here. Google's real page never sets it. */
+     window.__ppTest before this page runs, and gets read-only views of this
+     window's route here: whether the route code runs, the draft's route,
+     the route of the last clean Check of "Paste a route" (also after it was
+     used), what a table tool would be given (tableRequest: the same request
+     the server gets when this window can't run the route code), where the
+     table tools run ('window', 'server' or ''), and the last Check's result.
+     Google's real page never sets it. */
   if (window.__ppTest && typeof window.__ppTest === 'object') {
     window.__ppTest.flowReady = function () { return !!S.flow.lib; };
     window.__ppTest.flowSurvey = function () { var i = flowInfo(); return i && i.ok ? clone(i.survey) : null; };
+    window.__ppTest.pastedSurvey = function () { var p = S.ui.paste.last; return p && p.survey ? clone(p.survey) : null; };
+    window.__ppTest.tableRequest = function (tool, text) { return S.model ? clone(tableRequest(tool, text)) : null; };
+    window.__ppTest.tableToolsWhere = function () { return tableToolsWhere(); };
+    window.__ppTest.pasteResult = function () { return S.ui.paste.result ? clone(S.ui.paste.result) : null; };
   }
 
   fitToScreen();

@@ -1,0 +1,11 @@
+﻿code,kind,question (English),question (Hindi),answers,answers (Hindi),message (English),message (Hindi),required,show only if,then go to,jumps,ask for,show
+language,language,,,,,,,,,,,,yes
+nps,nps,How likely are you to recommend Valmo to another DC owner?,,,,,,yes,,,,,yes
+fn_ratings,area ratings,,,,,,,,,,,,yes
+fn_deep_dives,problem screens,,,,,,,,,,,,yes
+support_gate,support question,"In the last 30 days, did you contact Valmo support?",,,,,,yes,,,,,yes
+support,support ratings,,,,,,,,support_gate = yes,,,,yes
+who_answered,pick one,"When you call, who picks up?",,"agent: An agent; ivr: The phone menu (""IVR""); nobody: Nobody, it rings out",,,,yes,support_gate = yes,,if who_answered = nobody go to one_fix,,yes
+agent_name,voice/typing,Do you remember the name of the agent?,,,,,,no,"who_answered in (agent, ivr)",,,,yes
+one_fix,voice/typing,"If Valmo could fix just one thing for you, what should it be?",,,,,,no,,,,,yes
+thanks,thank you,,,,,,,,,,,,yes

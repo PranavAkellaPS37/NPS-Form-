@@ -7,7 +7,7 @@
 - the engine `web/js/flow.js`, on every phone, with the registry of question kinds `PP.types` (§4);
 - the checker `web/js/flow-check.js`, never on phones (§6);
 - the command `scripts/flow.js` (§7) and compatibility (§8);
-- the control panel's side: `web/js/flow-panel.js`, the generated `apps-script/Flow.gs`, and what Model.gs, Code.gs, PanelServer.gs and Panel.html do with them (§9);
+- the control panel's side: `web/js/flow-panel.js`, the generated `apps-script/Flow.gs`, and what Model.gs, Code.gs, PanelServer.gs and Panel.html do with them (§9), including the route as one table, "Paste a route", since 27 Oct 2026 (§9.8);
 - question kinds as plug-ins: `web/js/types/<code>.js` and `web/config/types.json` (§10).
 
 **Status:** built 23–26 Oct 2026 in five stages, approved by Pranav on 23 Oct (spec §4), then reviewed and fixed on 26 Oct. This file describes what was built; where the build differs from the proposal, the difference is stated.
@@ -426,15 +426,17 @@ Messages are plain English and say how to fix the problem.
 
 Jumps, loops and endings are edited in the panel without JSON. **Design rule:** the Sheet keeps one row per screen, as before, plus 3 columns. Publish builds the graph from the rows with the **same converter** phones use for old lists (`PP.flow.fromLegacy`), then adds the arrows: there is no second compiler.
 
+**Since 27 Oct 2026 the rows are changed as one table** ("Paste a route", §9.8; Pranav's decision in spec §4). The panel's question-by-question editor (Add a question, the rule builder, "After this question", "Ask this question", Add an ending, hide/move/delete) was removed. The Screens tab, compile, checks, Publish, `Flow.gs` and the Map and Try a path are unchanged: the table only produces and reads the same Screens rows and text keys.
+
 ### 9.1 The Screens tab
 
 Three columns at the end, after `active` (Model.gs schema: `… body, active, next, jumps, repeat`). They are read by header name, so old Sheets still load, and Set up or repair adds the headers. A panel window that sends no `next`/`jumps`/`repeat` field for a screen keeps the saved values (PanelServer.gs `PP_carryFlowColumns_`).
 
-| Column | Values | Panel wording |
+| Column | Values | Route table column (§9.8; until 27 Oct the panel's editor) |
 |---|---|---|
-| `next` | Empty = the following row. Otherwise a screen code: a **later** row, or an ending (a thank-you without a rule) anywhere. | "After this question: Usually go to …" |
-| `jumps` | JSON list `[{"when": <condition>, "goto": "<code>"}]`, written by the jump builder and checked in order before `next` | "Add a jump: If … go to …" |
-| `repeat` | empty / `each_area` / `each_low_area`, only on kinds whose description says `row.repeatable: true` (the six ordinary questions: 0–10, faces, yes/no, pick one, voice/typing, information card, plus any added kind that says so) | "Ask this question: once / for each area / for each area rated low" |
+| `next` | Empty = the following row. Otherwise a screen code: a **later** row, or an ending (a thank-you without a rule) anywhere. | `then go to` (was "After this question: Usually go to …"; Publish's messages still say "usually go to") |
+| `jumps` | JSON list `[{"when": <condition>, "goto": "<code>"}]`, checked in order before `next` | `jumps`: `if nps >= 9 go to support_gate; if …` (was "Add a jump: If … go to …") |
+| `repeat` | empty / `each_area` / `each_low_area`, only on kinds whose description says `row.repeatable: true` (the six ordinary questions: 0–10, faces, yes/no, pick one, voice/typing, information card, plus any added kind that says so) | `ask for`: empty or `once` / `each area` / `each area rated low` (was "Ask this question") |
 
 **Rows after the main thank-you** are reachable **only by jumps**: an ending has no `next`. This is how branches and extra endings are laid out (the panel shows them under "Other routes and endings"):
 
@@ -472,9 +474,10 @@ The published `survey.flow` is always a graph. `survey.deep_dive`, `survey.suppo
 
 - **`PP_validate`** keeps its other checks (settings, languages, areas, chips, support, texts, news, clips, rounds) and the Screens tab's own row checks (`PP_mdlCheckScreens_`, on every row, hidden ones too: a missing, disallowed or duplicate code, an unknown kind, a built-in kind used twice (thank-you screens excepted); on shown rows: a wrong skip setting, a non-true/false `required`, a rule that can't be read; and a missing or hidden main thank-you). Rows that can't be told apart would cause follow-on errors, so while one exists only D1/D2 of the route are reported.
 - **The route is checked by `PP_mdlCheckRoute_`** with the one checker: `PP_mdlRouteFindings_` calls `PP_flowLib_().flowCheck.check(compiled survey, strings, { surface: "panel", hiddenCodes: PP_mdlHiddenCodes_(…), nameOf })`. Each finding is reported at its row (`report.error|warn('screens', 'screen N', …)`). Left out on purpose: T1 (Model.gs's own text checks cover every text) and every `info` finding. D1/D2 are worded by `PP_mdlReportDataColumn_`, naming the data column (a deleted `nps`/`support_gate` is an error, a hidden one a warning). A row below the main thank-you that nothing reaches (G1) keeps the panel's own wording.
-- **The wording layer** (`PP_mdlReportRouteFinding_`, review finding 6): `PP_mdlPanelWords_` turns the checker's words into the panel's ("strings.json" → "Texts & translations", "next" → "usually go to", an id → a code), and `PP_mdlThisQuestion_` moves the row's own code out of the sentence into a closing "(Its code is "…".)".
+- **The wording layer** (`PP_mdlReportRouteFinding_`, review finding 6): `PP_mdlPanelWords_` turns the checker's words into the panel's ("strings.json" → "Texts & translations", "next" → "then go to", an id → a code; since 28 Oct 2026 every Model.gs message uses the route table's words: "then go to", "jumps", "show only if", "ask for", "show"), and `PP_mdlThisQuestion_` moves the row's own code out of the sentence into a closing "(Its code is "…".)".
 - **Replaced** (deleted from Model.gs on 26 Oct): `PP_mdlCheckScreenOrder_`, `PP_mdlReachedIds_`, `PP_mdlCheckRules_` through `PP_mdlCheckNumberTest_`, `PP_mdlCheckOptions_`, `PP_mdlCheckDataColumns_`, and the text and options parts of `PP_mdlCheckScreenFields_`. A parity test (tests/model group 13) ran the frozen old Model.gs (`tests/model/legacy/`) against the new one on 221 drafts: all 126 old route problems are still reported at the same question.
-- **`PP_mdlCheckRunIntoRoutes_`** (new error): a shown row below the main thank-you with no "usually go to", whose following row starts **another** route (another question jumps there), would let partners run on into that route. Publish waits until its "usually go to" is set or an ending is put between them.
+- **A route that runs on into another** (error): a shown row below the main thank-you with no "then go to", whose following row starts **another** route (another question jumps there), would let partners run on into that route. Publish waits until its "then go to" is set or an ending is put between them. Since 28 Oct 2026 this is the `fromRows` note **G5** (level `error`; §9.8.4), which `PP_mdlReportFlowNotes_` reports as an error (G5 is in `PP_MDL_FLOW_ERRORS_`, and any note with level `error` blocks Publish); Model.gs's own copy (`PP_mdlCheckRunIntoRoutes_`, 26 Oct) was removed, so Check, the read-only cards and Publish share one rule.
+- **A live question's kind** (error, 28 Oct 2026): `PP_mdlCheckLiveKinds_` refuses a draft row of another type for a screen code of today's live version that stores answers, shown or hidden (`nps`/`support_gate` shown keep their own D2 message). `PP_mdlLiveKinds_(doc)` gives `{ code: Screens type }` of a published version (group bodies included) for the table's Check (§9.8.5). Known gap: a question hidden in the live version is not in it, so its kind is not protected (`CODES_EVER_LIVE` holds codes, not kinds).
 - **The codes lock covers every code ever published** (this closes the hide-and-publish hole). On every Publish once codes are locked, Code.gs `PP_recordCodesEverLive_` adds the codes of the version that was live and of the new one to the Script Property **`CODES_EVER_LIVE`**, as **qualified** entries (`PP_mdlCodesOfDoc_`): `screen:<id>`, `area:<id>`, `chip:<area>/<code>`, `support:<code>`, `option:<question>/<code>`. **`PP_mdlCheckLiveCodes_`** decides the lock itself, kind by kind, on those entries (review finding 2): a problem is looked for in its own area and an answer in its own question, and a hidden one there counts as kept. A code in `CODES_EVER_LIVE` that is gone is an **error**; a code only live today is a warning, as in Phase 2. An answer option can't be hidden, so its message says to put it back (the panel's Remove is locked for live options). The checker's C1 is not used. Near 8,000 characters the list gives a warning; past 9,000 (the property limit) new codes aren't recorded and Publish says so.
 - **Publish while Drive can't read the live version:** once codes are locked, Code.gs `PP_requireLiveWhileLocked_` stops Publish with "try again in a minute" instead of publishing without checking and recording that version's codes.
 
@@ -500,16 +503,13 @@ function PP_flowLib_() { /* the three files copied in as ordinary code, each wit
 
 **How the route code reaches the window (as built: not a template).** The draft said `panelOpen` would inject `PP_FLOW_SOURCE_` with a template. Instead the window asks the guarded call **`panelFlowCode()`** once (`{ source, fingerprint }`) and runs the source with **`new Function('root', …)`** and a private root, exactly as `PP_flowLib_` does (`runFlowCode`). Reasons: Panel.html contains no `<?` (the harness forbids template tags, and the bench serves the file as it is), and the page (about 400 KB) doesn't carry the route code's 240 KB on every open. **[UNCONFIRMED]** on real Google that `new Function` runs in the HtmlService frame; if it can't, the rest of the panel works and Questions shows a short note.
 
-There is no second copy of any rule: the window builds the draft's route with `flowPanel.fromRows`, checks it with `PP.flowCheck`, and asks `PP.flowCheck.answersAt` which answers a rule or jump may test (`routeAnswers`). Badges and jump problems match findings by `site`, `target` and `index`; they read the message only with a Flow.gs older than 26 Oct. If `answersAt` is missing or throws, the builders offer the earlier rows. Added kinds come with the Sheet's list of kinds (each added row's `catalogue`) and are taught to the window's route code (`teachKinds`, `kindAnswer`).
+There is no second copy of any rule: the window builds the draft's route with `flowPanel.fromRows`, checks it with `PP.flowCheck`, and asks `PP.flowCheck.answersAt` which answers a rule or jump may test (`routeAnswers`). Badges and jump problems match findings by `site`, `target` and `index`; they read the message only with a Flow.gs older than 26 Oct. If `answersAt` is missing or throws, the rule badge falls back to the earlier rows (`availableAnswers`). Added kinds come with the Sheet's list of kinds (each added row's `catalogue`) and are taught to the window's route code (`teachKinds`, `kindAnswer`); "Paste a route" teaches them before every Check, so the table accepts an added kind's code as a `kind`.
 
 | Where | What the panel does |
 |---|---|
-| Questions list | Badges: "↪ goes to …", "Repeats for each area" (or "… rated low"), "Ends the survey", "⚠ this jump can never happen" (jumps fromRows leaves out, and R1/R2/R3 on the jump's condition), "⚠ nothing leads here: add a jump to it". Rows after the main thank-you show under "Other routes and endings", with **Add an ending**. Hiding, deleting or moving a row that arrows point at warns first; hiding an ending says partners then end at the main thank-you. |
-| Editor: "After this question" | "Usually go to [▼]": the following row by default; later rows and endings allowed. "+ Add a jump" opens "If [answer ▼] [is ▼] [value ▼] → go to [later question or ending ▼]". The answers on offer come from `answersAt` (earlier answers, this screen's own, the language and the round). |
-| Editor: "Show this question only if" | The rule builder, offering earlier answers plus the language and the round (`SHOW_IF_FACTS = true`). |
-| Editor: "Repeat" | "Ask this question: once / for each area / for each area rated low", on repeatable kinds only (`canRepeat`: the kind's `repeatable`). |
-| Problem / support / area-rating editors | Show the Settings values: where problem screens go (after all ratings / straight after each low rating), a problem must be picked, Other needs detail, support "doesn't apply", the comment box and its question, "I don't handle this". In "straight after" mode the problem-screens row's route controls are hidden, and leftovers are named with **Clear them**. |
-| Add a question | Its "Put it after" also offers places below the main thank-you, for a question on another route. The kinds come from `PP_SCREEN_TYPES` (the catalogue), not a hand-kept list. |
+| Questions: "1. Get the route as a table" and "2. Paste a route" | Since 27 Oct 2026: §9.8.5. |
+| Questions list ("The route now", read only since 27 Oct 2026) | Every row in order with its badges: "Built-in", "Required" / "Optional (Skip button)", "Only if …", "Skipped when …", "↪ goes to … when …" (a jump), "↪ then goes to …" (`next`), "Repeats for each area" (or "… rated low"), "Ends the survey", "Hidden: partners don't see it", and the problem badges "⚠ The rule tests a later or hidden answer", "⚠ this jump can never happen" (jumps fromRows leaves out, and R1/R2/R3 on the jump's condition), "⚠ the jumps can't be read", "⚠ route problem: see below" / "⚠ route note: see below" and "⚠ nothing leads here". The checker's words are listed under the card (not only in a tooltip), and each card says "row N in the table" (N = its place + 1, the header being row 1). Rows after the main thank-you show under "Other routes and endings" (only when there are any). No card has buttons. |
+| Removed on 27 Oct 2026 | Add a question (with "Put it after"), the question editor ("Show this question only if" with the rule builder, "After this question" with "Usually go to" and "+ Add a jump", "Ask this question", the settings cards of the problem / support / area-rating screens, **Clear them**), Add an ending, Hide / Delete / ↑ ↓ / Change code on questions, and the warnings before hiding, deleting or moving a row that arrows point at. Their checks live on in `fromTable` (§9.8.4) and in Publish (§9.4). The problem-screen, support and rating settings stay in Settings (and the comment question in Support questions). |
 | Map (Questions > Map) | `PP.flowCheck.toMermaid` of the draft (or of the live version, from `panelLiveSurvey()`). A text outline shows at once, with an "Open in mermaid.live" link. The drawing is made by **Mermaid 11.4.1** from cdn.jsdelivr.net (`MERMAID_URL`), pinned with Subresource Integrity (`MERMAID_SRI`, sha384), inside a **sandboxed `srcdoc` frame** (`sandbox="allow-scripts"`, no `allow-same-origin`), which can't reach the page or `google.script.run` and only posts back "drawn" or "failed" (with a token the page checks). The drawing replaces the outline when it says "drawn"; after 6 s a note says it is still loading (`MAP_SLOW_MS`); after **20 s** (`MAP_WAIT_MS`) or "failed", the outline stays. This is the page's one external library: the harness static check `mapException` enforces it. **[UNCONFIRMED]** on real Google that the library loads inside the nested frame. |
 | Try a path | Drop-downs for every answer a rule, jump or repeat filter tests, plus language, link-has-language and what-changed. It shows the screens, why skipped ones were skipped, and what would be sent (`PP.flowCheck.simulate`). |
 | Home | The red banner when the form on GitHub runs different route code (§9.5). |
@@ -519,10 +519,200 @@ There is no second copy of any rule: the window builds the draft's route with `f
 - **tests/flow/panel_rows_test.js:** `fromRows` / `toRows` rules and round trips (14 tests).
 - **tests/model:** compile, import, export and restore round trips with jumps, repeats, several endings and the immediate group; the parity group 13; group 14 (hidden endings, the qualified codes lock, live options, wording, immediate-mode leftovers, the GitHub copy's `flow.md`); group 15 (an added kind known to Publish).
 - **tests/gas-harness:** `Flow.gs` loads in the strict fake and is fresh; scenario G11 (publish a graph, the publish guard, the fingerprint, the health fields); G12 (hidden endings, the qualified lock, Drive hiccup refusal, Publish warnings in set-up); the Map exception (`mapException`); planted mistakes for each.
-- **tests/panel:** the jump builder, the repeat selector, endings, the Map (outline first, the 6 s note, the swap, the 20 s fallback), Try a path, badges, Publish warnings, "Show this question only if" on language and round.
+- **tests/panel:** since 27 Oct 2026 the steps go through the route table (§9.8.10): jumps, "then go to", "ask for", endings and `language = hi` written in the table end up in the saved rows and the server's compile; the Map (outline first, the 6 s note, the swap, the 20 s fallback), Try a path, badges, Publish warnings. The old editor's steps were rewritten, and one step asserts that none of its controls is left.
+- **tests/flow/route_table_test.js:** the table (§9.8.10).
 - **tests/e2e:** the repo graph and a panel-compiled graph served by the mock server; I2, Z7, Z8, Z9 (§8).
 
 Commands and expected results: [tests/README.md](../tests/README.md).
+
+### 9.8 The route as a table: "Paste a route" (27 Oct 2026)
+
+**Why.** Pranav found making questions one by one too complicated and asked to paste the route instead: from Excel, or from text an AI writes from his notes, an Excel sheet or a flowchart picture (spec §4, 27 Oct ~12:15). Both ways in use **one format**, a table with one row per screen: `pp-route-table/1` (`PP.flowPanel.TABLE_FORMAT`).
+
+**Where.** `web/js/flow-panel.js`, section "THE ROUTE AS A TABLE" (ES5, plain ASCII, special characters as `\u` escapes), so it reaches the panel window and the server through `Flow.gs` (§9.5) like the rest of the route code. Phones never load it.
+
+| Function (`PP.flowPanel.…`) | Gives |
+|---|---|
+| `fromTable(text, survey, strings, opts)` | `{ ok, format, rows, texts, problems, warnings, survey }`: the pasted text as Screens rows (the panel's own row shape, `blankRow`; the fields of `normaliseScreen` and Model.gs `PP_mdlNormalizeScreen_`), the texts to add or change, and what is wrong (§9.8.4) |
+| `toTable(rows, texts, survey, {format})` | the rows as the table, header first; `format` `tsv` (default, for Excel and Google Sheets), `csv` or `markdown` (§9.8.8) |
+| `templateCsv(survey, strings, {rows})` | the "Excel template": a BOM, the CSV and Windows line ends |
+| `aiInstruction(survey, strings, {rows})` | the text for Claude or ChatGPT (about 12 KB) |
+| `parseRule(text, {languages})` / `ruleText(rule)` | the rule language ↔ the condition JSON of §2.3 (§9.8.7) |
+| `parseJumps(text, {languages})` / `jumpsText(list)` | a `jumps` cell ↔ the `jumps` list of §9.1 |
+
+`opts` of `fromTable`: `rows` = the draft's Screens rows (settings the table has no column for are kept from them, and every draft row the table drops is named in a warning); `liveCodes` = the codes partners answered, as `nps`, `screen:nps` or `option:<question>/<answer>` (other qualified entries are ignored); `liveKinds` = `{ code: Screens type }` of the live version (28 Oct 2026; a live code whose row changes type is a problem, §9.8.4; without it the draft row's type is compared); `rounds` = the questionnaire's round ids (a rule on another round gets a warning); `check: false` skips the checker. `aiInstruction` takes `rounds` too (its example uses the first one, else `<your round id>`).
+
+#### 9.8.1 Reading the pasted text
+
+The text is read in this order (BOM removed, `\r\n` and `\r` become `\n`):
+1. **A Markdown table** (what an AI writes): a line with `|` followed by a separator line of dashes (`| --- |`, colons allowed). If several exist, the first whose header names two known columns wins. Body lines run until a blank line or a line without `|`. Outer pipes are optional; `\|` is a `|` inside a cell; `<br>` is a line break. In text columns one wrapping `**`, `__` or pair of backticks is removed; in the other columns every backtick and `*` is removed.
+2. **Fences:** otherwise, if a ```` ``` ```` block contains a line that names two known columns, only that block is read.
+3. **Tab-, comma- or semicolon-separated:** the header is the first line where one of the three separators gives the most cells that name known columns (at least two). Cells follow Excel's quoting: a cell starting with `"` runs to the closing `"` (`""` is one `"`, line breaks allowed), and a `"` that doesn't close before the next separator is an ordinary character. `format` is `tsv` for tabs, else `csv`.
+
+Lines of other text above the table give one warning, and so do lines below it. **After the first table** (28 Oct 2026) the rest is scanned: a second table with the same columns is joined to the first (its rows numbered as they appear in the paste, with a warning); a second table with other columns is a whole-table problem ("Paste one table only"); a line `Left out: …` (which the AI instruction asks for) is repeated in a warning. A line that isn't a row (one below the last real row, or one with a single filled cell and no kind, unless its kind is a kind or its code is a code) is left out with a warning each. Empty rows are skipped.
+
+**Row numbers:** the header is row 1 and the first row under it row 2, as Excel shows it (for Markdown the separator line is not counted; a quoted cell with a line break is still one row).
+
+#### 9.8.2 Columns
+
+Header names are compared as plain words: lower case, every run of other characters a space (`Question (English)` = `question english` = `question_english`); a header that matches nothing is tried again without its bracketed words (`Ask for (once / each area)` = `ask for`). Columns may come in any order. Only **`kind`** is required.
+
+| Column id | Written by `toTable` | Also read as |
+|---|---|---|
+| `code` | `code` | id, question code, screen code |
+| `kind` | `kind` | type, question type, kind of question, question kind, screen type, kind of screen |
+| `q:<lang>` | `question (English)`, `question (Hindi)` | question, question text, text, title, wording, each with the language's name or code (`question (Hindi)`, `question_hi`, `question in Hindi`, `Hindi question`); a bare language name (`Hindi`, `English`) or one of the six standard codes (`hi`); a bare `question` is English |
+| `a:<lang>` | `answers`, `answers (Hindi)` | answer, options, option, choices, answer options, answer choices (bare = English) |
+| `m:<lang>` | `message (English)`, `message (Hindi)` | message, body, longer text |
+| `low:<lang>`, `high:<lang>`, `hint:<lang>` | not written | left end / low label / left label; right end / high label / right label; hint / scale hint |
+| `required` | `required` | must answer, mandatory, compulsory |
+| `show_if` | `show only if` | show if, show_if, only if, condition, rule, show this question only if |
+| `next` | `then go to` | go to, next, usually go to, after this go to, goto, then |
+| `jumps` | `jumps` | jump, jump rules, branches, branching |
+| `repeat` | `ask for` | repeat, ask, asked for, ask it for, ask this question, repeat for |
+| `show` | `show` | shown, active, visible |
+
+- `toTable` writes the columns in the order of the table above; the `(Hindi)` columns only when the questionnaire has Hindi.
+- Language columns are read for the six standard languages and the questionnaire's own; a column in a language the questionnaire doesn't have is left out with a warning (Settings > Languages).
+- A header the panel doesn't read gives a warning, except columns people keep for themselves, which are left out silently: notes, note, comments, remarks, no, sr no, s no, sl no, serial, serial no, step, order, row, number, question number, screen number, step number, n.
+- Header words in Hindi script and the other scripts are mapped first (28 Oct 2026): हिंदी / हिन्दी → hindi, the native names of Tamil, Telugu, Kannada and Malayalam, अंग्रेज़ी / इंग्लिश → english, प्रश्न / सवाल → question, उत्तर / जवाब → answers, संदेश → message; `Hindi translation` and `translation (Hindi)` are the Hindi question. A header that maps to nothing gives a warning even when it has no Latin letters, saying how many rows of words it drops.
+- **The Sheet's own Screens tab** (a header with `id` or `type` and at least two of `text`, `active`, `skip_if`, `low_label`, `high_label`, `scale_hint`, `body`, `options`) is a whole-table problem: "This looks like the Sheet's Screens tab. …".
+- Two headers for the same column: a problem (row 1). No `kind` column: a problem for the whole table.
+- **A missing column keeps the draft's value** for that field (`opts.rows`, matched by code and kind); a new row gets the usual value.
+
+#### 9.8.3 Kinds and cells
+
+| `kind` written | Screens `type` | Code | Notes (also read: see `KINDS` in the code) |
+|---|---|---|---|
+| `language` | `language_picker` | `language` (standard) | built in, at most once; skipped when the link names the language unless `show only if` says `always` |
+| `what changed` | `whats_changed` | `whats_changed` (standard) | built in, at most once; skipped when there is nothing new unless `always` |
+| `nps` | `nps_0_10` | must be `nps` | the headline question |
+| `area ratings` | `function_ratings` | `fn_ratings` (standard) | built in, at most once |
+| `problem screens` | `function_deep_dives` | `fn_deep_dives` (standard) | built in, at most once; needs a shown `area ratings` row above it |
+| `support question` | `yes_no` | must be `support_gate` | |
+| `support ratings` | `support_block` | `support` (standard) | built in, at most once |
+| `thank you` | `thank_you` | `thanks` (standard) | uses `thanks.title` / `thanks.body`; the first shown thank-you row ends the main route and must be shown. Only that row writes `thanks.*`: a later `thank you` row with words of its own is read as an `ending`, with a warning (28 Oct 2026) |
+| `ending` | `thank_you` | its own | its own texts `end.<code>.title` / `.body`; `toTable` writes any thank-you row with its own text or body as `ending`. Also read: `end`. An ending above the main thank-you row, or a `show only if` on any thank-you or ending row, is a problem |
+| `0 to 10` | `nps_0_10` | its own | "0-10" is read too, but not written: Excel turns `0-10` and `1-5` into dates |
+| `faces` | `rating_1_5` | its own | also `1-5`, `1 to 5`, `rating`, `smileys` |
+| `yes/no` | `yes_no` | its own | |
+| `pick one` | `single_choice` | its own | needs `answers` |
+| `voice/typing` | `free_text` | its own | |
+| `info card` | `info_card` | its own | title in `question`, text in `message` |
+| an added kind | its `row.type` | its own | read by its type code or its panel label; written as its type code (§10) |
+
+An empty `kind` with a built-in's standard code (for example code `nps`) is read as that built-in, with a warning; otherwise an empty or unknown kind is a problem (with "Did you mean …?" when a kind is close).
+
+| Cell | Meaning |
+|---|---|
+| `code` | Lower-cased (a warning if it had capitals); `^[a-z][a-z0-9_]*$`, at most 60 characters, unique in the table. **Empty:** a built-in gets its standard code if no other row has it; otherwise a code is made the panel's way (`slug`: from the English question, else the kind; `_2`, `_3` … when taken; `ending` for an ending), with a warning to keep it. **Refused:** `support_comment`; on a kind that stores an answer, a word the rules read (`language`, `lang`, `round`, `lang_in_url`, `language_in_link`, `whats_changed_count`, `what_changed_items`, `and`, `or`, `not`, `in`, `is`, `answered`, `true`, `false`, `if`, `then`, `go`, `to`, `goto`, `when`, `always`); a code whose `q.<code>` text holds a built-in screen's words (`fn_rating`, `deep_dive`, `tell_more`, `tell_more_required`, `support_block`, the support comment's key), unless the draft's row already uses that key; `nps` / `support_gate` on another kind, and another code on an `nps` / `support question` row. |
+| `answers` | Pick one only: `code: words` (or `code = words`) separated by `;` or line breaks **outside double quotes** (or by `,` when every part has a code); a label in double quotes may hold `;` (`toTable` quotes such labels). List marks (`- `, `* `, `• `, `1. `, `1) `, `a) `) and backticks, `**` or `__` around the code or the label are removed. An answer without a code gets one made from its words (warning); one without a code between answers that have codes is a problem ("is there a ";" inside a label?"). Two answers with one code, an answer without words, or a label still starting with a backtick or `**`: a problem. A shown pick one with fewer than 2 answers: a problem (with "Commas and slashes don't separate answers" when its one answer has `,` or `/`). `answers (Hindi)` is matched by code when it uses codes, else in order (a warning when the counts differ). On a `yes/no` row `yes; no` is accepted silently; on other rows answers are left out with a warning, except that an ending, a thank-you or an info card without a `message` takes them as its message. |
+| `required` | `yes` / `y` / `true` / `1` / `required` / `must` / `mandatory` / `compulsory` (also `show`, `shown`, `on`, `visible`) = required; `no` / `n` / `false` / `0` / `optional` / `not required` / `hide` / `hidden` / `off` / `skip` / `can skip` = may be skipped; empty = the kind's usual. Anything else: a problem. On a kind with nothing to answer: a warning. |
+| `show only if` | A rule (§9.8.7). Empty = no rule. On a `language` / `what changed` row an empty cell keeps the standard skip and `always` (or `always show`, `show always`, `everyone`) switches it off. |
+| `then go to` | A code (`next`), or `end` / `the end` / `main ending` / `thank you` = the main thank-you (the row coded `end` if one exists, else the first thank-you row). Empty, `next`, `next row`, `the next row` or `following row` = the following row. Quotes, `*`, backticks and a leading `go to` are ignored. |
+| `jumps` | §9.8.7. Empty = none. |
+| `ask for` | Empty, `once`, `one time`, `one`, `1`, `no`, `single`, `none` = once; words with `area` and `low` or `rated` = `each_low_area`; with `area` = `each_area`; anything else a problem. Only on repeatable kinds (§9.1), else a problem. |
+| `show` | `yes` / `no` (the same words as `required`); `no` = hidden (`active: false`). Empty = shown. Without the column a new row is shown and an existing row keeps its value. |
+
+#### 9.8.4 What `fromTable` checks (and in which order)
+
+1. The text and the header (§9.8.1–2). A whole-table problem (empty, no header, no `kind` column, no rows) stops here.
+2. Each row's kind; stray lines; a row with more cells than the header (a problem: "Is there a comma inside a text? Put that text in "double quotes"." for CSV, `\|` for Markdown).
+3. Codes (§9.8.3). A code in `liveCodes`/`liveKinds` whose row now has another type that stores answers: a problem in **kind** ("partners have already answered it as a question of the kind …, so its kind can't change …"); the live answers of a pick one are checked whatever the kind.
+4. Each row's settings and words, built on the draft's row with the same code and kind (`opts.rows`), so fields without a column (a question's own text key, the end labels of a 0 to 10 question, an ending without its own title) are kept. **Placeholders** (28 Oct 2026, `fillerKind`): a text cell holding only dashes, dots or other punctuation, `NA`, `N/A`, `n.a.`, `none`, `nil`, `null`, `TBD`, `TBA`, `TBC`, `same`, `keep`, `ditto`, `do`, `-do-`, `to be translated`, `translate`, `[TRANSLATE]` with nothing after it, `blank`, `empty` or a `<…>` placeholder (ignoring brackets, quotes and case) is read as empty, with a warning; a real sentence containing such a word is not. A text cell that looks like a text key (`q.nps`, `end.low.title`) or equals an existing key: a problem.
+5. Arrows and rules, once every code is known: a `then go to` or jump target must be a code in the table, not the row itself, and not an earlier row unless that row is an ending (a thank-you without a rule), the same rule as §9.1; a rule may test only answers some row stores (`fn_rating:<area>`, `fn_deep_dive:<area>`, `support:<item>`, `support_comment` unless the comment is off, `<code>`, or `<code>:<area>` for a question asked per area), the questionnaire's languages and the facts. Each unknown answer gets a precise hint ("Area ratings are tested one area at a time: write fn_rating:<area> …", "Did you mean …?"). **On a hidden row these are warnings** (its arrows are never used). A thank-you row's `then go to` and jumps: a warning.
+6. The rows the questionnaire needs: built-ins at most once; `nps` and `support_gate` present with their kinds; a first thank-you row, shown; the problem screens after a shown area ratings row; every code in `opts.liveCodes` present, and every live answer still on its pick-one question; each draft row the table drops named in a warning.
+7. Texts (§9.8.6).
+8. **The checker**, only when there are no problems so far and `PP.flowCheck` is loaded: `fromRows(rows, survey)` makes the graph; its G2, G3 and F1 notes and every note with `level: "error"` (G5, a route that runs on into another, in the **then go to** column) become problems (except `level: "warning"`), the others warnings. Before it: an `ending` row above the main thank-you row, and a `show only if` on a thank-you or ending row, are problems of their own; a rule testing a `round` not in `opts.rounds` gets a warning ("Did you mean …?" when only the case differs). Then `PP.flowCheck.check(draft, null, { surface: 'panel', hiddenCodes, nameOf })`, as Publish runs it (§9.4): errors become problems and warnings warnings (info and T1 are dropped), each placed at its row, and its `site` gives the column (`show_if` → `show only if`, `where` → `ask for`, `jump` → `jumps`, `next` → `then go to`). Messages pass through `tableWords` ("strings.json" → "Texts & translations", "usually go to" and "next" → "then go to", "Correct it in the table."). The result's `survey` is the survey with `flow` = that graph (what Publish would compile from these rows), for the Map and Try a path. If the check itself throws, one warning says "The route could not be checked here (…). Publish checks it again." and `survey` stays null.
+
+Problems and warnings are `{ row, column, code, message }`, sorted by row (whole-table ones first, then in the order found). The messages `fromTable` makes itself start "Row N (code), column: "; the checker's own name the row as "row N ("…")". `ok` is true when there are no problems.
+
+#### 9.8.5 The panel (Panel.html PART 8)
+
+- **Questions** shows, in order: the help line (`QUESTIONS_HELP`), the codes note, the route-tools note, the card **"1. Get the route as a table"**, the card **"2. Paste a route"**, the read-only list **"The route now"** and, when rows follow the main thank-you, **"Other routes and endings"** (§9.6).
+- **"1. Get the route as a table":**
+  - **Copy the current route**: `toTable(M().screens, M().texts, draftSurvey())` (tab-separated) on the clipboard (`copyText`: the clipboard, then the older copy command, then a **Copy by hand** box).
+  - **Download the Excel template**: `templateCsv(draftSurvey(), M().texts, { rows: M().screens })`, saved as `partner-pulse-route.csv`. Its BOM is removed first, because `download()` adds the one mark Excel needs.
+  - **Copy the instruction for Claude/ChatGPT**: `aiInstruction(draftSurvey(), M().texts, { rows: M().screens })`.
+- **"2. Paste a route":** a text box; **Check** (or Ctrl/Cmd+Enter) runs `checkPastedTable`: `teachKinds`, then `fromTable(text, draftSurvey(), M().texts, { rows: M().screens, liveCodes: liveCodeList() })`. `liveCodeList` = panelLoad's `live_ids.screens` (the live version's codes and `CODES_EVER_LIVE` once codes are locked; every code of the draft while the live version can't be read) plus `option:<question>/<answer>` for live answers. An exception becomes one problem ("The table could not be read …"); `ok` without `survey` becomes the problem "The route could not be checked here, so it can't be used yet …".
+- **The result:** problems first ("N problems to fix before this route can be used. Nothing has changed in your draft. …"), each with a "Row N · column" label (`data-row`, `data-column`) and its message; warnings in a fold-out list (open when there are 6 or fewer), also kept after Use. A clean check says "✔ No problems. The route has N screens …" and what would change (`routeChanges`: screens added, removed or changed, compared field by field on `SCREEN_FIELDS`; the order; texts new or reworded), or "This is the same route as your draft: using it changes nothing." Editing the box or the draft (`S.changeSeq`) marks the result out of date and locks its buttons until the next Check.
+- **Preview before use:** after a fresh clean check, the Map and Try a path offer **"The pasted route (not used yet)"** (`pastedPreview`: the result's `survey`, and `pastedModel` = the draft with the table's rows and texts). Try a path draws it through `inModel`, which swaps the model and the route cache only while drawing; nothing is saved.
+- **Use this route** (`usePastedRoute`): checks again against the draft as it is now (with problems: a message, nothing changes); takes a snapshot; replaces `M().screens` with the rows (`normaliseScreen`); adds or rewords the texts (`addTextKey`, next to keys with the same start); removes the texts of a removed row or answer **only when they are named after its code** (`q.<code>`, `q.<code>.…`, `choice.<code>.…`, `end.<code>.…`), no remaining row uses them and nothing else needs them (`neededTextKeys`), so a built-in screen's standard texts stay; then the usual **Unsaved changes** and an **Undo** message (`offerUndo`, valid until the next change).
+- **Publish's "Go there"** on a Questions problem opens the question's card with a note (`S.ui.fixNote`): "To fix question N, change row N+1 of the route table (code …, its "then go to" or "jumps" column / its "show only if" column): Copy the current route, change it in Excel, paste it back under "Paste a route", Check, then Use this route. The problem: …". `isJumpIssue` and `isRuleIssue` choose the column. The note goes on the next Publish check or on Use. (A toast was tried: long ones covered the menu.)
+- **Without the route code in the window** the table tools use the server fallback (below); only when the server can't run them either are the three table buttons and Check locked buttons that say why. The Questions note offers **Try again** (`retryFlowCode`). With a `Flow.gs` that has the route tools but not the table (before 27 Oct 2026), the paste card asks for the latest `Flow.gs`. An empty draft's list points to **Settings > Import from GitHub**.
+- **Options (28 Oct 2026):** Check also passes `liveKinds` (panelLoad's `live_ids.kinds`, from Model.gs `PP_mdlLiveKinds_`, present only while codes are locked) and `rounds` (the draft's round ids).
+- **What would change:** under "Compared with your draft", the fold-out **The texts that would change (N)** lists each key and language, old → new; it opens by itself when a real (non-`[TRANSLATE]`) translation would change.
+- **G5 notes** show as red badges on the read-only cards; `isJumpIssue` reads "then go to".
+- **Server fallback (28 Oct 2026):** `panelRouteTable(request)` in PanelServer.gs (admin-only, through `PP_forPanel_`) runs the same table tools with Flow.gs on the server: `request = { tool: status|fromTable|toTable|templateCsv|aiInstruction, text, survey, strings, rows, live_codes, live_kinds, rounds }`, answer `{ ok, tables }` for `status`, else `{ ok, result }`; kinds added in `web/js/types/` are taught through `PP_mdlFlowLib_` (`PP_ADDED_TYPES_`). A pasted text over 300,000 characters is refused in plain words. When the window can't run the route code (`S.flow.lib` null after an error), Check, Use this route and the three table buttons use it (a busy box "Google is checking the table…", one call at a time); the Map, Try a path and the badges stay off, and the Questions note says pasting still works. It reads and writes nothing. **[UNCONFIRMED] on real Google:** whether the window runs the route code at all, and how long a server call takes (it loads the ~770 KB Flow.gs each time).
+
+#### 9.8.6 Texts: never translated
+
+- **Keys**, as the panel always made them: a question `q.<code>` (or the draft row's own `text` key, which is kept); the ends of a 0 to 10 question `q.<code>.low`, `.high`, `.hint` (`nps.low`, `nps.high`, `nps.scale_hint` for `nps`; a new one starts from the standard words, as the panel did); a pick-one answer `choice.<code>.<answer>`; an info card's message `q.<code>.body` (or the row's own body key); an ending `end.<code>.title` / `end.<code>.body`; the first thank-you `thanks.title` / `thanks.body`. Language, what changed, area ratings and problem screens rows write `lang.title`, `wc.title`, `q.fn_rating` and `q.deep_dive`.
+- **`texts` holds only keys whose words change.** Each has every language: the English (needed for a new key), the Hindi (or another language) the table gives, a real translation already there kept, and every other language `"[TRANSLATE] " + English`. A language the table leaves empty never loses a real translation. When the English changes and a real translation is kept, a warning names the languages and the key; **Save** then adds the usual "English changed" note for translators (Model.gs `PP_applyTranslationHelpers`).
+- An empty text cell keeps the existing words (and so does a placeholder, §9.8.4). Words in another language for a key without English: a warning, left out. **Every non-English text the table makes new or changes** (no earlier real value, or a different real value) gets a warning at its cell, old → new: "Keep them only if a person wrote them: the panel never translates, and an AI must not either." A built-in row's English that changes gets a warning too (28 Oct 2026). A question that needs words and has none: a problem. Two rows writing different words into one key: a problem ("For a second thank-you screen with its own words use the kind "ending"").
+- `aiInstruction` tells the AI to copy only the Hindi it is given, never to translate and never to add languages. `route_table_test` asserts on every result in the file that nothing was translated.
+
+#### 9.8.7 The rule language (`show only if` and `jumps`)
+
+```
+rule    := term { ("and" | "or") term }      -- "and" with "or" needs brackets: (a or b) and c
+term    := "not" term | "!" term | "(" rule ")" | test
+test    := subject op value
+         | subject ["is"] ["not"] "in" "(" value { "," value } ")"
+         | subject ["is"] ["not"] "answered"          -- answers only
+         | subject "is" ["not"] value
+subject := an answer key: nps, support_gate, one_fix, fn_rating:payments, fn_deep_dive:payments,
+           support:<item>, callback:payments (a question asked per area)
+         | language | lang | round | lang_in_url | language_in_link | whats_changed_count | what_changed_items
+op      := "=" | "=="  (equals)   | "!=" | "<>" | "≠"  (not_equals)
+         | "<=" | "≤"  (at_most)  | ">=" | "≥"         (at_least)
+         | "<" n  (= at_most n-1) | ">" n (= at_least n+1)   -- whole numbers only
+value   := a number | true | false | a word | a text in quotes ("…", '…', “…”, ‘…’)
+```
+
+- Words are read in lower case, except a round (`round = 2026-R2` keeps its capitals) and a quoted text (kept as written). A language may be its name: `language = Hindi` is `hi`. `&&` and `||` mean `and` and `or`.
+- An empty cell, `always`, `everyone`, `all partners`, `always show`, `show always` or `-` means no rule. A cell starting with `{` is read as the condition JSON itself.
+
+| Written | Stored (§2.3) |
+|---|---|
+| `nps <= 6` | `{"answer": "nps", "at_most": 6}` |
+| `nps >= 9` | `{"answer": "nps", "at_least": 9}` |
+| `nps < 7` | `{"answer": "nps", "at_most": 6}` |
+| `support_gate = yes` | `{"answer": "support_gate", "equals": "yes"}` |
+| `support_gate != yes` | `{"answer": "support_gate", "not_equals": "yes"}` |
+| `fn_rating:payments in (1, 2)` | `{"answer": "fn_rating:payments", "in": [1, 2]}` |
+| `one_fix answered` / `one_fix not answered` | `{"answer": "one_fix", "answered": true}` / `false` |
+| `language = hi` | `{"fact": "lang", "equals": "hi"}` |
+| `round = 2026-R2` | `{"fact": "round", "equals": "2026-R2"}` |
+| `a and b` / `a or b` | `{"all": [a, b]}` / `{"any": [a, b]}` |
+| `not (a)` | `{"not": a}` |
+
+- **`ruleText`** writes the canonical words (`=`, `!=`, `<=`, `>=`, `in (…)`, `answered`, `not answered`, groups in brackets, `not (…)`), quoting a value only when the bare word would read back differently. A rule it can't write exactly (a template answer, a `var` subject, an `all` / `any` with fewer than two items …) is written as JSON. `parseRule(ruleText(r))` gives `r` back (tested on 26 rules, and on the JSON-only ones).
+- **Jumps:** `if <rule> go to <code>`; also `when`, `then`, `then go to`, `goto`, `->` or `→`. Several are separated by `;` or line breaks, checked in that order. `go to end` is the main thank-you. A cell starting with `[` is read as the JSON list. `jumpsText` writes `if … go to …; if … go to …`, or JSON when one jump can't be written in words.
+
+#### 9.8.8 Writing the table: `toTable`, `templateCsv`, `aiInstruction`
+
+- **`toTable`** writes every row, hidden ones too (`show` = `no`), with the kind names of §9.8.3; `always` in `show only if` for a language or what-changed row without its standard skip; `yes` / `no` / empty in `required`; `each area` / `each area rated low` in `ask for`. Only real words are written: a `[TRANSLATE]` placeholder is an empty cell, and `answers (Hindi)` lists only the answers that have Hindi.
+- **Quoting:** an answer label containing `;` (or starting or ending with `"`) is written in double quotes inside its cell; TSV quotes a cell with a tab or a line break (or one starting with `"`); CSV quotes a cell with `"`, `,`, a line break or a space at either end, and uses Windows line ends; Markdown writes `\|` and `<br>` and adds the separator row.
+- **Round trip:** `fromTable(toTable(rows, texts))` gives the same rows and no text changes, in all three formats (tested on today's route, whose compiled graph equals `survey.json`'s `flow`, and on a route with jumps, both kinds of repeat, hidden rows and two endings).
+- **`templateCsv`** = BOM + `toTable(…, {format: 'csv'})` + `\r\n`, of `opts.rows`, else the survey's own route (a graph through `toRows`, a list, or the standard route).
+- **`aiInstruction`** has, in order: HOW TO ANSWER (output only one Markdown table with this header; one row per screen; use only these kinds and words, invent nothing; the code rules, keeping today's codes; English, and only the Hindi given, never translated; never leave out `nps`, `support_gate` and the first thank-you, hide with `show` = `no`; how to read a flowchart picture), THE COLUMNS, THE KINDS, THE RULES (what each answer can be tested for, examples built from today's area codes), TODAY'S AREAS AND THEIR PROBLEM CODES, TODAY'S SUPPORT QUESTIONS, LANGUAGES, A SHORT EXAMPLE (`PP.flowPanel.EXAMPLE_TABLE`, made up) and THE CURRENT ROUTE (`toTable` as Markdown). Since 28 Oct 2026 it also says: leave a cell completely empty (never -, —, N/A, NA or TBD); exactly one `thank you` row, every other end an `ending` row below it; each route below the thank you ends with a `then go to` unless its own ending row follows; answers separated by `;`, a label with `;` in double quotes; one table only; and one `Left out: …` line after the table for anything that did not fit.
+
+#### 9.8.9 Decisions made while building (27 Oct 2026)
+
+- Kinds are written `0 to 10` and `faces`, not `0-10` and `1-5`, which Excel turns into dates; both are read.
+- `message (English)` / `message (Hindi)` hold the text of endings and info cards. `left end`, `right end` and `hint` are read for 0 to 10 questions but not written by `toTable`.
+- Empty text cell = keep the words; empty routing cell = no rule, the following row, or no jumps; missing column = keep the draft's value.
+- `always` on a language or what-changed row switches its standard skip off.
+- A missing code is made the panel's way, always with a warning.
+- **Use this route** removes only texts named after a removed row's (or answer's) code.
+- Publish's "Go there" advice goes into the question's card, not a toast.
+- **After the review (28 Oct 2026, spec §4):** placeholders are empty cells; every new or changed translation is flagged; the run-on rule is one rule (`fromRows` G5) for Check, the cards and Publish; a live question keeps its kind; only the first thank-you row is the main one; a pick one needs 2 answers; the Screens tab and key-like texts are refused; Hindi-script headers are read; the table tools also run on the server (`panelRouteTable`). Publish's messages now use the route table's words.
+
+#### 9.8.10 Tests
+
+- **`tests/flow/route_table_test.js`** (36 tests since 28 Oct 2026, Node only; the 12 new ones cover the review's findings and fail on the 27 Oct code): the rule language both ways (26 rules, 15 kinds of mistake, the JSON-only rules), jumps, every way in (Excel/Sheets tabs with quoted line breaks, CSV with BOM and `;`, an AI's Markdown with words, fences, `code`, `**bold**`, `<br>` and `\|`), forgiving headers, every column and kind, the texts (nothing translated), the problems with their rows and columns, the warnings, round trips, "straight after each low rating" mode, the checker clean on every valid fixture with engine walks, the template, the instruction, an added kind and an ES5 / ASCII check. Fixtures (fake) in `tests/flow/fixtures/route-table/`: `excel-copy.tsv`, `template-filled.csv`, `ai-answer.md`, `bad.tsv`.
+- **`tests/panel/test.js`:** the Questions steps listed in [tests/README.md](../tests/README.md).
 
 ## 10. Question kinds as plug-ins
 

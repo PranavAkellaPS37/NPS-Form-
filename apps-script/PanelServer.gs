@@ -38,8 +38,11 @@
      - The route code (since 26 Oct 2026, stage 4 of the flow-graph work):
        panelFlowCode hands the panel window the text of Flow.gs
        (PP_FLOW_SOURCE_: the form's web/js/flow.js, flow-panel.js and
-       flow-check.js), so the panel's map, "Try a path", jump builder and
-       warning badges run exactly the rules partners' phones run.
+       flow-check.js), so the panel's map, "Try a path", the route table of
+       "Paste a route" and the warning badges run exactly the rules
+       partners' phones run. If the window can't run that code (27 Oct
+       2026), panelRouteTable runs the route table's tools here instead,
+       from the same Flow.gs, so pasting a route still works.
        panelFlowStatus reads the same three files from the form's address
        on GitHub Pages AS TEXT (never runs them) to tell whether the form and
        the panel run the same route code; the answer is kept for 10 minutes
@@ -103,6 +106,10 @@ function panelOpen() {
  *                         live version's, plus every code published since
  *                         the first real round (CODES_EVER_LIVE), so a
  *                         question that was hidden and published stays locked.
+ *                         Once something is locked, live_ids.kinds also says
+ *                         what kind of question each live screen is
+ *                         ({ one_fix: 'free_text' }): partners' answers keep
+ *                         their meaning only if that kind stays (27 Oct 2026).
  *   live_ids_unknown      true when codes are locked but the live codes
  *                         can't be read: Google Drive had a passing problem
  *                         reading the live version, or a real round was
@@ -735,7 +742,7 @@ const PP_FLOW_STATUS_SECONDS_ = 600;
 
 /** What to say when the fifth script file (Flow.gs) was never pasted in. */
 const PP_FLOW_MISSING_ = 'The script file "Flow" is missing from the Apps Script project, so the control panel ' +
-  'cannot show the map, "Try a path" or the jumps. In the Sheet: Extensions > Apps Script > + > Script, name it ' +
+  'cannot paste a route or show the map and "Try a path". In the Sheet: Extensions > Apps Script > + > Script, name it ' +
   'Flow, paste the whole of apps-script/Flow.gs from the GitHub project into it and save. Then open the panel again.';
 
 /**
@@ -851,6 +858,106 @@ function panelLiveSurvey() {
     return PP_plain_({ live: { version: live.version, config_version: live.config_version }, survey: live.survey,
       strings: PP_isPlainObject_(live.strings) ? live.strings : {} });
   });
+}
+
+/** The tools of the route table ("Paste a route", web/js/flow-panel.js) that panelRouteTable runs. */
+const PP_ROUTE_TABLE_TOOLS_ = ['fromTable', 'toTable', 'templateCsv', 'aiInstruction'];
+
+/**
+ * The longest pasted text panelRouteTable checks, in characters (about 300
+ * KB). A route table is a few KB; this leaves room for the words an AI
+ * writes around it, and stops a mistaken paste (a whole workbook) from being
+ * sent to Google. Panel.html (ROUTE_TABLE_MAX_CHARS) uses the same limit.
+ */
+const PP_ROUTE_TABLE_MAX_CHARS_ = 300000;
+
+/** What to say when Flow.gs is older than the route table (from before 27 Oct 2026). */
+const PP_FLOW_NO_TABLE_ = 'The route code in this Sheet (the Apps Script file Flow) is older than this control ' +
+  'panel, so it can\'t read or write a route table. Ask whoever set up the Sheet to paste the latest Flow.gs into ' +
+  'the Apps Script project (apps-script/README.md), then open the panel again.';
+
+/**
+ * "Paste a route" when the panel window can't run the route code itself
+ * (27 Oct 2026). Normally the window runs the route table's tools (the
+ * form's own web/js/flow-panel.js, sent by panelFlowCode). If it can't (for
+ * example because Google's window refused to run that code), the panel asks
+ * this function instead: it runs the SAME tools from Flow.gs, here, with
+ * exactly the arguments the window would use, and knows the kinds of
+ * question added in web/js/types/ the way Publish does (Model.gs
+ * PP_mdlFlowLib_ teaches it PP_ADDED_TYPES_).
+ *   request.tool    "status": can the route table's tools run here?
+ *                   "fromTable": Check (and "Use this route", which checks once more)
+ *                   "toTable": Copy the current route
+ *                   "templateCsv": Download the Excel template
+ *                   "aiInstruction": Copy the instruction for Claude/ChatGPT
+ *   request.text    the pasted text (fromTable only; at most about 300 KB)
+ *   request.survey, request.strings, request.rows
+ *                   the draft as the window has it (its draftSurvey(), its
+ *                   texts and its Screens rows, saved or not)
+ *   request.live_codes, request.live_kinds, request.rounds
+ *                   fromTable's liveCodes, liveKinds and rounds
+ *                   (aiInstruction uses rounds too)
+ * Answers { ok: true, tables: true or false } for "status", otherwise
+ * { ok: true, result: the tool's own answer }. It reads and writes nothing:
+ * "Use this route" changes only the panel's copy of the draft, until Save.
+ */
+function panelRouteTable(request) {
+  return PP_forPanel_(() => {
+    const req = PP_isPlainObject_(request) ? request : {};
+    const tool = PP_text_(req.tool);
+    if (tool !== 'status' && PP_ROUTE_TABLE_TOOLS_.indexOf(tool) < 0) {
+      throw new Error('The control panel asked the route table for something it can\'t do ("' + tool.slice(0, 40) +
+        '"). Close the panel, open it again and try once more.');
+    }
+    const panel = PP_routeTablePanel_();
+    if (tool === 'status') return { ok: true, tables: Boolean(panel) };
+    if (!panel) throw new Error(PP_FLOW_NO_TABLE_);
+    return PP_plain_({ ok: true, result: panel[tool].apply(panel, PP_routeTableArgs_(tool, req)) });
+  });
+}
+
+/**
+ * Flow.gs's panel helpers (PP.flowPanel), taught the kinds of question added
+ * in web/js/types/ as Publish's checks are (Model.gs PP_mdlFlowLib_), or
+ * null when that Flow.gs is older than the route table. Stops with the
+ * "Flow is missing" message when the fifth script file was never pasted in.
+ */
+function PP_routeTablePanel_() {
+  if (typeof PP_flowLib_ !== 'function') throw new Error(PP_FLOW_MISSING_);
+  const panel = PP_mdlFlowLib_().flowPanel;
+  return PP_ROUTE_TABLE_TOOLS_.every(name => typeof panel[name] === 'function') ? panel : null;
+}
+
+/**
+ * The tool's arguments, exactly as the panel window passes them to its own
+ * copy of the tools (Panel.html tableArgs makes the same lists from the same
+ * request), so the server and the window always give the same answer.
+ */
+function PP_routeTableArgs_(tool, req) {
+  const survey = PP_isPlainObject_(req.survey) ? req.survey : null;
+  const strings = PP_isPlainObject_(req.strings) ? req.strings : null;
+  const rows = Array.isArray(req.rows) ? req.rows : null;
+  if (!survey || !strings || !rows) {
+    throw new Error('The control panel sent an incomplete questionnaire, so the route table could not be made. ' +
+      'Close the panel, open it again and try once more.');
+  }
+  const rounds = Array.isArray(req.rounds) ? req.rounds : undefined;
+  if (tool === 'fromTable') {
+    const text = typeof req.text === 'string' ? req.text : '';
+    if (text.length > PP_ROUTE_TABLE_MAX_CHARS_) throw new Error(PP_routeTableTooLong_(text.length));
+    return [text, survey, strings, { rows: rows, liveCodes: Array.isArray(req.live_codes) ? req.live_codes : [],
+      liveKinds: PP_isPlainObject_(req.live_kinds) ? req.live_kinds : {}, rounds: rounds }];
+  }
+  if (tool === 'toTable') return [rows, strings, survey];
+  if (tool === 'templateCsv') return [survey, strings, { rows: rows }];
+  return [survey, strings, { rows: rows, rounds: rounds }];
+}
+
+/** The plain message for a pasted text longer than the route table checks (Panel.html words it the same). */
+function PP_routeTableTooLong_(length) {
+  return 'The pasted text is too long to check: about ' + Math.ceil(length / 1000) + ' KB, and the control panel ' +
+    'checks at most ' + (PP_ROUTE_TABLE_MAX_CHARS_ / 1000) + ' KB. Paste only the route table, header row first ' +
+    '(not a whole workbook or a long chat).';
 }
 
 /**
@@ -1147,10 +1254,21 @@ function PP_liveSummary_(ss, live) {
  * published since the first real round (everLive, CODES_EVER_LIVE; Model.gs:
  * PP_liveIds). panelLoad passes null for both until a round has been opened:
  * then every list is empty and nothing is locked.
+ * Once something is locked, kinds = { code: kind } of the live version's
+ * screens, as the Screens tab names them ({ one_fix: 'free_text' }), so
+ * "Paste a route" can refuse a new kind for a question partners answered
+ * (27 Oct 2026, review W8 finding 3). They are exactly the kinds Publish's
+ * check holds the draft to (Model.gs PP_mdlLiveKinds_), so Check and
+ * Publish agree; a question asked once per area is under its row's code. A
+ * code that is locked but not in the live version (hidden and published)
+ * has no kind here: the panel then goes by its kind in the draft, and so
+ * does a Model.gs pasted before 27 Oct 2026 (which has no PP_mdlLiveKinds_).
  */
 function PP_liveIdsOf_(live, everLive) {
   if (!live && !(Array.isArray(everLive) && everLive.length)) return { screens: [], areas: [], chips: {}, support: [], options: {} };
-  return PP_liveIds(live, everLive);
+  const ids = PP_liveIds(live, everLive);
+  ids.kinds = typeof PP_mdlLiveKinds_ === 'function' ? PP_mdlLiveKinds_(live) : {};
+  return ids;
 }
 
 /**

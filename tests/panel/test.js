@@ -7,31 +7,62 @@
                                      once in tests/)
    Out:  PASS / FAIL lines, screenshots in ./shots, downloads in ./downloads.
    It starts its own bench server (server.js) on a free port and stops it.
+   Since 27 Oct 2026 ("Paste a route", docs/spec.md section 4) the questions
+   and their route are changed only as ONE TABLE, so the bench checks that
+   instead of the old question editor (whose steps are retired: nothing may
+   click Add a question, Edit, the rule or jump builders, move, hide or
+   delete): the help line and the read-only list; "Copy the current route"
+   (the clipboard holds the form's own toTable, and pasted back nothing
+   changes); a tab-separated paste with mistakes (each problem with its row,
+   the header being row 1, and its column; nothing changes); a Markdown table
+   an AI wrote, with words around it (clean; the pasted route on the Map and
+   in Try a path before anything changes); "Use this route" (texts and rows
+   replaced, everything else kept; Undo; saved, the server compiles exactly
+   the pasted route); the Excel template download (one byte-order mark; it
+   reads back unchanged); "Copy the instruction for Claude/ChatGPT"; Ctrl+Enter;
+   live questions and answers that can't leave the table; nps and
+   support_gate; jumps, "then go to", "ask for", endings and rules written
+   in the table and what each becomes; the table's check of a jump that can
+   never happen and of a hidden ending; "Go there" naming the table's row and
+   column; the route code missing (a plain note with Try again) or older than
+   the table (the panel asks for the latest Flow.gs).
    Since stage 4 of the flow-graph work (26 Oct 2026) it also checks the route
-   tools: the form's own route code running in the panel window, jumps,
-   "usually go to", "ask for each area", endings, the badges, the settings
-   shown in the built-in screens' editors, the Map (with the drawing library
-   blocked, so the text outline and the mermaid.live link must appear), Try a
-   path and the Home banner about the form's route code; and, without a
-   browser, PanelServer.gs's own fingerprint check (loaded into Node).
-   The reviewers' fixes of 26 Oct 2026 are checked too: hiding or deleting an
-   ending below the thank-you screen says what happens and a route never runs
-   into another one (the check stops it, "Go there" opens "After this
-   question"); a live answer of a pick-one question can't be removed; the
-   problem-screens row's own arrows are not offered in "straight after each
-   low rating" mode (leftovers can be cleared); the Map shows the outline at
-   once and swaps in the drawing (waiting up to 20 s); Publish's warnings are
-   shown; the GitHub copy brings docs/flow.md; and "Show this question only
-   if" offers the partner's language and the round.
+   tools: the form's own route code running in the panel window, the badges,
+   the Map (with the drawing library blocked, so the text outline and the
+   mermaid.live link must appear), Try a path and the Home banner about the
+   form's route code; and, without a browser, PanelServer.gs's own
+   fingerprint check (loaded into Node).
+   The reviewers' fixes of 26 Oct 2026 are checked too, now through the
+   table: a hidden ending below the thank-you screen ends its route at the
+   main one, and a route that would run into another is stopped by Publish's
+   check; a live answer of a pick-one question can't be removed; the problem
+   screens row's own arrows are not used in "straight after each low rating"
+   mode (the check warns); the Map shows the outline at once and swaps in the
+   drawing (waiting up to 20 s); Publish's warnings are shown; the GitHub
+   copy brings docs/flow.md; and a rule may test the partner's language.
    Also since 26 Oct 2026: the panel reads no checker message any more. A
    broken jump is marked on that jump only, even when two jumps go to the
-   same screen (the finding says which: site, target, index), the rule and
-   jump builders offer what PP.flowCheck.answersAt says, and with an older
-   route code (no answersAt; the bench sends one) they fall back to the
-   earlier rows. A kind of question added in web/js/types/ (the guide's
+   same screen (the finding says which: site, target, index), and with an
+   older route code (no answersAt; the bench sends one) or a failing one the
+   mark stays. A kind of question added in web/js/types/ (the guide's
    example, tests/flow/fixtures/types/stars_1_10.js, installed in a copy by
    "node scripts/flow.js types --write") reaches the window with the list of
-   kinds, so the jump builder and Try a path know its answer.
+   kinds, so the table takes its code as a kind and Try a path knows its
+   answer.
+   Since the review of 27 Oct 2026 (W8): PanelServer.gs's panelRouteTable
+   (the route table's tools on the server, for a window that can't run the
+   route code) and live_ids.kinds, in Node with the real Model.gs and
+   Flow.gs (real_server.js); in the browser, a window whose route code is
+   refused still checks, uses, copies and downloads the table through the
+   server (busy box, plain errors with Try again, the 300 KB limit), and an
+   older Flow.gs on the server asks for the latest one; Check passes the
+   live kinds (a question partners answered keeps its kind, even when its
+   row in the Sheet was changed by hand) and the draft's rounds (an unknown
+   round is warned about, with "did you mean"); "Compared with your draft"
+   lists the texts that would change (open by itself when a translation
+   would change); "NA" in a Hindi cell keeps today's Hindi; Check refuses a
+   route that runs on into another, and a run-on edited in the Sheet gets an
+   error badge on its card.
    ============================================================================= */
 'use strict';
 const fs = require('fs');
@@ -241,6 +272,101 @@ async function openPanel() {
 
 const Q = 'how_do_you_contact_support';
 
+/* ---- "Paste a route" (27 Oct 2026): helpers for the steps that paste a route table ---- */
+const QUESTIONS_HELP = 'To change the questions: Copy the current route, edit it in Excel (or ask Claude/ChatGPT with the instruction), paste it back here, Check, Use this route, then Save, Preview and Publish.';
+/* Puts text into a box the way a paste does: the whole text at once, then an "input" event. */
+async function pasteText(name, text) {
+  await el(name);
+  await page.$eval(T(name), (e, t) => { e.focus(); e.value = t; e.dispatchEvent(new Event('input', { bubbles: true })); }, text);
+  await sleep(80);
+}
+/* "Copy the current route": presses the button and returns what it put on the clipboard. */
+async function copyRoute() {
+  await page.evaluate(() => navigator.clipboard.writeText(''));
+  await click('route-copy');
+  await page.waitForFunction(() => navigator.clipboard.readText().then((t) => t.length > 0), { timeout: 6000 });
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+/* Pastes a table, presses Check and waits for the answer ('ok' or 'problems'). */
+async function checkTable(table, expect) {
+  await pasteText('paste-box', table);
+  await click('paste-check');
+  await el(expect === 'problems' ? 'paste-problems' : 'paste-ok');
+}
+/* Pastes a table that must be clean, checks it and presses "Use this route". */
+async function useTable(table) {
+  await checkTable(table, 'ok');
+  await click('paste-use');
+  await el('paste-used');
+}
+/* The "where" chips of the problems (or warnings) of the last Check: 'Row 4 · kind', ... */
+async function pasteWhere(kind) {
+  return page.$$eval('[data-test^="paste-' + kind + '-where-"]', (els) => els.map((e) => e.innerText.trim()));
+}
+/* Changes a route table (tab-separated, header row first, as "Copy the current route" gives it) the
+   way the owner would in Excel: set: [[code, column, value]], drop: [codes], insert: [{ after: code,
+   cells: { column: value } }], append: [{ column: value }]. The bench's cells hold no tab or line break. */
+function tableEdit(text, o) {
+  o = o || {};
+  const lines = String(text).replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n');
+  const head = lines[0].split('\t');
+  let rows = lines.slice(1).map((l) => l.split('\t'));
+  const at = (name) => { const i = head.indexOf(name); if (i === -1) throw new Error('no column "' + name + '" in: ' + head.join(' | ')); return i; };
+  const make = (cells) => { Object.keys(cells).forEach(at); return head.map((h) => (cells[h] === undefined ? '' : String(cells[h]))); };
+  (o.set || []).forEach(([code, column, v]) => {
+    const r = rows.find((x) => x[0] === code);
+    if (!r) throw new Error('no row "' + code + '" in the table');
+    r[at(column)] = v;
+  });
+  (o.drop || []).forEach((code) => { rows = rows.filter((x) => x[0] !== code); });
+  (o.insert || []).forEach(({ after, cells }) => {
+    const i = rows.findIndex((x) => x[0] === after);
+    if (i === -1) throw new Error('no row "' + after + '" in the table');
+    rows.splice(i + 1, 0, make(cells));
+  });
+  (o.append || []).forEach((cells) => rows.push(make(cells)));
+  return [head.join('\t')].concat(rows.map((r) => r.join('\t'))).join('\n');
+}
+/* A tab-separated table as the Markdown table Claude or ChatGPT writes. */
+function toMarkdown(tsv) {
+  const lines = String(tsv).split('\n').map((l) => l.split('\t'));
+  const row = (cells) => '| ' + cells.map((c) => c.replace(/\|/g, '\\|')).join(' | ') + ' |';
+  return [row(lines[0]), '|' + lines[0].map(() => ' --- ').join('|') + '|'].concat(lines.slice(1).map(row)).join('\n');
+}
+/* Runs fn while the Map's drawing library (cdn.jsdelivr.net) is held back: the Map then keeps its text
+   outline and its mermaid.live link, and the bench needs no internet. */
+async function withCdnHeld(fn) {
+  const held = [];
+  const onRequest = (r) => {
+    if (/cdn\.jsdelivr\.net/.test(r.url())) { held.push(r); return; }
+    r.continue();
+  };
+  expectBlockedCdn = true;
+  await page.setRequestInterception(true);
+  page.on('request', onRequest);
+  try {
+    return await fn();
+  } finally {
+    page.off('request', onRequest);
+    held.forEach((r) => { try { r.abort('blockedbyclient'); } catch (e) { /* already gone with its frame */ } });
+    await page.setRequestInterception(false);
+    await sleep(300);
+    expectBlockedCdn = false;
+  }
+}
+/* The Mermaid code inside the Map's "Open in mermaid.live" link. */
+async function mapLinkCode() {
+  await el('map-mermaid-live', 8000);
+  const href = await page.$eval(T('map-mermaid-live'), (e) => e.getAttribute('href'));
+  return JSON.parse(Buffer.from(href.split('#base64:')[1], 'base64').toString('utf8')).code;
+}
+/* The pick-one question the first steps paste (as a row of the table). */
+const QROW = {
+  code: Q, kind: 'pick one', 'question (English)': 'How do you contact support?', 'question (Hindi)': 'आप सपोर्ट से कैसे संपर्क करते हैं?',
+  answers: 'phone_call: Phone call; email: Email; whatsapp: WhatsApp', 'answers (Hindi)': 'whatsapp: व्हाट्सऐप', required: 'no',
+  'show only if': 'support_gate = yes or fn_rating:payments in (1, 2)', show: 'yes'
+};
+
 /* PanelServer.gs's new functions, run in Node with small stand-ins for the
    Code.gs helpers they use and for Google's UrlFetchApp / cache: the route code
    it hands the window, and its fingerprint of the form's route files (it must
@@ -304,6 +430,80 @@ async function main() {
     check(bad.call('panelFlowStatus', ['http://not-https/']).same === null && bad.fetched.length === 0, 'a form address that is not https://…/ is never fetched');
   });
 
+  /* 27 Oct 2026 (review W8, findings 9, 3 and 12): PanelServer.gs's own route-table function and live kinds, run in
+     Node with the real Model.gs and Flow.gs (real_server.js), without a browser. */
+  await step('PanelServer.gs: panelRouteTable runs the route table\'s tools with Flow.gs on the server, exactly as the window does, only from the Sheet itself; live_ids.kinds says the live kinds', async () => {
+    const { loadRealServer, NOT_ADMIN } = require('./real_server');
+    const srv = loadRealServer(REPO);
+    const model = srv.call('PP_importStatic', [backend._internals.readRepoFiles()]);
+    const survey = srv.call('PP_compile', [model, null]).survey;
+    delete survey.flow;   // like the window's draftSurvey(): the route comes from the rows
+    const base = { survey, strings: model.texts, rows: model.screens };
+    const ask = (s, request) => s.call('panelRouteTable', [request]);
+    check(JSON.stringify(ask(srv, { tool: 'status' })) === JSON.stringify({ ok: true, tables: true }), 'status: the server can run the table tools');
+    // The same answers as the form's own code gets in the window, from the same request
+    const table = FLOW_PANEL.toTable(model.screens, model.texts, survey);
+    check(ask(srv, Object.assign({ tool: 'toTable' }, base)).result === table, 'toTable: the same table');
+    check(ask(srv, Object.assign({ tool: 'templateCsv' }, base)).result === FLOW_PANEL.templateCsv(survey, model.texts, { rows: model.screens }), 'templateCsv: the same file');
+    const rounds = model.rounds.map((r) => r.id);
+    check(ask(srv, Object.assign({ tool: 'aiInstruction', rounds }, base)).result === FLOW_PANEL.aiInstruction(survey, model.texts, { rows: model.screens, rounds }), 'aiInstruction: the same instruction');
+    const pasted = table.replace(/\none_fix\tvoice\/typing\t/, '\none_fix\tfaces\t').replace(/\n(one_fix\t(?:[^\t]*\t){8})/, '\n$1round = demo-r1');
+    check(pasted !== table && /round = demo-r1/.test(pasted), 'the test table changes one_fix\'s kind and rule');
+    const opts = { live_codes: ['nps', 'one_fix'], live_kinds: { one_fix: 'free_text' }, rounds };
+    const got = ask(srv, Object.assign({ tool: 'fromTable', text: pasted }, base, opts)).result;
+    const local = FLOW_PANEL.fromTable(pasted, survey, model.texts, { rows: model.screens, liveCodes: opts.live_codes, liveKinds: opts.live_kinds, rounds });
+    check(canon(got) === canon(local), 'fromTable: the same result, problems and warnings included');
+    check(got.problems.some((p) => p.column === 'kind' && /partners have already answered it as a question of the kind "voice\/typing"/.test(p.message)), 'the live kind is kept: ' + got.problems.map((p) => p.message).join(' | '));
+    check(got.warnings.some((w) => /the rule tests the round "demo-r1", but no round has that id/.test(w.message) && /Did you mean "DEMO-R1"\?/.test(w.message)), 'an unknown round is warned about: ' + got.warnings.map((w) => w.message).join(' | '));
+    // Plain refusals
+    const refused = (s, request) => { try { ask(s, request); return ''; } catch (e) { return e.message; } };
+    check(/asked the route table for something it can't do \("nope"\)/.test(refused(srv, { tool: 'nope' })), 'an unknown tool');
+    check(/sent an incomplete questionnaire/.test(refused(srv, { tool: 'toTable' })), 'an incomplete request');
+    const tooLong = refused(srv, Object.assign({ tool: 'fromTable', text: 'x'.repeat(300001) }, base));
+    const src = fs.readFileSync(path.join(REPO, 'apps-script', 'Panel.html'), 'utf8');
+    const max = /var ROUTE_TABLE_MAX_CHARS = (\d+);/.exec(src);
+    const fnText = /function tooLongText\(length\) \{[\s\S]*?\n  \}/.exec(src);
+    check(max && fnText, 'Panel.html has the same limit and message (ROUTE_TABLE_MAX_CHARS, tooLongText)');
+    const windowSays = new Function('ROUTE_TABLE_MAX_CHARS', fnText[0] + '\nreturn tooLongText;')(Number(max[1]))(300001);
+    check(/^The pasted text is too long to check: about 301 KB, and the control panel checks at most 300 KB\./.test(tooLong) && tooLong === windowSays,
+      'a text over 300 KB is refused in plain words, the same as the window says: ' + tooLong);
+    check(refused(srv, Object.assign({ tool: 'fromTable', text: 'x'.repeat(300000) }, base)) === '', '300 KB exactly is read');
+    // Only from the Sheet itself (PP_forPanel_ -> Code.gs PP_requireAdminCaller_)
+    const outsider = loadRealServer(REPO, { admin: false });
+    ['status', 'toTable', 'fromTable'].forEach((t) => check(refused(outsider, Object.assign({ tool: t, text: 'code' }, base)) === NOT_ADMIN, t + ' is refused outside the Sheet'));
+    // No Flow file, or one from before the route table
+    check(/^The script file "Flow" is missing from the Apps Script project/.test(refused(loadRealServer(REPO, { noFlow: true }), { tool: 'status' })), 'no Flow file: says what to paste');
+    const oldFlow = fs.readFileSync(path.join(REPO, 'apps-script', 'Flow.gs'), 'utf8').split('  panel.fromTable = function (text, survey, strings, opts) {').join('  panel.fromTableNotYet = function (text, survey, strings, opts) {');
+    const older = loadRealServer(REPO, { flowText: oldFlow });
+    check(JSON.stringify(ask(older, { tool: 'status' })) === JSON.stringify({ ok: true, tables: false }), 'a Flow.gs from before the route table: status says so');
+    check(/older than this control panel, so it can't read or write a route table/.test(refused(older, Object.assign({ tool: 'toTable' }, base))), 'and its tools ask for the latest Flow.gs');
+    // A kind added in web/js/types/: known on the server exactly when Model.gs carries it (PP_ADDED_TYPES_)
+    const catalogue = screenTypesWithStars().filter((t) => t.catalogue).map((t) => t.catalogue);
+    const withStars = table.replace(/\nthanks\t/, '\nhow_many_stars\tstars_1_10\tHow many stars would you give us?\t\t\t\t\t\tyes\t\t\t\t\tyes\nthanks\t');
+    const plain = ask(srv, Object.assign({ tool: 'fromTable', text: withStars }, base)).result;
+    check(!plain.ok && plain.problems.some((p) => p.column === 'kind'), 'without it the kind is unknown: ' + plain.problems.map((p) => p.message).join(' | '));
+    const taught = ask(loadRealServer(REPO, { addedTypes: catalogue }), Object.assign({ tool: 'fromTable', text: withStars }, base)).result;
+    check(taught.ok && taught.rows.some((r) => r.id === 'how_many_stars' && r.type === 'stars_1_10'), 'with it, the table takes it: ' + taught.problems.map((p) => p.message).join(' | '));
+    // live_ids.kinds: the live version's kinds (a question asked for each area keeps its row's code); nothing locked: none
+    const m2 = JSON.parse(JSON.stringify(model));
+    m2.screens.splice(m2.screens.findIndex((s) => s.id === 'support_gate'), 0, Object.assign({}, m2.screens.find((s) => s.id === 'one_fix'),
+      { id: 'callback', type: 'yes_no', text: 'q.callback', required: true, repeat: 'each_low_area' }));
+    m2.texts['q.callback'] = { en: 'Should someone call you about this?' };
+    const live = srv.call('PP_compile', [m2, { version: 1, published_at: '2026-10-20T20:15:00.000Z', published_by: 'tester@example.com', note: 'bench' }]);
+    const ids = srv.call('PP_liveIdsOf_', [live, null]);
+    check(ids.kinds.callback === 'yes_no' && ids.kinds.one_fix === 'free_text' && ids.kinds.nps === 'nps_0_10' && ids.kinds.fn_ratings === 'function_ratings' &&
+      ids.kinds.fn_deep_dives === 'function_deep_dives' && ids.kinds.thanks === 'thank_you', 'the live kinds, by row code: ' + JSON.stringify(ids.kinds));
+    check(JSON.stringify(ids.kinds) === JSON.stringify(srv.call('PP_mdlLiveKinds_', [live])), 'exactly the kinds Publish\'s check holds the draft to (Model.gs PP_mdlLiveKinds_)');
+    check(JSON.stringify(srv.call('PP_liveIdsOf_', [null, null])) === JSON.stringify({ screens: [], areas: [], chips: {}, support: [], options: {} }), 'nothing locked: the same empty lists as before (no kinds)');
+    const listDoc = { format: 1, version: 1, config_version: 'p1-2026-10-20', strings: {},
+      survey: { flow: [{ id: 'nps', type: 'nps_0_10' }, { id: 'thanks', type: 'thank_you' }], functions: [], support: { items: [] } } };
+    check(JSON.stringify(srv.call('PP_liveIdsOf_', [listDoc, null]).kinds) === JSON.stringify({ nps: 'nps_0_10', thanks: 'thank_you' }), 'a version published as a list: its rows\' kinds');
+    const oldModel = loadRealServer(REPO);
+    oldModel.ctx.PP_mdlLiveKinds_ = undefined;   // a Model.gs pasted before 27 Oct 2026
+    const oldIds = oldModel.call('PP_liveIdsOf_', [live, null]);
+    check(JSON.stringify(oldIds.kinds) === '{}' && oldIds.screens.indexOf('one_fix') !== -1, 'with an older Model.gs the panel still opens: no kinds (it then goes by the draft), the codes still locked');
+  });
+
   server = await start(0);
   base = 'http://127.0.0.1:' + server.address().port;
   browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-first-run', '--no-default-browser-check'] });
@@ -362,123 +562,236 @@ async function main() {
     }
   });
 
-  /* ---------------- Questions ---------------- */
-  await step('adds a "Pick one answer" question', async () => {
+  /* ---------------- Questions: "Paste a route" (27 Oct 2026) ----------------
+     Questions are no longer added, edited, moved, hidden or deleted one by one:
+     the whole route is one table (copy it, change it in Excel or let an AI
+     write it, paste it back, Check, Use this route). */
+  await step('Questions: the help line, the table tools, the paste box and a read-only list (nothing to add, edit, move, hide or delete)', async () => {
+    await flowReady();
     await click('nav-questions');
     await shot('questions-list');
-    await click('add-question');
-    await el('add-question-modal');
-    await click('type-pick-single_choice');
-    await typeInto('new-question-text', 'How do you contact support?');
-    check((await text('new-question-code')).includes(Q), 'code preview shows ' + Q);
-    await select('new-question-after', '6');
-    const after = await page.$$eval(T('new-question-after') + ' option', (os) => os.map((o) => o.textContent));
-    check(after.indexOf('4. Area ratings (one screen per area)') !== -1 && after.indexOf('1. Language buttons') !== -1 &&
-      after.some((t) => /^7\. Support ratings \(all support questions on one screen\)$/.test(t)) && after.some((t) => /^3\. How likely/.test(t)),
-      '"Put it after" lists built-in blocks by card name: ' + after.join(' / '));
-    await checkTestNames('add-question pop-up');
-    await shot('add-question-modal');
-    await click('new-question-create');
-    await el('editor-text-card');
-    check((await text('editor-text-card')).length > 0, 'editor shows');
-    check(/Question 8/.test(await page.$eval('.editor-head h1', (e) => e.innerText)), 'new question is number 8');
-    check(/All changes saved/.test(await statusText()) === false, 'status should be Unsaved changes');
-    check(/Unsaved changes/.test(await statusText()), 'status Unsaved changes');
-  });
-
-  await step('edits the question: Hindi text, answers, required', async () => {
-    await typeInto('editor-text-hi', 'आप सपोर्ट से कैसे संपर्क करते हैं?');
-    for (const [label, code] of [['Phone call', 'phone_call'], ['WhatsApp', 'whatsapp'], ['Email', 'email']]) {
-      await click('option-add');
-      await typeInto('option-new-text', label);
-      check((await text('option-new-text-code')).includes(code), 'option code ' + code);
-      await click('option-add-confirm');
-      await el('option-' + code);
+    check((await text('questions-help')).trim() === QUESTIONS_HELP, 'the help line: ' + (await text('questions-help')));
+    for (const name of ['route-copy', 'route-template', 'route-instruction', 'paste-box', 'paste-check', 'open-map', 'open-try', 'main-route', 'route-read-only']) {
+      check(await exists(name), name + ' is there');
     }
-    await typeInto('option-whatsapp-hi', 'व्हाट्सऐप');
-    await click('option-up-email');
-    const order = await page.$$eval('[data-test^="option-"][class*="option-row"]', (els) => els.map((e) => e.getAttribute('data-test')));
-    check(order.join(',') === 'option-phone_call,option-email,option-whatsapp', 'option order after move: ' + order);
-    await click('editor-required');
-    check(/Skip button/.test(await page.$eval(T('editor-required'), (e) => e.closest('label').innerText)), 'required off text');
+    const old = await page.$$eval('[data-test]', (els) => els.map((e) => e.getAttribute('data-test'))
+      .filter((t) => /^(add-question|add-ending|screen-(edit|up|down|toggle|delete|rename)-|editor-|rule-|jump-|next-select|repeat-|option-)/.test(t)));
+    check(!old.length, 'nothing of the old question editor is left: ' + old.join(', '));
+    check((await text('screen-row-nps')) === 'row 4 in the table', 'each card names its row in the table: ' + (await text('screen-row-nps')));
+    check(/^Only if/.test(await text('screen-rule-support')) && /Ends the survey/.test(await text('screen-end-thanks')), 'the cards keep their badges');
+    await checkTestNames('questions');
   });
 
-  await step('builds a rule with the rule builder', async () => {
-    await click('rule-mode-if');
-    await el('rule-cond-0');
-    await select('rule-answer-0', 'support_gate');
-    let sentence = await text('rule-sentence');
-    check(/In the last 30 days, did you contact/.test(sentence) && /is “Yes”/.test(sentence), 'sentence for support_gate: ' + sentence);
-    await click('rule-add');
-    await el('rule-cond-1');
-    await select('rule-answer-1', 'fn_rating:payments');
-    await select('rule-test-1', 'in');
-    await click('rule-value-1-1');
-    await select('rule-combine', 'any');
-    await checkTestNames('question editor');
-    sentence = await text('rule-sentence');
-    check(/Payments \/ Payouts/.test(sentence) && / or /.test(sentence) && /1 \(Very bad\)/.test(sentence) && /2 \(Bad\)/.test(sentence), 'combined sentence: ' + sentence);
-    const answerOptions = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.textContent));
-    check(answerOptions.some((t) => /^Rating of Payments/.test(t)) && answerOptions.some((t) => /^Main problem in Payments/.test(t)) &&
-      answerOptions.some((t) => /^Support: Kept me updated/.test(t)) && answerOptions.some((t) => /^How likely are you to recommend/.test(t)), 'readable answer names: ' + answerOptions.join(' / '));
-    check(!answerOptions.some((t) => /One fix/i.test(t) || /If Valmo could fix/.test(t)), 'later questions are not offered');
-    await shot('question-editor-rule');
+  await step('Copy the current route: today\'s route as a table on the clipboard; pasted back, Check finds no problems and nothing would change', async () => {
+    const table = await copyRoute();
+    const survey = await page.evaluate(() => window.__ppTest.flowSurvey());
+    const model = (await serverState()).model;
+    check(table === FLOW_PANEL.toTable(model.screens, model.texts, survey), 'the clipboard holds the route as the form\'s own toTable writes it');
+    check(/^code\tkind\tquestion \(English\)\tquestion \(Hindi\)\tanswers\t/.test(table) && table.split('\n').length === model.screens.length + 1,
+      'the header row and one row per screen: ' + table.split('\n')[0]);
+    check(/The current route copied\. Paste it into Excel or Google Sheets/.test(await toastText()), 'toast: ' + (await toastText()));
+    await checkTable(table, 'ok');
+    check(/✔ No problems\./.test(await text('paste-ok')) && (await text('paste-changes')) === 'This is the same route as your draft: using it changes nothing.',
+      'the same route: ' + (await text('paste-ok')));
+    check(!(await exists('paste-problems')) && !(await exists('paste-warnings')), 'no problems and no warnings');
+    check(/All changes saved/.test(await statusText()), 'Check changes nothing');
+    await checkTestNames('paste: a clean check');
+    await shot('paste-same-route');
   });
 
-  await step('rule badge, move up/down, rule problem badge', async () => {
-    await click('editor-back');
+  await step('Paste rows copied from Excel (tab-separated) with mistakes: Check lists each problem with its row and column, and nothing changes', async () => {
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { set: [['nps', 'kind', 'stars'], ['one_fix', 'show only if', 'nps_x <= 6']] }), 'problems');
+    const head = await text('paste-problems-head');
+    check(/^2 problems to fix before this route can be used\. Nothing has changed in your draft\./.test(head), 'how many and what to do: ' + head);
+    const where = await pasteWhere('problem');
+    check(where.join(' / ') === 'Row 4 · kind / Row 9 · show only if', 'each problem names its row (the header is row 1) and column: ' + where.join(' / '));
+    const list = await text('paste-problems');
+    check(/Row 4 \(nps\), kind: "stars" is not a kind the panel knows\./.test(list) && /Row 9 \(one_fix\), show only if: "nps_x" is not an answer of any row in this table\./.test(list),
+      'plain-English messages: ' + list);
+    check(await page.$eval(T('paste-problem-0'), (e) => e.getAttribute('data-row') === '4' && e.getAttribute('data-column') === 'kind'), 'the row and column are marked on the problem');
+    check(!(await exists('paste-use')) && !(await exists('paste-preview-map')), 'a route with problems can\'t be used or previewed');
+    await shot('paste-problems');
+    /* Two more: a jump back up the table, and a missing built-in row (a problem about the whole table). */
+    await checkTable(tableEdit(table, { set: [['one_fix', 'jumps', 'if one_fix answered go to nps']], drop: ['support_gate'] }), 'problems');
+    const more = await text('paste-problems');
+    check(/Row 8 \(one_fix\), jumps: jump 1 goes back up to row 4 \("nps"\)/.test(more), 'a jump up the table: ' + more);
+    check(/The table has no row with the code "support_gate"/.test(more) && (await pasteWhere('problem'))[0] === 'The whole table', 'a missing built-in row: ' + more);
+    check(/All changes saved/.test(await statusText()) && !(await exists('screen-card-stars')), 'nothing changed');
+  });
+
+  await step('Paste a route written by an AI (a Markdown table with words around it): Check is clean, and the pasted route can be seen on the Map and in Try a path before anything changes', async () => {
+    const table = await copyRoute();
+    const answer = 'Here is your route as one table:\n\n```markdown\n' + toMarkdown(tableEdit(table, { insert: [{ after: 'support', cells: QROW }] })) +
+      '\n```\n\nLet me know if you want any changes.';
+    await checkTable(answer, 'ok');
+    check((await text('paste-changes')) === 'Compared with your draft: 1 screen added (' + Q + ') and 4 texts new or reworded.', 'what would change: ' + (await text('paste-changes')));
+    check(/left out/.test(await text('paste-warnings')), 'the words around the table are left out, with a warning: ' + (await text('paste-warnings')));
+    check(!(await exists('screen-card-' + Q)) && /All changes saved/.test(await statusText()), 'nothing changed yet');
+    await checkTestNames('paste: a clean check with warnings');
+    await withCdnHeld(async () => {
+      await click('paste-preview-map');
+      await el('map-box');
+      check(await page.$eval(T('map-which-pasted'), (e) => e.checked), 'the Map opens on the pasted route');
+      check((await mapLinkCode()).indexOf('n_' + Q) !== -1, 'its map has the new question');
+      check(/the pasted route/.test(await text('map-status')), 'it says which route it draws: ' + (await text('map-status')));
+      await checkTestNames('map of the pasted route');
+      await shot('paste-preview-map');
+      await click('map-which-draft');
+      await sleep(200);
+      check((await mapLinkCode()).indexOf('n_' + Q) === -1, 'the draft\'s map does not have it yet');
+      await click('qview-back');
+    });
+    await el('paste-ok');
+    await click('paste-preview-try');
+    await el('try-inputs');
+    check(await page.$eval(T('try-which-pasted'), (e) => e.checked), 'Try a path opens on the pasted route');
+    check((await exists('try-answer-support_gate')) && (await exists('try-answer-fn_rating:payments')), 'it offers the answers the new question\'s rule tests');
+    await select('try-answer-support_gate', 'yes');
+    check(/How do you contact support\?/.test(await text('try-steps')), 'support yes: the new question is asked: ' + (await text('try-steps')));
+    await checkTestNames('try a path on the pasted route');
+    await shot('paste-preview-try');
+    await click('try-which-draft');
+    await el('try-steps');
+    check(!/How do you contact support\?/.test(await text('try-steps')), 'on the draft it is not');
+    await click('qview-back');
+    await el('paste-ok');
+    check(!(await exists('screen-card-' + Q)) && /All changes saved/.test(await statusText()), 'the preview changed nothing');
+  });
+
+  await step('Use this route: the questions and their texts are replaced and everything else is kept; Undo puts the draft back; saved, the server makes exactly the pasted route', async () => {
+    const before = (await serverState()).model;
+    await click('paste-use');
     await el('screen-card-' + Q);
-    check(/Only if/.test(await text('screen-rule-' + Q)), 'Only if badge');
-    check(/Optional/.test(await text('screen-card-' + Q)), 'Optional badge after required off');
-    await click('screen-up-' + Q);
-    await click('screen-up-' + Q);
-    await click('screen-up-' + Q);
-    check(await exists('screen-rule-problem-' + Q), 'rule problem badge when moved above support_gate');
-    await shot('questions-rule-problem');
-    await click('screen-down-' + Q);
-    await click('screen-down-' + Q);
-    await click('screen-down-' + Q);
-    check(!(await exists('screen-rule-problem-' + Q)), 'no rule problem after moving back');
+    check(/Unsaved changes/.test(await statusText()), 'the draft has unsaved changes');
+    check((await text('paste-used')).trim() === 'This route is now your draft (10 screens). It is not saved yet: press Save, then Preview and Publish as usual.', 'says what happened: ' + (await text('paste-used')));
+    check(/Route used: your questions were replaced\./.test(await toastText()), 'toast with Undo: ' + (await toastText()));
+    check(/^Only if/.test(await text('screen-rule-' + Q)) && /Optional \(Skip button\)/.test(await text('screen-card-' + Q)), 'the new card has its badges');
     const ids = await page.$$eval('[data-test^="screen-card-"]', (els) => els.map((e) => e.getAttribute('data-test').slice(12)));
-    check(ids.indexOf(Q) === 7 && ids[ids.length - 1] === 'thanks', 'order: ' + ids.join(','));
-    check(await page.$eval(T('screen-down-one_fix'), (e) => e.getAttribute('aria-disabled') === 'true'), 'nothing can move below thank-you');
-  });
-
-  await step('hides and shows a question', async () => {
-    await click('screen-toggle-' + Q);
-    check(/Hidden/.test(await text('screen-card-' + Q)), 'Hidden badge');
-    check(await page.$eval(T('screen-card-' + Q), (e) => e.classList.contains('is-hidden')), 'card looks hidden');
-    await click('screen-toggle-' + Q);
-    check(!/Hidden:/.test(await text('screen-card-' + Q)), 'shown again');
-    await click('screen-toggle-thanks');
-    check(/can.t be hidden/.test(await toastText()), 'thank-you explains why it cannot be hidden');
-  });
-
-  await step('adds, deletes (with confirmation), undoes and deletes an info card', async () => {
-    await click('add-question');
-    await click('type-pick-info_card');
-    await typeInto('new-question-text', 'A quick note before the last question');
-    await click('new-question-create');
-    await el('editor-body-toggle');
-    await click('editor-body-toggle');
-    await typeInto('editor-body-en', 'It takes one minute.');
-    await click('editor-back');
-    const id = 'a_quick_note_before_the_last_question';
-    await el('screen-card-' + id);
-    await click('screen-delete-' + id);
-    await el('confirm-delete-screen');
-    await shot('confirm-delete');
-    await click('modal-confirm');
-    await sleep(200);
-    check(!(await exists('screen-card-' + id)), 'deleted');
+    check(ids.indexOf(Q) === 7 && ids[ids.length - 1] === 'thanks', 'its place in the route: ' + ids.join(','));
+    await shot('paste-used');
     await click('toast-undo');
-    await el('screen-card-' + id);
-    await click('screen-delete-' + id);
-    await click('modal-confirm');
-    await sleep(150);
-    check(!(await exists('screen-card-' + id)), 'deleted again');
-    check(await page.$eval(T('screen-delete-nps'), (e) => e.getAttribute('aria-disabled') === 'true'), 'nps can never be deleted: it fills the nps column (21 Oct decision)');
-    check(await page.$eval(T('screen-delete-fn_ratings'), (e) => e.getAttribute('aria-disabled') === 'true'), 'built-in cannot be deleted');
+    await sleep(200);
+    check(!(await exists('screen-card-' + Q)) && !(await exists('paste-used')), 'Undo puts the draft back');
+    await click('paste-check');
+    await el('paste-ok');
+    await click('paste-use');
+    await el('screen-card-' + Q);
+    await click('save');
+    await waitSaved();
+    const after = (await serverState()).model;
+    const q = after.screens.find((s) => s.id === Q);
+    check(q && q.type === 'single_choice' && q.options.join(',') === 'phone_call,email,whatsapp' && q.required === false, 'the question is saved: ' + JSON.stringify(q));
+    check(canon(q.show_if) === canon({ any: [{ answer: 'support_gate', equals: 'yes' }, { answer: 'fn_rating:payments', in: [1, 2] }] }), 'its rule: ' + JSON.stringify(q.show_if));
+    check(after.texts['q.' + Q].en === 'How do you contact support?' && after.texts['q.' + Q].hi === 'आप सपोर्ट से कैसे संपर्क करते हैं?' &&
+      after.texts['q.' + Q].ta === '[TRANSLATE] How do you contact support?', 'its text: English and Hindi as pasted, the others marked to translate: ' + JSON.stringify(after.texts['q.' + Q]));
+    check(after.texts['choice.' + Q + '.whatsapp'].hi === 'व्हाट्सऐप' && after.texts['choice.' + Q + '.email'].hi === '[TRANSLATE] Email', 'its answers\' texts');
+    ['areas', 'chips', 'support', 'settings', 'languages', 'rounds'].forEach((k) => check(canon(after[k]) === canon(before[k]), k + ' are kept as they were'));
+    const pasted = await page.evaluate(() => window.__ppTest.pastedSurvey());
+    const draft = await page.evaluate(() => window.__ppTest.flowSurvey());
+    check(pasted && canon(draft.flow) === canon(pasted.flow), 'the draft\'s route is the pasted one');
+    if (REAL) check(canon(serverSurvey(after).flow) === canon(pasted.flow), 'the server compiles the saved draft into exactly the pasted route');
+  });
+
+  await step('Download the Excel template: one CSV file with the header and today\'s route, Hindi intact; pasted back, it changes nothing', async () => {
+    await click('route-template');
+    const csv = await waitForFile('partner-pulse-route.csv');
+    const survey = await page.evaluate(() => window.__ppTest.flowSurvey());
+    const model = (await serverState()).model;
+    check(csv.charCodeAt(0) === 0xFEFF && csv.charCodeAt(1) !== 0xFEFF, 'exactly one byte-order mark at the start (Excel then reads the Hindi correctly)');
+    check(csv === FLOW_PANEL.templateCsv(survey, model.texts, { rows: model.screens }), 'the file is the form\'s own template of the draft');
+    check(/^﻿code,kind,question \(English\),question \(Hindi\),answers,/.test(csv) && csv.indexOf('आप सपोर्ट से कैसे संपर्क करते हैं?') !== -1, 'the header, and the Hindi');
+    check(/Template downloaded \(partner-pulse-route\.csv\)/.test(await toastText()), 'toast: ' + (await toastText()));
+    await checkTable(csv, 'ok');
+    check((await text('paste-changes')) === 'This is the same route as your draft: using it changes nothing.', 'the CSV reads back as today\'s route: ' + (await text('paste-changes')));
+  });
+
+  await step('Copy the instruction for Claude/ChatGPT: the whole instruction, with today\'s codes and route, on the clipboard; Clear empties the box', async () => {
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    await click('route-instruction');
+    await page.waitForFunction(() => navigator.clipboard.readText().then((t) => t.length > 0), { timeout: 6000 });
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    const survey = await page.evaluate(() => window.__ppTest.flowSurvey());
+    const model = (await serverState()).model;
+    const rounds = model.rounds.map((r) => r.id);
+    check(clip === FLOW_PANEL.aiInstruction(survey, model.texts, { rows: model.screens, rounds }), 'the clipboard holds the form\'s own instruction for the draft, with its rounds');
+    check(clip.indexOf('round = ' + rounds[0]) !== -1 && clip.indexOf('2026-R2') === -1, 'its example rule uses a real round of the draft (' + rounds[0] + '), not a made-up one');
+    check(clip.length > 5000 && clip.indexOf(Q) !== -1 && clip.indexOf('payments') !== -1, 'with today\'s route and codes (' + clip.length + ' characters)');
+    check(/The instruction copied\. Paste it into Claude or ChatGPT/.test(await toastText()), 'toast: ' + (await toastText()));
+    await click('paste-clear');
+    check((await value('paste-box')) === '' && !(await exists('paste-ok')) && !(await exists('paste-clear')), 'Clear empties the box and the result');
+  });
+
+  /* 27 Oct 2026 (review W8, findings 1 and 8): under "Compared with your draft", Check lists every text that would
+     change (key, language, old → new). The list opens by itself when a translation would change: only a person may
+     write those, never an AI. */
+  await step('Check lists the texts that would change, old → new, under "Compared with your draft"; the list opens by itself when a translation would change', async () => {
+    const table = await copyRoute();
+    const hindi = QROW['question (Hindi)'];
+    const english = 'How do you usually contact support?';
+    // The English only: listed, folded (no translation changes)
+    await checkTable(tableEdit(table, { set: [[Q, 'question (English)', english]] }), 'ok');
+    check((await text('paste-changes')) === 'Compared with your draft: 1 text new or reworded.', 'the count stays: ' + (await text('paste-changes')));
+    check(!(await page.$eval(T('paste-texts'), (e) => e.open)) && !(await exists('paste-texts-note')), 'folded: no translation changes');
+    await click('paste-texts-toggle');
+    const one = await page.$$eval('[data-test^="paste-text-"]', (els) => els.filter((e) => /^paste-text-\d+$/.test(e.getAttribute('data-test'))).map((e) => e.innerText));
+    check(one.length === 1 && one[0] === 'q.' + Q + ' · English: “How do you contact support?” → “' + english + '”', 'one line, key · language: old → new: ' + one.join(' | '));
+    await checkTestNames('paste: the texts that would change');
+    // A new Hindi too, and a new question: the list opens by itself and says who may write a translation
+    const newRow = { code: 'payout_speed', kind: 'faces', 'question (English)': 'How fast are your payouts?', required: 'yes', show: 'yes' };
+    await checkTable(tableEdit(table, { set: [[Q, 'question (English)', english], [Q, 'question (Hindi)', 'व्हाट्सऐप']], insert: [{ after: Q, cells: newRow }] }), 'ok');
+    check(await page.$eval(T('paste-texts'), (e) => e.open), 'open by itself: a translation would change');
+    check(/Keep a translation only if a person wrote it: an AI must never translate/.test(await text('paste-texts-note')), 'says who may write it: ' + (await text('paste-texts-note')));
+    const lines = await page.$$eval('[data-test^="paste-text-"]', (els) => els.filter((e) => /^paste-text-\d+$/.test(e.getAttribute('data-test'))).map((e) => e.innerText));
+    check(lines.indexOf('q.' + Q + ' · Hindi: “' + hindi + '” → “व्हाट्सऐप”') !== -1, 'the Hindi, old → new: ' + lines.join(' | '));
+    check(lines.indexOf('q.payout_speed · English (new): “How fast are your payouts?”') !== -1, 'a new text: ' + lines.join(' | '));
+    check(!lines.some((l) => /Tamil|Telugu|Kannada|Malayalam/.test(l)) && !lines.some((l) => /payout_speed · Hindi/.test(l)), 'texts nobody wrote ([TRANSLATE]) are not listed: ' + lines.join(' | '));
+    check(/All changes saved/.test(await statusText()), 'Check changes nothing');
+    await shot('paste-texts-changed');
+    await click('paste-clear');
+  });
+
+  /* 27 Oct 2026 (review W8, finding 1): a filler such as "NA" in a text cell is an empty cell: today's words stay,
+     with a warning at its row and column. */
+  await step('"NA" in a Hindi cell leaves the Hindi as it is, with a warning at its row and column; a new question\'s "N/A" stays to translate', async () => {
+    const table = await copyRoute();
+    const hindi = QROW['question (Hindi)'];
+    await checkTable(tableEdit(table, { set: [[Q, 'question (Hindi)', 'NA']] }), 'ok');
+    check((await text('paste-changes')) === 'This is the same route as your draft: using it changes nothing.', 'nothing would change: ' + (await text('paste-changes')));
+    check(!(await exists('paste-texts')), 'no text would change');
+    check((await pasteWhere('warning')).indexOf('Row 9 · question (Hindi)') !== -1 && /"NA" was read as an empty cell, so the words stay as they are/.test(await text('paste-warnings')),
+      'a warning at its row and column: ' + (await text('paste-warnings')));
+    await click('paste-use');
+    await el('paste-used');
+    check((await text('screen-card-' + Q)).indexOf(hindi) !== -1, 'the card still shows today\'s Hindi');
+    await click('save');
+    await waitSaved();
+    check((await serverState()).model.texts['q.' + Q].hi === hindi, 'saved: the Hindi is today\'s, not "NA"');
+    const newRow = { code: 'payout_speed', kind: 'faces', 'question (English)': 'How fast are your payouts?', 'question (Hindi)': 'N/A', required: 'yes', show: 'yes' };
+    await checkTable(tableEdit(table, { insert: [{ after: Q, cells: newRow }] }), 'ok');
+    const res = await page.evaluate(() => window.__ppTest.pasteResult());
+    check(res.texts['q.payout_speed'] && res.texts['q.payout_speed'].hi === '[TRANSLATE] How fast are your payouts?', 'the new question\'s Hindi stays to translate: ' + JSON.stringify(res.texts['q.payout_speed']));
+    check(!(await page.$eval(T('paste-texts'), (e) => e.open)), 'only English would change: the list stays folded');
+    await click('paste-clear');
+    check(/All changes saved/.test(await statusText()), 'nothing changed in the draft');
+  });
+
+  /* 27 Oct 2026 (review W8, finding 12): a rule on a round that does not exist is never true: Check warns, and says
+     "did you mean" when only the capitals differ. */
+  await step('a rule on a round that does not exist warns at its row and column, with "did you mean" when only the capitals differ', async () => {
+    const table = await copyRoute();
+    const rounds = (await serverState()).model.rounds.map((r) => r.id);
+    check(rounds.indexOf('DEMO-R1') !== -1, 'the bench has the round DEMO-R1: ' + rounds.join(', '));
+    await checkTable(tableEdit(table, { set: [['one_fix', 'show only if', 'round = 2099-R9']] }), 'ok');
+    const unknown = await text('paste-warnings');
+    check(/Row 10 \(one_fix\), show only if: the rule tests the round "2099-R9", but no round has that id \(the rounds are: /.test(unknown) && unknown.indexOf(rounds.join(', ')) !== -1 && !/Did you mean/.test(unknown),
+      'an unknown round: ' + unknown);
+    check((await pasteWhere('warning')).indexOf('Row 10 · show only if') !== -1, 'at its row and column');
+    await checkTable(tableEdit(table, { set: [['one_fix', 'show only if', 'round = demo-r1']] }), 'ok');
+    check(/Did you mean "DEMO-R1"\? Round ids must match exactly\./.test(await text('paste-warnings')), 'other capitals: ' + (await text('paste-warnings')));
+    await checkTable(tableEdit(table, { set: [['one_fix', 'show only if', 'round = DEMO-R1']] }), 'ok');
+    check(!(await exists('paste-warnings')) || !/no round has that id/.test(await text('paste-warnings')), 'a real round: no warning');
+    await click('paste-clear');
   });
 
   /* ---------------- Areas ---------------- */
@@ -541,6 +854,31 @@ async function main() {
     await shot('support');
   });
 
+  /* 27 Oct 2026 (review W8, finding 10): the questions are changed only as a table now, so no screen of the panel
+     points at the removed question editor, and Support says where the support question's words are changed. */
+  await step('no screen names the removed question editor; Support says where the support question and the support screen\'s title are changed (the route table, or Texts & translations)', async () => {
+    const OLD = /After this question|usually go to|Add a question|Add an ending|Ask this question|Only show it if|jump builder|rule builder|Edit it >|Edit this question/i;
+    for (const s of ['questions', 'areas', 'support', 'texts', 'look', 'rounds', 'links', 'publish', 'settings', 'home']) {
+      await click('nav-' + s);
+      await idle();
+      const words = await page.evaluate(() => document.getElementById('main').innerText + ' ' +
+        Array.from(document.querySelectorAll('#main [title], #main [aria-label]')).map((e) => (e.getAttribute('title') || '') + ' ' + (e.getAttribute('aria-label') || '')).join(' '));
+      const hit = OLD.exec(words);
+      check(!hit, s + ' names the removed editor: "' + (hit && words.slice(Math.max(0, hit.index - 80), hit.index + 60)) + '"');
+    }
+    await click('nav-support');
+    const note = await text('support-where-note');
+    check(/are rows of the route table: change them in Questions with Paste a route\. To change only their words, use Texts & translations\./.test(note), 'the Support note: ' + note);
+    await click('support-go-texts');
+    await el('text-row-q.support_gate');
+    check((await value('texts-search')) === 'q.support_' && (await exists('text-row-q.support_block')), 'its link opens Texts & translations on the support question and the support screen\'s title');
+    await typeInto('texts-search', '');
+    await click('nav-support');
+    await click('support-go-questions');
+    await el('paste-card');
+    check((await page.$eval('[aria-current="page"]', (e) => e.getAttribute('data-test'))) === 'nav-questions', 'and its other link opens Questions');
+  });
+
   /* ---------------- Texts ---------------- */
   await step('texts: translate and see progress update', async () => {
     await click('nav-texts');
@@ -590,7 +928,7 @@ async function main() {
     await waitSaved();
     const st = await serverState();
     const m = st.model;
-    check(st.revision === 2, 'revision 2, got ' + st.revision);
+    check(st.revision === 4, 'revision 4 (the pasted route was saved as revision 2, the "NA" check\'s unchanged route as 3), got ' + st.revision);
     check(m.screens.some((s) => s.id === Q && s.options.join(',') === 'phone_call,email,whatsapp' && s.required === false), 'question saved');
     check(m.screens.find((s) => s.id === Q).show_if.any.length === 2, 'rule saved');
     check(m.areas.map((a) => a.id).join(',') === 'losses,payments,linehaul,consumables,orders,returns,app', 'areas order saved');
@@ -601,7 +939,6 @@ async function main() {
     check(m.settings['rating.faces'].split(' ')[0] === '😡', 'faces saved');
     check(m.support.map((x) => x.code).join(',') === 'understood_problem,agent_behaviour,time_to_resolve,kept_updated,easy_to_reach', 'support order: ' + m.support.map((x) => x.code));
     check(m.settings['support.allow_not_applicable'] === true, 'support NA saved');
-    check(!m.screens.some((s) => s.id === 'a_quick_note_before_the_last_question') && !m.texts['q.a_quick_note_before_the_last_question'], 'deleted card and its texts are gone');
     await sleep(500);
     check(/All changes saved/.test(await statusText()), 'still saved after background refresh');
   });
@@ -651,7 +988,11 @@ async function main() {
     await click('nav-questions');
     check(/^A real round has been opened, but nothing has been published yet/.test(await text('codes-unpublished-note')), 'note in Questions: ' + (await text('codes-unpublished-note')));
     check(!(await exists('codes-unknown-note')) && !(await exists('codes-unlocked-note')), 'only this note');
-    check(await page.$eval(T('screen-delete-one_fix'), (e) => e.getAttribute('aria-disabled') === 'true'), 'a question cannot be deleted');
+    /* Since 27 Oct 2026 a question leaves the route only through a pasted table: the check refuses it. */
+    await checkTable(tableEdit(await copyRoute(), { drop: ['one_fix'] }), 'problems');
+    check(/The table has no row with the code "one_fix", but partners already answered it in a real round, so it can never be removed/.test(await text('paste-problems')),
+      'a question cannot be removed: ' + (await text('paste-problems')));
+    await click('paste-clear');
     await click('nav-areas');
     check(await exists('codes-unpublished-note'), 'the note in Areas & problems too');
     check(await page.$eval(T('area-delete-losses'), (e) => e.getAttribute('aria-disabled') === 'true'), 'an area cannot be deleted');
@@ -726,9 +1067,12 @@ async function main() {
 
   /* ---------------- Publish ---------------- */
   await step('publish: problems block publishing, "Go there" opens the item', async () => {
-    await click('nav-questions');
-    await click('screen-edit-' + Q);
-    await typeInto('editor-text-en', '');
+    /* The question's English is emptied in Texts & translations (a pasted table never empties a text). */
+    await click('nav-texts');
+    if (await page.$eval(T('texts-only-todo'), (e) => e.checked)) await click('texts-only-todo');
+    await typeInto('texts-search', 'q.' + Q);
+    await el('text-row-q.' + Q);
+    await typeInto('text-en-q.' + Q, '');
     await click('nav-publish');
     await click('check');
     await idle();
@@ -739,15 +1083,19 @@ async function main() {
     check(i !== -1, 'an error points at the emptied question: ' + errors.join(' | '));
     check(!errors.some((t) => /› screen \d+/.test(t)), 'the problem list says "question N" like the messages, never "screen N": ' + errors.join(' | '));
     await click('issue-goto-error-' + i);
-    await sleep(200);
-    if (await exists('editor-text-en')) {
-      check((await page.$eval('.editor-head', (e) => e.innerText)).includes(Q), 'opened the right question');
-      await typeInto('editor-text-en', 'How do you contact support?');
+    await sleep(250);
+    const opened = await page.$eval('[aria-current="page"]', (e) => e.getAttribute('data-test'));
+    if (opened === 'nav-questions') {
+      /* Questions are changed through the route table: the card is shown with a note naming the row. */
+      await page.waitForFunction((id) => { const c = document.querySelector('[data-test="screen-card-' + id + '"]'); return c && c.classList.contains('flash'); }, { timeout: 3000 }, Q);
+      check(/^To fix question 8, change row 9 of the route table \(code how_do_you_contact_support/.test(await text('screen-fix-note-' + Q)), 'Go there names the row of the table: ' + (await text('screen-fix-note-' + Q)));
+      await click('nav-texts');
+      await typeInto('texts-search', 'q.' + Q);
     } else {
-      await el('text-row-q.' + Q);
-      check(await page.$eval('[aria-current="page"]', (e) => e.getAttribute('data-test')) === 'nav-texts', 'opened Texts');
-      await typeInto('text-en-q.' + Q, 'How do you contact support?');
+      check(opened === 'nav-texts', 'opened Texts: ' + opened);
     }
+    await el('text-row-q.' + Q);
+    await typeInto('text-en-q.' + Q, 'How do you contact support?');
     await click('publish');
     await el('publish-modal');
     await click('modal-cancel');
@@ -776,6 +1124,11 @@ async function main() {
     check(isJumpIssue({ ref: 'screen 3', message: 'Question 3 ("How likely?"): jump 1 goes to question 10 ("Thanks"), an ending that is hidden, so partners end at the main thank-you screen (question 9) instead.' }) === true, 'a jump to a hidden ending');
     check(isJumpIssue({ ref: 'screen 10', message: 'Question 10 ("What do you like most?") has no "usually go to", so partners who answer it go straight on to question 11 ("What went wrong?"), which starts another route (question 3 jumps there).' }) === true,
       'a route running on into another');
+    /* 27 Oct 2026 (review W8): the route code's own words for it (G5) name the table's "then go to" column. */
+    check(isJumpIssue({ ref: 'screen 10', message: 'Question 10 ("What do you like most?") has no "then go to", so partners who answer it go straight on to question 11 ("What went wrong?"), which starts another route: question 3 ("How likely?") jumps there. Write where it goes in its "then go to" column, for example its own ending, or add an ending row between them.' }) === true,
+      'a route running on into another, in the route table\'s words');
+    check(isJumpIssue({ ref: 'screen 7', message: 'Question 7 ("How was it?") can never be reached: no arrow leads to it from the start. Point the "then go to" of an earlier screen at it, or remove it.' }) === false,
+      '"nothing leads here", in the route table\'s words, is still fixed on an earlier screen');
     check(isJumpIssue({ ref: 'screen 3', message: 'Question 3 ("Where do our jump trucks go next?"): the rule tests an answer that does not exist.' }) === false, 'the question\'s own words never decide');
     check(isJumpIssue({ ref: 'screen 7', message: 'Question 7 ("How was it?") can never be reached: no arrow leads to it from the start. Point the "usually go to" of an earlier screen at it, or remove it.' }) === false,
       '"nothing leads here" is fixed on an earlier screen, not in this one\'s After this question');
@@ -810,22 +1163,57 @@ async function main() {
     check(/🔒/.test(await text('screen-card-nps')), 'lock icon on live code');
     check(!(await exists('codes-unlocked-note')), 'no unlocked-codes note in Questions either');
     check(!(await exists('codes-unpublished-note')), 'the "nothing published yet" note is gone after publishing');
-    await click('screen-edit-' + Q);
-    check(!(await exists('screen-rename')), 'no Change code on a live question');
-    await click('editor-back');
+    /* A live question can't leave the table, and keeps its code. */
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { drop: [Q] }), 'problems');
+    check(new RegExp('The table has no row with the code "' + Q + '", but partners already answered it in a real round').test(await text('paste-problems')), 'a live question can\'t be removed: ' + (await text('paste-problems')));
+    await checkTable(tableEdit(table, { set: [[Q, 'code', 'contact_way']] }), 'problems');
+    check(new RegExp('The table has no row with the code "' + Q + '"').test(await text('paste-problems')), 'nor given a new code: ' + (await text('paste-problems')));
+    await click('paste-clear');
   });
 
-  /* 26 Oct 2026 (review finding 4): an answer partners picked can't be hidden, so it must stay. */
-  await step('a live answer of a pick-one question can\'t be removed: the panel says why, and its label can still be reworded', async () => {
+  /* 26 Oct 2026 (review finding 4): an answer partners picked can't be hidden, so it must stay. Since 27 Oct 2026
+     through the table: Check refuses a table without it, and its words can still change. */
+  await step('a live answer of a pick-one question can\'t be removed: the table\'s check says why, and its label can still be reworded', async () => {
     await click('nav-questions');
-    await click('screen-edit-' + Q);
-    await el('option-phone_call');
-    check(await page.$eval(T('option-remove-phone_call'), (e) => e.getAttribute('aria-disabled') === 'true'), 'Remove is locked for a live answer');
-    await click('option-remove-phone_call');
-    check(/Partners already picked this answer in a real round, so it must stay: an answer can’t be removed or hidden/.test(await toastText()), 'says why: ' + (await toastText()));
-    check(!(await exists('confirm-remove-option')) && (await exists('option-phone_call')), 'nothing is removed');
-    check(await exists('option-phone_call-en'), 'its label can still be reworded');
-    await click('editor-back');
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { set: [[Q, 'answers', 'email: Email; whatsapp: WhatsApp']] }), 'problems');
+    check(/the answer "phone_call" was already picked by partners in a real round, so it must stay/.test(await text('paste-problems')), 'says why: ' + (await text('paste-problems')));
+    check((await pasteWhere('problem')).indexOf('Row 9 · answers') !== -1, 'on its row and column: ' + (await pasteWhere('problem')).join(' / '));
+    await checkTable(tableEdit(table, { set: [[Q, 'answers', 'phone_call: A phone call; email: Email; whatsapp: WhatsApp']] }), 'ok');
+    check((await text('paste-changes')) === 'Compared with your draft: 1 text new or reworded.', 'its label can still be reworded: ' + (await text('paste-changes')));
+    await click('paste-clear');
+  });
+
+  /* 27 Oct 2026 (review W8, finding 3): a question partners answered keeps its kind (its answers would change meaning
+     between rounds). The live version's kinds come with panelLoad (live_ids.kinds), so even a row whose kind was
+     changed by hand in the Sheet is held to the live kind. */
+  await step('a question partners answered keeps its kind: Check refuses a new kind, even when its row in the Sheet already has another kind (the live version decides)', async () => {
+    await click('nav-questions');
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { set: [['one_fix', 'kind', 'faces']] }), 'problems');
+    check(/Row 10 \(one_fix\), kind: partners have already answered it as a question of the kind "voice\/typing", so its kind can't change/.test(await text('paste-problems')),
+      'says why: ' + (await text('paste-problems')));
+    check((await pasteWhere('problem')).indexOf('Row 10 · kind') !== -1, 'on its row and column: ' + (await pasteWhere('problem')).join(' / '));
+    await click('paste-clear');
+    // Someone changed the kind in the Sheet's Screens tab: the copied table has it, and Check still refuses it
+    const saved = (await serverState()).model;
+    const edited = JSON.parse(JSON.stringify(saved));
+    edited.screens.find((s) => s.id === 'one_fix').type = 'rating_1_5';
+    await control('model', { model: edited });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    const req = await page.evaluate(() => window.__ppTest.tableRequest('fromTable', ''));
+    check(req.live_kinds.one_fix === 'free_text' && req.live_kinds.nps === 'nps_0_10' && req.live_kinds[Q] === 'single_choice', 'the panel has the live kinds: ' + JSON.stringify(req.live_kinds));
+    const sheetTable = await copyRoute();
+    check(/\none_fix\tfaces\t/.test(sheetTable), 'the copied table has the Sheet\'s kind');
+    await checkTable(sheetTable, 'problems');
+    check(/Row 10 \(one_fix\), kind: partners have already answered it as a question of the kind "voice\/typing"/.test(await text('paste-problems')), 'refused: the live kind decides: ' + (await text('paste-problems')));
+    await click('paste-clear');
+    await control('model', { model: saved });
+    await openPanel();
+    await flowReady();
   });
 
   /* 21 Oct 2026: codes are locked, but Google Drive had a passing problem reading the live version. */
@@ -1018,18 +1406,27 @@ async function main() {
     await page.keyboard.up('Control');
     await waitSaved();
     check(backend.state.model.settings.survey_id === 'valmo-partner-pulse-2', 'saved by keyboard');
-    await click('nav-questions');
-    await click('add-question');
-    await el('add-question-modal');
+    await click('nav-areas');
+    await click('area-add');
+    await el('add-area-modal');
     for (let i = 0; i < 30; i++) await page.keyboard.press('Tab');
-    const inside = await page.evaluate(() => !!document.activeElement.closest('[data-test="add-question-modal"]'));
+    const inside = await page.evaluate(() => !!document.activeElement.closest('[data-test="add-area-modal"]'));
     check(inside, 'focus stays in the dialog');
     await page.keyboard.press('Escape');
     await sleep(150);
-    check(!(await exists('add-question-modal')), 'Escape closes');
+    check(!(await exists('add-area-modal')), 'Escape closes');
     const missing = await page.evaluate(() => Array.from(document.querySelectorAll('button, input, select, textarea, a[href], summary'))
       .filter((e) => !e.closest('[data-test]') || !e.getAttribute('data-test')).map((e) => e.outerHTML.slice(0, 80)));
     check(!missing.length, 'every control has data-test: ' + missing.slice(0, 5).join(' | '));
+    /* Ctrl+Enter in the paste box is Check. (The imported questionnaire lacks a question partners already
+       answered, so this check finds that problem: the answer is what matters here.) */
+    await click('nav-questions');
+    await pasteText('paste-box', await copyRoute());
+    await page.keyboard.down('Control');
+    await page.keyboard.press('Enter');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('[data-test="paste-ok"], [data-test="paste-problems"]', { visible: true, timeout: 6000 });
+    await click('paste-clear');
   });
 
   /* ---------------- Errors and menu hints ---------------- */
@@ -1093,9 +1490,6 @@ async function main() {
       check(mainOverflow <= 0, s + ' main area overflows by ' + mainOverflow + ' px');
       if (['questions', 'look', 'rounds', 'settings'].includes(s)) await shot('w900-' + s);
     }
-    await click('nav-questions');
-    await click('screen-edit-nps');
-    await shot('w900-editor');
     await page.setViewport({ width: 1100, height: 760, deviceScaleFactor: 1 });
   });
 
@@ -1126,7 +1520,7 @@ async function main() {
     await click('nav-questions');
     check(/Ends the survey/.test(await text('screen-end-thanks')), 'the thank-you screen says it ends the survey');
     check((await exists('open-map')) && (await exists('open-try')) && !(await exists('flow-unavailable-note')), 'Map and Try a path are offered; no "route tools missing" note');
-    check(await exists('other-routes') && await exists('add-ending'), 'the "Other routes and endings" part, with Add an ending');
+    check(!(await exists('other-routes')) && (await page.$eval(T('paste-check'), (e) => e.getAttribute('aria-disabled') !== 'true')), 'nothing below the thank-you screen yet; Paste a route is ready');
     if (REAL) {
       const mine = await page.evaluate(() => window.__ppTest.flowSurvey());
       const theirs = serverSurvey(await savedModel());
@@ -1140,25 +1534,14 @@ async function main() {
     await shot('route-list');
   });
 
-  await step('a jump built in the editor ends up in the screen\'s jumps and in the compiled route', async () => {
-    await click('screen-edit-nps');
-    await el('after-card');
-    await click('jump-add');
-    await el('jump-0');
-    const answers = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
-    check(answers.some((t) => /^How likely are you to recommend/.test(t)) && answers.indexOf('The partner’s language') !== -1, 'its own answer and the language are offered: ' + answers.join(' / '));
-    check(!answers.some((t) => /^Rating of/.test(t) || /^Support:/.test(t)), 'later answers are not offered: ' + answers.join(' / '));
-    const targets = await page.$$eval(T('jump-0-goto') + ' option', (os) => os.map((o) => o.textContent));
-    check(!targets.some((t) => /^[123]\. /.test(t)) && targets.some((t) => /^8\. /.test(t)) && targets.some((t) => /The thank-you screen/.test(t)), 'only later questions and endings: ' + targets.join(' / '));
-    await select('jump-0-test-0', 'at_least');
-    await select('jump-0-value-0', '9');
-    await select('jump-0-goto', 'one_fix');
-    const sentence = await text('jump-sentence');
-    check(/if the answer to “How likely are you to recommend Valmo to/.test(sentence) && /is 9 or higher, they go to question 8/.test(sentence), 'sentence: ' + sentence);
-    await checkTestNames('jump builder');
-    await shot('route-jump-builder');
-    await click('editor-back');
+  await step('a jump written in the table ("if nps >= 9 go to one_fix") ends up in the screen\'s jumps and in the compiled route', async () => {
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { set: [['nps', 'jumps', 'if nps >= 9 go to one_fix']] }), 'ok');
+    check((await text('paste-changes')) === 'Compared with your draft: 1 screen changed (nps).', 'what changes: ' + (await text('paste-changes')));
+    await click('paste-use');
+    await el('screen-jump-nps-0');
     check(/^↪ goes to question 8 when .* ≥ 9$/.test(await text('screen-jump-nps-0')), 'badge: ' + (await text('screen-jump-nps-0')));
+    await shot('route-jump-pasted');
     await click('save');
     await waitSaved();
     const nps = await savedScreen('nps');
@@ -1167,39 +1550,31 @@ async function main() {
       const node = nodeOf(serverSurvey(await savedModel()).flow, 'nps');
       check(canon(node.next) === canon([{ when: { answer: 'nps', at_least: 9 }, goto: 'one_fix' }, { default: 'fn_ratings' }]), 'the compiled route: ' + JSON.stringify(node.next));
     }
+    const again = await copyRoute();
+    check(again.split('\n').some((l) => /^nps\t/.test(l) && l.split('\t').indexOf('if nps >= 9 go to one_fix') !== -1), 'Copy the current route writes the jump back in the same words');
   });
 
-  await step('"Usually go to" is saved as the screen\'s next, and becomes its arrow', async () => {
-    await click('screen-edit-support');
-    await select('next-select', 'thanks');
-    check(/partners go to the thank-you screen \(question 9\)\./.test(await text('jump-sentence')), 'sentence: ' + (await text('jump-sentence')));
-    await click('editor-back');
+  await step('"then go to" in the table is saved as the screen\'s next, and becomes its arrow', async () => {
+    const table = await copyRoute();
+    await useTable(tableEdit(table, { set: [['support', 'then go to', 'thanks']] }));
+    await el('screen-next-support');
     check(/↪ then goes to the thank-you screen/.test(await text('screen-next-support')), 'badge: ' + (await text('screen-next-support')));
     await click('save');
     await waitSaved();
     check((await savedScreen('support')).next === 'thanks', 'saved as next');
     if (REAL) check(nodeOf(serverSurvey(await savedModel()).flow, 'support').next === 'thanks', 'the compiled arrow');
-    await click('screen-edit-support');
-    await select('next-select', '');
-    await click('editor-back');
-    check(!(await exists('screen-next-support')), 'back to "the next one in the list": no badge');
+    await useTable(table);
+    check(!(await exists('screen-next-support')), 'the table without it: back to "the next one in the list", no badge');
   });
 
-  await step('the repeat selector: a question asked once for each area rated low', async () => {
-    await click('add-question');
-    await click('type-pick-yes_no');
-    await typeInto('new-question-text', 'Is this fixed now?');
-    check((await text('new-question-code')).includes(FIX), 'code ' + FIX);
-    await select('new-question-after', '4');   // after "5. Problem screens"
-    await click('new-question-create');
-    await el('repeat-card');
-    check(await page.$eval(T('repeat-once'), (e) => e.checked), 'asked once by default');
-    await click('repeat-each_low_area');
-    check(/is_this_fixed_now:<area>/.test(await text('repeat-help')), 'explains the answer codes: ' + (await text('repeat-help')));
-    await checkTestNames('repeat card');
-    await shot('route-repeat');
-    await click('editor-back');
+  await step('"ask for" in the table: a question asked once for each area rated low', async () => {
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { insert: [{ after: 'fn_deep_dives', cells: { code: FIX, kind: 'yes/no', 'question (English)': 'Is this fixed now?', required: 'yes', 'ask for': 'each area rated low', show: 'yes' } }] }), 'ok');
+    check(/^Compared with your draft: 1 screen added \(is_this_fixed_now\)/.test(await text('paste-changes')), 'what changes: ' + (await text('paste-changes')));
+    await click('paste-use');
+    await el('screen-repeat-' + FIX);
     check(/Repeats for each area rated low/.test(await text('screen-repeat-' + FIX)), 'badge');
+    await shot('route-repeat');
     await click('save');
     await waitSaved();
     const saved = await savedScreen(FIX);
@@ -1211,30 +1586,23 @@ async function main() {
     }
   });
 
-  await step('"Add an ending": another thank-you screen below the main one, with its own texts, reached by a jump', async () => {
-    await el('other-routes');
-    await click('add-ending');
-    await el('add-ending-modal');
-    await typeInto('ending-new-title', END_TITLE);
-    check((await text('ending-new-code')).includes(END), 'code: ' + (await text('ending-new-code')));
-    await typeInto('ending-new-body', END_BODY);
-    await checkTestNames('add-ending pop-up');
-    await click('ending-new-create');
+  await step('an ending in the table: another thank-you screen below the main one, with its own texts, reached by a jump; Check refuses one nothing leads to', async () => {
+    const table = await copyRoute();
+    const ending = { code: END, kind: 'ending', 'question (English)': END_TITLE, 'message (English)': END_BODY, show: 'yes' };
+    await checkTable(tableEdit(table, { append: [ending] }), 'problems');
+    check(/can never be reached: no arrow leads to it from the start/.test(await text('paste-problems')) && (await pasteWhere('problem')).indexOf('Row 12') !== -1,
+      'an ending nothing leads to is refused, on its row: ' + (await text('paste-problems')));
+    await useTable(tableEdit(table, { append: [ending], set: [['nps', 'jumps', 'if nps >= 9 go to ' + END]] }));
     await el('screen-card-' + END);
     check(await page.$eval(T('other-routes'), (e, id) => !!e.querySelector('[data-test="screen-card-' + id + '"]'), END), 'listed under Other routes and endings');
-    check(/Ends the survey/.test(await text('screen-end-' + END)), 'it ends the survey');
-    check(await exists('screen-unreached-' + END), 'nothing leads there yet: a warning says so');
-    await click('screen-edit-nps');
-    await select('jump-0-goto', END);
-    await click('editor-back');
-    check(!(await exists('screen-unreached-' + END)), 'reached by the jump now: the warning goes');
+    check(/Ends the survey/.test(await text('screen-end-' + END)) && !(await exists('screen-unreached-' + END)), 'it ends the survey, and the jump leads there');
     check(/^↪ goes to the ending “Thank you! We will call/.test(await text('screen-jump-nps-0')), 'the jump names the ending: ' + (await text('screen-jump-nps-0')));
     await shot('route-ending');
     await click('save');
     await waitSaved();
     const m = await savedModel();
     const row = m.screens.find((s) => s.id === END);
-    check(row && row.type === 'thank_you' && row.text === 'end.' + END + '.title' && row.body === 'end.' + END + '.body' && m.screens.indexOf(row) === m.screens.length - 1, 'saved as the last row, with its own text keys');
+    check(row && row.type === 'thank_you' && row.text === 'end.' + END + '.title' && row.body === 'end.' + END + '.body' && m.screens.indexOf(row) === m.screens.length - 1, 'saved as the last row, with its own text keys: ' + JSON.stringify(row));
     check(m.texts['end.' + END + '.title'].en === END_TITLE && m.texts['end.' + END + '.title'].hi === '[TRANSLATE] ' + END_TITLE, 'English first, Hindi marked to translate: ' + JSON.stringify(m.texts['end.' + END + '.title']));
     check(m.texts['end.' + END + '.body'].ta === '[TRANSLATE] ' + END_BODY, 'the message too: ' + JSON.stringify(m.texts['end.' + END + '.body']));
     if (REAL) {
@@ -1245,97 +1613,36 @@ async function main() {
     }
   });
 
-  await step('badges and warnings: a jump that can never happen; hiding, moving and deleting warn about jumps', async () => {
-    await click('screen-edit-one_fix');
-    await click('jump-add');
-    await select('jump-0-answer-0', 'support_gate');
-    await select('jump-0-goto', END);
-    await click('editor-back');
-    check((await exists('screen-jump-one_fix-0')) && !(await exists('screen-jump-problem-one_fix')), 'a working jump: no warning');
-    await click('screen-toggle-support_gate');   // hide the answer that jump tests
-    check(/A rule or jump on question 8, question 9 tests this hidden question/.test(await toastText()), 'hiding warns about the rule and the jump: ' + (await toastText()));
-    check(/this jump can never happen/.test(await text('screen-jump-problem-one_fix')), 'the badge says the jump can never happen');
+  await step('the table\'s check: a jump that tests a hidden question is refused on its row and column; a jump to a hidden ending warns where partners end instead, and the list says so', async () => {
+    const table = await copyRoute();
+    const withJump = tableEdit(table, { set: [['one_fix', 'jumps', 'if support_gate = yes go to ' + END]] });
+    await checkTable(withJump, 'ok');
+    await checkTable(tableEdit(withJump, { set: [['support_gate', 'show', 'no']] }), 'problems');   // hide the answer the jump tests
+    const where = await pasteWhere('problem');
+    check(where.indexOf('Row 10 · jumps') !== -1 && where.indexOf('Row 9 · show only if') !== -1, 'the jump and the rule that test it are refused on their rows and columns: ' + where.join(' / '));
+    check(/its jump to "thank_you_we_will_call_you_this_week" tests "support_gate", but what answers it is hidden/.test(await text('paste-problems')), 'says why: ' + (await text('paste-problems')));
     await shot('route-jump-problem');
-    await click('screen-edit-one_fix');
-    check(/This jump can never happen/.test(await text('jump-0-problem')), 'the editor says why: ' + (await text('jump-0-problem')));
-    await click('editor-back');
-    await click('screen-toggle-support_gate');
-    check(!(await exists('screen-jump-problem-one_fix')), 'shown again: the warning goes');
-    await click('screen-toggle-' + END);   // hide a jump's target, an ending
-    /* CHANGED EXPECTATION (26 Oct 2026, review finding 1): a hidden ending still ends its route, at the main thank-you
-       screen; hiding an ending partners reach says so first. */
-    await el('confirm-hide-ending');
-    check(/^While it is hidden, partners who would reach it \(question 3 jumps here; question 9 jumps here\) end at the main thank-you screen \(question 10\) instead\. Their answers are still sent, and they never go on to the screens below it\.$/.test(await text('hide-ending-note')),
-      'hiding an ending says where partners end then: ' + (await text('hide-ending-note')));
-    await click('modal-confirm');
-    check(/Ending hidden\. Partners who would reach it now end at the main thank-you screen \(question 10\)\./.test(await toastText()), 'toast: ' + (await toastText()));
-    await click('screen-toggle-' + END);
-    await click('screen-edit-support');   // an arrow, then move its target above it
-    await select('next-select', 'one_fix');
-    await click('editor-back');
-    await click('screen-up-one_fix');
-    check(/Question 9 now has an arrow back up to question 8\./.test(await toastText()), 'moving warns about the arrow that now points up: ' + (await toastText()));
-    await click('screen-down-one_fix');
-    await click('screen-edit-support');
-    await select('next-select', '');
-    await click('editor-back');
-    await click('screen-delete-' + END);   // delete a target: its arrows go too, and Undo brings them back
-    await el('confirm-delete-screen');
-    check(/^Question 3 and question 9 go to this ending\. Those arrows are removed too: partners then go where that question usually goes\./.test(await text('delete-arrows-note')), 'the confirmation names the arrows: ' + (await text('delete-arrows-note')));
-    await click('modal-confirm');
-    check(/Ending deleted\. 2 arrows to it removed too\./.test(await toastText()), 'toast: ' + (await toastText()));
-    check(!(await exists('screen-jump-nps-0')) && !(await exists('screen-jump-one_fix-0')), 'the jumps to it are gone');
-    await click('toast-undo');
-    await el('screen-card-' + END);
-    check((await exists('screen-jump-nps-0')) && (await exists('screen-jump-one_fix-0')), 'Undo brings the ending and its jumps back');
+    await useTable(tableEdit(withJump, { set: [[END, 'show', 'no']] }));   // hide the ending both jumps go to
+    check(/an ending that is hidden, so partners end at the main thank-you screen/.test(await text('paste-warnings')), 'a warning says where partners end then: ' + (await text('paste-warnings')));
+    check(/Hidden/.test(await text('screen-card-' + END)) && await page.$eval(T('screen-card-' + END), (e) => e.classList.contains('is-hidden')), 'the ending\'s card says it is hidden');
+    check(/an ending that is hidden/.test(await text('screen-notes-nps')) && /badge-warn/.test(await page.$eval(T('screen-route-problem-nps'), (e) => e.className)),
+      'the question that jumps there has a warning badge, and the reason under it: ' + (await text('screen-notes-nps')));
+    await useTable(withJump);
+    check((await exists('screen-jump-one_fix-0')) && !(await exists('screen-route-problem-nps')) && !(await exists('screen-jump-problem-one_fix')), 'shown again: no warnings');
   });
 
-  await step('the problem, support and area-rating editors show their Settings and change the same entries', async () => {
-    await click('screen-edit-fn_deep_dives');
-    await el('editor-settings-card');
-    check(await page.$eval(T('editor-dd-when-after_all_ratings'), (e) => e.checked), 'problem screens after all the ratings');
-    await select('next-select', 'support');   // a "usually go to" set while the problem screens come after all the ratings ...
-    await click('editor-dd-when-immediate');
-    await el('editor-dd-immediate-note');
-    check(await exists('after-not-used'), 'its own arrows are not used in that mode');
-    /* 26 Oct 2026 (review finding 7): in that mode the row's own arrows are not offered, and what is left over can be cleared. */
-    check(!(await exists('next-select')) && !(await exists('jump-add')), 'no "Usually go to" or "Add a jump" in that mode');
-    check(/^This row still has a “Usually go to” from before\. They change nothing for partners in this mode, but the check warns about them until they are cleared\./.test(await text('after-leftovers')),
-      'the leftover is named: ' + (await text('after-leftovers')));
-    await click('after-clear');
-    check(!(await exists('after-leftovers')), 'cleared');
-    await click('editor-dd-when-after_all_ratings');
-    check((await value('next-select')) === '', 'the "usually go to" is gone: ' + (await value('next-select')));
-    await click('editor-dd-when-immediate');
-    await el('editor-dd-immediate-note');
+  await step('in "straight after each low rating" mode the problem screens row\'s own "then go to" is not used: the table\'s check warns (Settings sets the mode)', async () => {
     await click('nav-settings');
-    check((await value('setting-deep_dive.when')) === 'immediate', 'the same Settings entry changed');
+    await select('setting-deep_dive.when', 'immediate');
+    await click('nav-questions');
+    await checkTable(tableEdit(await copyRoute(), { set: [['fn_deep_dives', 'then go to', 'support']] }), 'ok');
+    check(/the problem screens follow each low rating .*so this row's "then go to", "jumps" and "ask for" are not used/.test(await text('paste-warnings')),
+      'the warning: ' + (await text('paste-warnings')));
+    check((await pasteWhere('warning')).indexOf('Row 6') !== -1, 'on the problem screens row: ' + (await pasteWhere('warning')).join(' / '));
+    await click('paste-clear');
+    await click('nav-settings');
     await select('setting-deep_dive.when', 'after_all_ratings');
     await click('nav-questions');
-    await click('screen-edit-fn_deep_dives');
-    check(await page.$eval(T('editor-dd-when-after_all_ratings'), (e) => e.checked), 'and back');
-    check(await page.$eval(T('editor-setting-deep_dive.require_chip'), (e) => e.checked), 'a problem must be picked');
-    check(await page.$eval(T('editor-setting-deep_dive.require_detail_if_other'), (e) => e.checked), '"Other" needs detail');
-    await click('editor-setting-deep_dive.require_chip');
-    await checkTestNames('problem screens editor');
-    await shot('route-dd-settings');
-    await click('nav-settings');
-    check(!(await page.$eval(T('setting-deep_dive.require_chip'), (e) => e.checked)), 'Settings shows it switched off');
-    await click('setting-deep_dive.require_chip');
-    await click('nav-questions');
-    await click('screen-edit-support');
-    await click('editor-setting-support.allow_not_applicable');
-    await el('editor-support-na-label-en');
-    check(await page.$eval(T('editor-setting-support.allow_comment'), (e) => e.checked), 'the comment box is on');
-    await el('editor-support-comment-text-en');
-    await click('nav-support');
-    check(await page.$eval(T('support-na-toggle'), (e) => e.checked), 'Support questions shows the same "Doesn\'t apply"');
-    await click('support-na-toggle');
-    await click('nav-questions');
-    await click('screen-edit-fn_ratings');
-    check(await page.$eval(T('editor-setting-rating.allow_not_applicable'), (e) => e.checked), '"I don\'t handle this" is shown in the area ratings');
-    await checkTestNames('area ratings editor');
-    await click('editor-back');
   });
 
   /* CHANGED (26 Oct 2026, review finding 11): the outline shows at once and the drawing replaces it when it is
@@ -1450,19 +1757,170 @@ async function main() {
     await waitSaved();
   });
 
-  await step('without the route code the panel still works: a short note, no Map or jumps, the older rule builder', async () => {
-    await control('fail', { fn: 'panelFlowCode', message: 'The script file "Flow" is missing from the Apps Script project.' });
+  await step('without the route code the panel still works: a plain note says pasting a route needs it, with Try again; a route code from before the table says the Flow file needs updating', async () => {
+    /* The Flow file missing: the window gets no route code, and the server can't run the route table either. */
+    const missing = 'The script file "Flow" is missing from the Apps Script project, so the control panel cannot paste a route or show the map and "Try a path".';
+    await control('fail', { fn: 'panelFlowCode', message: missing });
+    await control('fail', { fn: 'panelRouteTable', message: missing });
     await openPanel();
     await click('nav-questions');
-    check(/could not start: The script file "Flow" is missing/.test(await text('flow-unavailable-note')), 'note: ' + (await text('flow-unavailable-note')));
-    check(await page.$eval(T('open-map'), (e) => e.getAttribute('aria-disabled') === 'true') && await page.$eval(T('open-try'), (e) => e.getAttribute('aria-disabled') === 'true'), 'Map and Try a path are switched off');
-    check(!(await exists('add-ending')) && !(await exists('screen-end-thanks')), 'no route badges or Add an ending');
-    await click('screen-edit-support');
-    check(!(await exists('after-card')) && !(await exists('repeat-card')), 'no "After this question" or repeat card');
-    const answers = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.textContent));
-    check(answers.some((t) => /^In the last 30 days/.test(t)), 'the rule builder still lists the earlier answers: ' + answers.join(' / '));
-    await click('editor-back');
+    await page.waitForFunction(() => { const n = document.querySelector('[data-test="flow-unavailable-note"]'); return n && n.getAttribute('data-server') === 'failed'; }, { timeout: 6000 });
+    const note = await text('flow-unavailable-note');
+    check(/^The route tools could not start: The script file "Flow" is missing/.test(note.trim()) && /Pasting a route, the Map and Try a path need them/.test(note), 'note: ' + note);
+    for (const name of ['open-map', 'open-try', 'paste-check', 'route-copy', 'route-template', 'route-instruction']) {
+      check(await page.$eval(T(name), (e) => e.getAttribute('aria-disabled') === 'true'), name + ' is switched off');
+    }
+    await click('paste-check');
+    check(/Pasting a route needs the route tools, which could not start/.test(await toastText()), 'the switched-off Check says why: ' + (await toastText()));
+    check((await exists('screen-card-nps')) && !(await exists('screen-end-thanks')), 'the list is still there, without the route badges');
+    await checkTestNames('questions without the route code');
+    await shot('route-tools-missing');
+    await click('flow-retry');
+    await flowReady();
+    await el('screen-end-thanks');
+    check(!(await exists('flow-unavailable-note')) && (await page.$eval(T('paste-check'), (e) => e.getAttribute('aria-disabled') !== 'true')), 'Try again loads the route code: pasting works again');
+    /* A Flow.gs from before 27 Oct 2026: the route tools, but not the table. */
+    await control('flow_code', { noTable: true });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    check(/older than this control panel, so it can’t read or write a route table/.test(await text('paste-old-tools')), 'says the Flow file needs updating: ' + (await text('paste-old-tools')));
+    check(await page.$eval(T('paste-check'), (e) => e.getAttribute('aria-disabled') === 'true') && (await exists('open-map')) && (await exists('screen-end-thanks')), 'Check is switched off; the Map and the badges still work');
+    await control('flow_code', {});
     await openPanel();   // the next window loads the route code again
+    await flowReady();
+  });
+
+  /* 27 Oct 2026 (review W8 finding 9): "Paste a route" is the only way to change the questions, so it must not depend on
+     this window running the route code. When the window can't (as if Google's window refused to run it), Check, Use this
+     route and the three table buttons ask the server instead: PanelServer.gs panelRouteTable, here the REAL function with
+     the real Model.gs and Flow.gs (real_server.js), with a busy box. The Map and Try a path stay off; the note says
+     pasting still works. A server whose Flow.gs is older than the table: the "paste the latest Flow.gs" note. */
+  await step('the window can\'t run the route code: Check, Use this route, Copy the current route, the template and the instruction work through the server (panelRouteTable); the Map and Try a path stay off and the note says pasting still works', async () => {
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await control('flow_code', { refused: true });
+    await openPanel();
+    await click('nav-questions');
+    await page.waitForFunction(() => window.__ppTest.tableToolsWhere() === 'server', { timeout: 8000 });
+    await page.waitForFunction(() => { const n = document.querySelector('[data-test="flow-unavailable-note"]'); return n && n.getAttribute('data-server') === 'ready'; }, { timeout: 6000 });
+    const note = await text('flow-unavailable-note');
+    check(/^The route tools could not start: this window is not allowed to run the route code/.test(note.trim()) &&
+      /Pasting a route still works: Check, Use this route and the table buttons ask Google instead/.test(note) && !/unsafe-eval|EvalError/.test(note), 'the note, in plain words: ' + note);
+    for (const name of ['open-map', 'open-try']) check(await page.$eval(T(name), (e) => e.getAttribute('aria-disabled') === 'true'), name + ' stays off');
+    for (const name of ['paste-check', 'route-copy', 'route-template', 'route-instruction']) {
+      check(await page.$eval(T(name), (e) => e.getAttribute('aria-disabled') !== 'true'), name + ' works');
+    }
+    check(!(await exists('paste-old-tools')) && !(await exists('screen-end-thanks')) && (await exists('screen-card-nps')), 'no "older Flow" note; the list without its route badges');
+    await checkTestNames('questions with the route table on the server');
+    await shot('route-table-on-server');
+    const calls = async () => (await serverState()).calls.filter((c) => c === 'panelRouteTable').length;
+    check((await calls()) === 1, 'the panel asked the server once whether it can read tables');
+
+    // Copy the current route: a busy box, then the form's own table of the draft, made on the server
+    await control('latency', { ms: 700 });
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    await click('route-copy');
+    const busy = await page.waitForSelector(T('busy'), { visible: true, timeout: 3000 }).then((b) => b.evaluate((e) => e.innerText));
+    check(/Google is making the table/.test(busy), 'a busy box while the server works: ' + busy);
+    await page.waitForFunction(() => navigator.clipboard.readText().then((t) => t.length > 0), { timeout: 8000 });
+    await control('latency', { ms: 120 });
+    await idle();
+    const table = await page.evaluate(() => navigator.clipboard.readText());
+    const reqT = await page.evaluate(() => window.__ppTest.tableRequest('toTable'));
+    check(table === FLOW_PANEL.toTable(reqT.rows, reqT.strings, reqT.survey), 'the clipboard holds the form\'s own table of the draft');
+    check(/The current route copied/.test(await toastText()) && (await calls()) === 2, 'through panelRouteTable: ' + (await toastText()));
+
+    // Check with mistakes: the problems, with their rows and columns, exactly as this window would give them
+    const bad = tableEdit(table, { set: [['nps', 'kind', 'stars'], ['one_fix', 'show only if', 'nps_x <= 6']] });
+    await checkTable(bad, 'problems');
+    check((await pasteWhere('problem')).join(' / ') === 'Row 4 · kind / Row 9 · show only if', 'each problem names its row and column: ' + (await pasteWhere('problem')).join(' / '));
+    const tool = (req) => [req.text, req.survey, req.strings, { rows: req.rows, liveCodes: req.live_codes, liveKinds: req.live_kinds, rounds: req.rounds }];
+    const reqB = await page.evaluate((t) => window.__ppTest.tableRequest('fromTable', t), bad);
+    const gotB = await page.evaluate(() => window.__ppTest.pasteResult());
+    check(canon(gotB.problems) === canon(FLOW_PANEL.fromTable.apply(null, tool(reqB)).problems), 'the server\'s problems are the window\'s own');
+    check(!(await exists('paste-use')) && /All changes saved/.test(await statusText()), 'nothing changes');
+
+    // A clean table with a new question: the same reading as the window's; the pasted route's Map and Try a path stay off
+    const good = tableEdit(table, { insert: [{ after: 'support', cells: QROW }] });
+    await checkTable(good, 'ok');
+    check((await text('paste-changes')) === 'Compared with your draft: 1 screen added (' + Q + ') and 4 texts new or reworded.', 'what would change: ' + (await text('paste-changes')));
+    const reqG = await page.evaluate((t) => window.__ppTest.tableRequest('fromTable', t), good);
+    const localG = FLOW_PANEL.fromTable.apply(null, tool(reqG));
+    const gotG = await page.evaluate(() => window.__ppTest.pasteResult());
+    check(canon(gotG.rows) === canon(localG.rows) && canon(gotG.texts) === canon(localG.texts) && canon(gotG.warnings) === canon(localG.warnings) &&
+      canon(gotG.survey.flow) === canon(localG.survey.flow), 'the server read the table exactly as this window would');
+    for (const name of ['paste-preview-map', 'paste-preview-try']) check(await page.$eval(T(name), (e) => e.getAttribute('aria-disabled') === 'true'), name + ' stays off');
+    check(await page.$eval(T('paste-texts'), (e) => e.open), 'the texts that would change are listed (open: a Hindi text is new)');
+
+    // Use this route: checked once more on the server, then used; saved, the server compiles exactly that route
+    const before = await calls();
+    await click('paste-use');
+    await el('screen-card-' + Q);
+    check((await calls()) === before + 1, 'Use this route checked the table once more on the server');
+    check(/Route used: your questions were replaced\./.test(await toastText()) && /Unsaved changes/.test(await statusText()), 'used, with Undo: ' + (await toastText()));
+    await click('save');
+    await waitSaved();
+    const saved = (await serverState()).model;
+    check(saved.screens.some((s) => s.id === Q && s.type === 'single_choice') && saved.texts['q.' + Q].hi === QROW['question (Hindi)'], 'the new question and its Hindi are saved');
+    const pasted = await page.evaluate(() => window.__ppTest.pastedSurvey());
+    if (REAL) check(pasted && canon(serverSurvey(saved).flow) === canon(pasted.flow), 'the server compiles the saved draft into exactly the pasted route');
+
+    // The Excel template and the instruction, made on the server
+    fs.rmSync(path.join(DL, 'partner-pulse-route.csv'), { force: true });
+    await click('route-template');
+    const csv = await waitForFile('partner-pulse-route.csv', 10000);
+    const reqC = await page.evaluate(() => window.__ppTest.tableRequest('templateCsv'));
+    check(csv === FLOW_PANEL.templateCsv(reqC.survey, reqC.strings, { rows: reqC.rows }) && csv.indexOf(QROW['question (Hindi)']) !== -1, 'the template is the form\'s own, Hindi intact');
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    await click('route-instruction');
+    await page.waitForFunction(() => navigator.clipboard.readText().then((t) => t.length > 0), { timeout: 8000 });
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    const reqI = await page.evaluate(() => window.__ppTest.tableRequest('aiInstruction'));
+    check(clip === FLOW_PANEL.aiInstruction(reqI.survey, reqI.strings, { rows: reqI.rows, rounds: reqI.rounds }) && clip.indexOf(Q) !== -1, 'the instruction is the form\'s own, with today\'s route');
+
+    // Google busy: a plain message with Try again
+    await control('fail', { fn: 'panelRouteTable', message: 'Google took too long or is busy right now. Wait a minute, then try again. (Google said: Exceeded maximum execution time)' });
+    await pasteText('paste-box', good);
+    await click('paste-check');
+    await el('error-modal');
+    const busyMsg = await text('error-modal');
+    check(/The table could not be checked/.test(busyMsg) && /Google took too long or is busy right now/.test(busyMsg), 'says what happened: ' + busyMsg);
+    await click('error-retry');
+    await el('paste-ok');
+    check((await text('paste-changes')) === 'This is the same route as your draft: using it changes nothing.', 'Try again checks it: ' + (await text('paste-changes')));
+
+    // One check at a time: Ctrl+Enter pressed twice in the box (it keeps the keyboard under the busy box) asks the server once
+    await control('latency', { ms: 700 });
+    const once = await calls();
+    await page.$eval(T('paste-box'), (e) => e.focus());
+    await page.keyboard.down('Control');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.up('Control');
+    await page.waitForSelector(T('busy'), { visible: true, timeout: 3000 });
+    await idle();
+    await control('latency', { ms: 120 });
+    check((await calls()) === once + 1 && (await exists('paste-ok')), 'checked once: ' + ((await calls()) - once) + ' server call(s)');
+    // A pasted text over 300 KB is refused before anything is sent
+    const sent = await calls();
+    await pasteText('paste-box', good + '\n' + 'x'.repeat(300001));
+    await click('paste-check');
+    await el('error-modal');
+    check(/The pasted text is too long to check: about 3\d\d KB, and the control panel checks at most 300 KB\. Paste only the route table/.test(await text('error-modal')), 'too long: ' + (await text('error-modal')));
+    check((await calls()) === sent, 'nothing was sent to Google');
+    await click('error-close');
+    await click('paste-clear');
+
+    // A server whose Flow.gs is older than the route table: the panel asks for the latest Flow.gs
+    await control('flow_code', { refused: true, noTable: true });
+    await openPanel();
+    await click('nav-questions');
+    await page.waitForFunction(() => { const n = document.querySelector('[data-test="flow-unavailable-note"]'); return n && n.getAttribute('data-server') === 'old'; }, { timeout: 8000 });
+    check(/older than this control panel, so it can’t read or write a route table/.test(await text('paste-old-tools')), 'says the Flow file needs updating: ' + (await text('paste-old-tools')));
+    check(await page.$eval(T('paste-check'), (e) => e.getAttribute('aria-disabled') === 'true') && await page.$eval(T('route-copy'), (e) => e.getAttribute('aria-disabled') === 'true'), 'Check and the table buttons are off');
+    await control('flow_code', {});
+    await openPanel();   // the next window runs the route code again
     await flowReady();
   });
 
@@ -1505,10 +1963,14 @@ async function main() {
     await control('reset');
     await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
     await openPanel();
+    await flowReady();
     await click('nav-questions');
     check((await text('codes-unlocked-note')) === NOTE, 'note in Questions: ' + (await text('codes-unlocked-note')));
     check(!/🔒/.test(await page.$eval('.qlist', (e) => e.innerText)), 'no lock icons');
-    check(!(await page.$eval(T('screen-delete-one_fix'), (e) => e.getAttribute('aria-disabled') === 'true')), 'a question can be deleted');
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { drop: ['one_fix'] }), 'ok');
+    check(/The current questionnaire has a row "one_fix" .*that this table does not have: using the table removes it\./.test(await text('paste-warnings')), 'a question can be removed (a warning says so): ' + (await text('paste-warnings')));
+    await click('paste-clear');
     await shot('fix-questions-unlocked');
     await click('nav-areas');
     check((await text('codes-unlocked-note')) === NOTE, 'note in Areas');
@@ -1525,23 +1987,55 @@ async function main() {
     await click('nav-questions');
     check(await exists('codes-unlocked-note'), 'still unlocked after publishing (no round opened yet)');
     check(!/🔒/.test(await page.$eval('.qlist', (e) => e.innerText)), 'still no lock icons');
-    await click('screen-edit-one_fix');
-    await el('screen-rename');
-    await click('editor-back');
+    await checkTable(tableEdit(table, { drop: ['one_fix'] }), 'ok');
+    await click('paste-clear');
   });
 
-  /* Pranav's decision (21 Oct 2026): these two fill their own columns of the answers sheet. */
-  await step('the nps and support_gate questions can be hidden, but never deleted or given a new code', async () => {
+  /* Pranav's decision (21 Oct 2026): these two fill their own columns of the answers sheet. Since 27 Oct 2026 the
+     table's check guards them: never removed or given another code, but they can be hidden ("show": no). */
+  await step('the nps and support_gate questions can be hidden, but never removed from the table or given a new code', async () => {
     await click('nav-questions');
+    const table = await copyRoute();
     for (const [id, column] of [['nps', 'nps'], ['support_gate', 'support_contacted']]) {
-      check(await page.$eval(T('screen-delete-' + id), (e) => e.getAttribute('aria-disabled') === 'true'), id + ': Delete is locked, although nothing else is');
-      await click('screen-delete-' + id);
-      check(new RegExp('fills the ' + column + ' column of the answers sheet').test(await toastText()), id + ': says why: ' + (await toastText()));
-      check(!(await page.$eval(T('screen-toggle-' + id), (e) => e.getAttribute('aria-disabled') === 'true')), id + ': can still be hidden');
-      await click('screen-edit-' + id);
-      check(!(await exists('screen-rename')), id + ': no Change code');
-      await click('editor-back');
+      await checkTable(tableEdit(table, { drop: [id] }), 'problems');
+      let said = await text('paste-problems');
+      check(new RegExp('The table has no row with the code "' + id + '"').test(said) && new RegExp('fills the ' + column + ' column of every answers sheet').test(said), id + ': it can\'t be removed: ' + said);
+      await checkTable(tableEdit(table, { set: [[id, 'code', id + '_new']] }), 'problems');
+      said = await text('paste-problems');
+      check(new RegExp('The table has no row with the code "' + id + '"').test(said), id + ': nor given a new code: ' + said);
+      /* Hidden is fine (the support ratings ask only after support_gate, so they are hidden with it). */
+      await checkTable(tableEdit(table, { set: id === 'support_gate' ? [[id, 'show', 'no'], ['support', 'show', 'no']] : [[id, 'show', 'no']] }), 'ok');
     }
+    await click('paste-clear');
+  });
+
+  await step('a question removed in the table takes the texts named after it with it (q.<code>, choice.<code>.…); Undo brings them back; a built-in screen\'s texts stay', async () => {
+    await click('nav-questions');
+    const table = await copyRoute();
+    const X = 'how_did_you_hear_about_us';
+    await useTable(tableEdit(table, { insert: [{ after: 'one_fix', cells: { code: X, kind: 'pick one', 'question (English)': 'How did you hear about us?', answers: 'friend: A friend; team: The Valmo team', show: 'yes' } }] }));
+    await click('save');
+    await waitSaved();
+    const before = await savedModel();
+    const supportText = before.screens.find((x) => x.id === 'support').text;
+    check(before.texts['q.' + X] && before.texts['choice.' + X + '.friend'] && before.texts['choice.' + X + '.team'], 'saved with its texts');
+    await useTable(tableEdit(table, { drop: ['support'] }));   // without the new question, and without the support ratings (a built-in screen)
+    check(/ 3 texts that only the removed screens or answers used were removed too\.$/.test((await text('paste-used')).trim()), 'says which texts went: ' + (await text('paste-used')));
+    await click('toast-undo');
+    await el('screen-card-' + X);
+    check(await exists('screen-card-support'), 'Undo brings both rows back');
+    await click('paste-check');
+    await el('paste-ok');
+    await click('paste-use');
+    await el('paste-used');
+    await click('save');
+    await waitSaved();
+    const after = await savedModel();
+    check(!after.texts['q.' + X] && !after.texts['choice.' + X + '.friend'] && !after.texts['choice.' + X + '.team'], 'the removed question\'s texts are gone');
+    check(!supportText || !!after.texts[supportText], 'the support ratings\' standard text stays: ' + supportText);
+    await useTable(table);
+    await click('save');
+    await waitSaved();
   });
 
   await step('publishing a draft that is already live says so and asks "Publish anyway?"', async () => {
@@ -1819,28 +2313,29 @@ async function main() {
     await control('nohost', { on: false });
   });
 
-  await step('rule builder at 900 px: the remove button stays a small square', async () => {
+  await step('Paste a route at 900 px: the problems, the buttons and the top bar with "Unsaved changes" fit', async () => {
     await page.setViewport({ width: 900, height: 700, deviceScaleFactor: 1 });
     await click('nav-questions');
-    await click('screen-edit-one_fix');
-    await click('rule-mode-if');
-    await el('rule-cond-0');
-    await click('rule-add');
-    await el('rule-cond-1');
-    const sizes = await page.$$eval('[data-test^="rule-remove-"]', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
-    check(sizes.length === 2 && sizes.every((s) => s[0] <= 36 && s[1] <= 36 && Math.abs(s[0] - s[1]) <= 2), 'small squares: ' + JSON.stringify(sizes));
+    const table = await copyRoute();
+    await checkTable(tableEdit(table, { set: [['nps', 'kind', 'stars']] }), 'problems');
+    let over = await page.$eval('#main', (e) => e.scrollWidth - e.clientWidth);
+    check(over <= 0, 'the problem list at 900 px overflows sideways by ' + over + ' px');
+    await shot('fix-w900-paste-problems');
+    await useTable(tableEdit(table, { set: [['one_fix', 'required', 'yes']] }));
+    check(/Unsaved/.test(await statusText()), 'the draft has unsaved changes');
     const bar = await page.evaluate(() => {
       const r = (sel) => document.querySelector(sel).getBoundingClientRect();
       const kids = Array.from(document.querySelectorAll('#topbar > *')).filter((e) => e.offsetParent !== null && !e.classList.contains('spacer')).map((e) => e.getBoundingClientRect());
       return { overlaps: kids.some((k, i) => i && kids[i - 1].right > k.left + 1), right: r('.top-actions').right, width: innerWidth };
     });
     check(!bar.overlaps && bar.right <= bar.width, 'top bar fits at 900 px with "Unsaved changes": ' + JSON.stringify(bar));
-    const answer = await page.$eval(T('rule-answer-0'), (e) => e.getBoundingClientRect().width);
-    check(answer > 300, 'the answer list uses the row: ' + answer);
-    await shot('fix-w900-rule-builder');
+    over = await page.$eval('#main', (e) => e.scrollWidth - e.clientWidth);
+    check(over <= 0, 'Questions at 900 px overflows sideways by ' + over + ' px');
+    const tools = await page.$$eval('[data-test^="route-"]', (els) => els.filter((e) => e.tagName === 'BUTTON').map((e) => { const b = e.getBoundingClientRect(); return [e.getAttribute('data-test'), Math.round(b.right)]; }));
+    const mainRight = await page.$eval('#main', (e) => e.getBoundingClientRect().right);
+    check(tools.length === 3 && tools.every((t) => t[1] <= mainRight), 'the three table buttons fit: ' + JSON.stringify(tools));
+    await shot('fix-w900-paste-used');
     await page.setViewport({ width: 1100, height: 760, deviceScaleFactor: 1 });
-    const wide = await page.$$eval('[data-test^="rule-remove-"]', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
-    check(wide.every((s) => s[0] <= 36 && s[1] <= 36), 'small squares when wide too: ' + JSON.stringify(wide));
     await click('discard');
     await click('modal-confirm');
     await idle();
@@ -1884,7 +2379,10 @@ async function main() {
     return page.$$eval('[data-test^="issue-' + kind + '-"]', (els, k) => els.filter((e) => new RegExp('^issue-' + k + '-\\d+$').test(e.getAttribute('data-test'))).map((e) => e.innerText), kind);
   }
 
-  await step('an ending below the thank-you screen: hiding or deleting it says what happens; a route never runs into another (the check stops it, "Go there" opens After this question)', async () => {
+  /* CHANGED (27 Oct 2026, review W8 finding 2): Check itself now refuses a route that runs on into another, on the row
+     and column to change (the same rule as Publish). A run-on can still reach the draft through an edit in the Sheet:
+     its card then shows an error badge, Publish's check stops it and "Go there" names the row and column. */
+  await step('an ending below the thank-you screen: hiding it in the table says where partners end instead; a route that would run into another is refused by Check on its row and column, and (edited in the Sheet) by Publish, where "Go there" names the row and column to change', async () => {
     await control('reset');
     await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
     const m = (await serverState()).model;
@@ -1904,52 +2402,52 @@ async function main() {
     await flowReady();
     await click('nav-questions');
     await el('screen-card-promo_end');
-    // Hide: a hidden ending still ends the route, at the main thank-you screen (question 9); the panel says so first
-    await click('screen-toggle-promo_end');
-    await el('confirm-hide-ending');
-    check(/^While it is hidden, partners who would reach it \(question 10, just above it, goes on to it\) end at the main thank-you screen \(question 9\) instead\. Their answers are still sent, and they never go on to the screens below it\.$/.test(await text('hide-ending-note')),
-      'hiding says what will happen: ' + (await text('hide-ending-note')));
-    await checkTestNames('hide an ending');
-    await click('modal-confirm');
+    check(await page.$eval(T('other-routes'), (e) => !!e.querySelector('[data-test="screen-card-promo_end"]') && !!e.querySelector('[data-test="screen-card-detractor_end"]')), 'listed under Other routes and endings');
+    check((await text('screen-row-promo_end')) === 'row 12 in the table', 'with its row in the table');
+    const table = await copyRoute();
+    // Hide: a hidden ending still ends the route, at the main thank-you screen (question 9); the check says so first
+    await useTable(tableEdit(table, { set: [['promo_end', 'show', 'no']] }));
+    check(/goes on to row 12 \("Thank you, fan!"\), an ending that is hidden, so partners end at the main thank-you screen/.test(await text('paste-warnings')), 'hiding says what will happen: ' + (await text('paste-warnings')));
     const hidden = await page.evaluate(() => window.__ppTest.flowSurvey());
     check(JSON.stringify(walkSurvey(hidden, { nps: 10 })) === JSON.stringify(['nps', 'promo_q', 'thanks']), 'promoters end at the main thank-you screen: ' + walkSurvey(hidden, { nps: 10 }).join(' > '));
     check(JSON.stringify(walkSurvey(hidden, { nps: 2 })) === JSON.stringify(['nps', 'detractor_q', 'detractor_end']), 'detractors keep their route');
     const note = await page.$eval(T('screen-route-problem-promo_q'), (e) => e.innerText + ' | ' + e.getAttribute('title') + ' | ' + e.className);
-    check(/route note: see the editor \| .*end at the main thank-you screen \(question 9\).*badge-warn/.test(note), 'the question above it has a warning badge saying so: ' + note);
-    await click('screen-toggle-promo_end');
-    // Delete: the question above would run on into the detractors' question; the dialog says so and offers "Hide it instead"
-    await click('screen-delete-promo_end');
-    await el('confirm-delete-screen');
-    check(/^Question 10, just above this ending, has no “Usually go to”: it then goes on to question 12 \(“What went wrong\?”\), which starts another route, so Publish refuses until you choose where question 10 goes\. To keep its route ending here, hide this ending instead \(partners then end at the main thank-you screen \(question 9\)\), or set question 10’s “Usually go to” first \(Edit it > After this question\)\.$/
-      .test(await text('delete-ending-note')), 'the delete dialog explains: ' + (await text('delete-ending-note')));
-    await checkTestNames('delete an ending');
-    await shot('ending-delete-dialog');
-    await click('modal-hide-instead');
-    check(/Hidden/.test(await text('screen-card-promo_end')), '"Hide it instead" hides it');
-    await click('nav-publish');
-    await click('check');
-    await idle();
-    check(/No problems/.test(await text('check-errors-count')), 'a hidden ending is no problem: ' + (await text('check-errors-count')));
-    // Deleted for real: the check stops Publish, and "Go there" opens that question's "After this question"
+    check(/route note: see below \| .*end at the main thank-you screen, question 9 \(Thank-you screen\), instead.*badge-warn/.test(note), 'the question above it has a warning badge saying so: ' + note);
+    check(/end at the main thank-you screen/.test(await text('screen-notes-promo_q')), 'and the reason under its card');
+    await shot('ending-hidden');
+    await useTable(table);
+    // Removed in the table: promo_q would run on into the detractors' question. Check refuses it, on promo_q's row, in "then go to".
+    await checkTable(tableEdit(table, { drop: ['promo_end'] }), 'problems');
+    const runOn = await text('paste-problems');
+    check(/Row 11 \("What do you like most about Valmo\?"\) has no "then go to", so partners who answer it go straight on to row 12 \("What went wrong\?"\), which starts another route: row 4 \(.*\) jumps there\. Write where it goes in its "then go to" column/.test(runOn),
+      'Check refuses a route that runs on into another, in table words: ' + runOn);
+    check((await pasteWhere('problem')).indexOf('Row 11 · then go to') !== -1 && !(await exists('paste-use')), 'on its row and column, and it can\'t be used: ' + (await pasteWhere('problem')).join(' / '));
+    await click('paste-clear');
+    // The same route edited in the Sheet: an error badge on the card; Publish's check stops it, and "Go there" says which row to change.
+    const sheetRunOn = JSON.parse(JSON.stringify(m));
+    sheetRunOn.screens = sheetRunOn.screens.filter((x) => x.id !== 'promo_end');
+    await control('model', { model: sheetRunOn });
+    await openPanel();
+    await flowReady();
     await click('nav-questions');
-    await click('screen-toggle-promo_end');
-    await click('screen-delete-promo_end');
-    await el('confirm-delete-screen');
-    await click('modal-confirm');
+    await el('screen-card-promo_q');
+    const badge = await page.$eval(T('screen-route-problem-promo_q'), (e) => e.innerText + ' | ' + e.getAttribute('title') + ' | ' + e.className);
+    check(/route problem: see below \| .*has no "then go to".*badge-error/.test(badge), 'its card has an error badge (a note of level "error"): ' + badge);
     await click('nav-publish');
     await click('check');
     await idle();
     const errors = await issueTexts('error');
-    const at = errors.findIndex((t) => /has no "usually go to", so partners who answer it go straight on to question 11 \("What went wrong\?"\), which starts another route \(question 3 jumps there\)/.test(t));
+    /* Model.gs says "usually go to" until its own run-on check gives way to the route code's (G5, "then go to"). */
+    const at = errors.findIndex((t) => /has no "(usually|then) go to", so partners who answer it go straight on to question 11 \("What went wrong\?"\), which starts another route/.test(t));
     check(at !== -1, 'the check names the run-on: ' + errors.join(' | '));
     await click('issue-goto-error-' + at);
-    await el('after-card');
-    check(/^Question 10:/.test(await page.$eval('.editor-head h1', (e) => e.innerText)), 'Go there opens question 10');
-    await page.waitForFunction(() => { const c = document.querySelector('[data-test="after-card"]'); return c && c.classList.contains('flash'); }, { timeout: 3000 });
-    const targets = await page.$$eval(T('next-select') + ' option', (os) => os.map((o) => o.value + '=' + o.textContent));
-    check(targets.some((t) => /^thanks=9\. The thank-you screen$/.test(t)), 'the main thank-you screen above it is offered (an ending): ' + targets.join(' / '));
-    await select('next-select', 'thanks');
-    check(/After this question, partners go to the thank-you screen \(question 9\)\./.test(await text('jump-sentence')), 'sentence: ' + (await text('jump-sentence')));
+    await page.waitForFunction(() => { const c = document.querySelector('[data-test="screen-card-promo_q"]'); return c && c.classList.contains('flash'); }, { timeout: 3000 });
+    const fix = await text('screen-fix-note-promo_q');
+    check(/^To fix question 10, change row 11 of the route table \(code promo_q, its “then go to” or “jumps” column\): Copy the current route/.test(fix) &&
+      /The problem: Question 10 \("What do you like most about Valmo\?"\) has no "(usually|then) go to"/.test(fix), 'Go there names the row and the column, in the question\'s card: ' + fix);
+    await checkTestNames('the note "Go there" leaves in a card');
+    await shot('go-there-note');
+    await useTable(tableEdit(table, { drop: ['promo_end'], set: [['promo_q', 'then go to', 'thanks']] }));
     await click('nav-publish');
     await click('check');
     await idle();
@@ -1974,18 +2472,11 @@ async function main() {
     await idle();
   });
 
-  await step('"Show this question only if" also offers the partner\'s language and the round; the server checks such a rule', async () => {
+  await step('a rule on the partner\'s language in the table ("language = hi"): saved as a rule on the language; the server checks it', async () => {
     await click('nav-questions');
-    await click('screen-edit-one_fix');
-    await click('rule-mode-if');
-    await el('rule-cond-0');
-    const answers = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.value + '=' + o.textContent));
-    check(answers.indexOf('@lang=The partner’s language') !== -1 && answers.indexOf('@round=The round') !== -1, 'the language and the round are offered: ' + answers.join(' / '));
-    check((await value('rule-answer-0')).charAt(0) !== '@', 'a new rule still starts from the latest earlier answer: ' + (await value('rule-answer-0')));
-    await select('rule-answer-0', '@lang');
-    await select('rule-value-0', 'hi');
-    check(/Partners see this question only if the partner’s language is “Hindi”\./.test(await text('rule-sentence')), 'sentence: ' + (await text('rule-sentence')));
-    await checkTestNames('rule on the language');
+    const table = await copyRoute();
+    await useTable(tableEdit(table, { set: [['one_fix', 'show only if', 'language = hi']] }));
+    check(/^Only if the partner’s language is “Hindi”$/.test(await text('screen-rule-one_fix')), 'the card says it in words: ' + (await text('screen-rule-one_fix')));
     await click('save');
     await waitSaved();
     const saved = (await serverState()).model.screens.find((x) => x.id === 'one_fix');
@@ -1999,14 +2490,13 @@ async function main() {
       check(canon(node.show_if) === canon({ fact: 'lang', equals: 'hi' }), 'compiled: ' + JSON.stringify(node.show_if));
     }
     await click('nav-questions');
-    await click('screen-edit-one_fix');
-    await click('rule-mode-always');
-    await click('editor-back');
+    check(/language = hi/.test(await copyRoute()), 'Copy the current route writes it back as "language = hi"');
+    await useTable(table);
     await click('save');
     await waitSaved();
   });
 
-  await step('a broken jump is marked on that jump only, even when two jumps go to the same screen; with an older or failing route code the builders fall back to the earlier rows', async () => {
+  await step('a broken jump in the Sheet is marked on that jump only in the read-only list, with the checker\'s words under the card; Check refuses it on its row and column; with an older or failing route code the mark stays', async () => {
     await control('reset');
     await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
     const m = (await serverState()).model;
@@ -2018,62 +2508,52 @@ async function main() {
     await click('nav-questions');
     check(/this jump can never happen/.test(await text('screen-jump-problem-nps')), 'the badge: ' + (await text('screen-jump-problem-nps')));
     check(/"support_gate"/.test(await page.$eval(T('screen-jump-problem-nps'), (e) => e.getAttribute('title'))), 'its tooltip is the checker\'s message');
-    await click('screen-edit-nps');
-    await el('after-card');
-    const why = await text('jump-1-problem');
-    check(/This jump can never happen\./.test(why) && /"support_gate"/.test(why) && /never comes before this jump/.test(why), 'jump 2 says why: ' + why);
-    check(!(await exists('jump-0-problem')), 'jump 1 goes to the same screen and works: nothing is marked on it (the checker says which jump the problem is about)');
-    const own = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
-    check(own.some((t) => /^How likely are you to recommend/.test(t)) && own.indexOf('The partner’s language') !== -1, 'a jump may test the question\'s own answer and the language: ' + own.join(' / '));
-    check(!own.some((t) => /^In the last 30 days/.test(t) || /^Rating of/.test(t)), 'never a later answer: ' + own.join(' / '));
+    const notes = await text('screen-notes-nps');
+    check(/"support_gate"/.test(notes) && /never comes before this jump/.test(notes), 'the checker\'s words are shown under the card: ' + notes);
+    check((await exists('screen-jump-nps-0')) && (await exists('screen-jump-nps-1')), 'both jumps are listed');
     await shot('jump-problem-on-one-jump');
-    await click('editor-back');
-    await click('screen-edit-support');
-    await click('rule-mode-if');
-    const earlier = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.value));
-    check(earlier.indexOf('support_gate') !== -1 && earlier.indexOf('fn_rating:payments') !== -1 && earlier.indexOf('nps') !== -1, 'a rule may test the answers before it: ' + earlier.join(', '));
-    check(!earlier.some((v) => /^support:/.test(v) || v === 'one_fix'), 'not its own or later ones: ' + earlier.join(', '));
-    await click('rule-mode-always');
-    await click('editor-back');
+    const table = await copyRoute();
+    check(table.split('\n').some((l) => l.split('\t').indexOf('if nps >= 9 go to one_fix; if support_gate = yes go to one_fix') !== -1), 'Copy the current route writes both jumps');
+    await checkTable(table, 'problems');
+    check((await pasteWhere('problem')).join(' / ') === 'Row 4 · jumps' && /"support_gate"/.test(await text('paste-problems')), 'Check refuses it on its row and column: ' + (await text('paste-problems')));
+    await click('paste-clear');
     // an older route code (a Flow.gs from before 26 Oct 2026: no answersAt, findings without their place)
     await control('flow_code', { older: true });
     await openPanel();
     await flowReady();
     await click('nav-questions');
     check(/this jump can never happen/.test(await text('screen-jump-problem-nps')), 'older route code: the badge is still there (from the words of the message)');
-    await click('screen-edit-nps');
-    await el('after-card');
-    check(/"support_gate"/.test(await text('jump-1-problem')), 'older route code: jump 2 is still marked');
-    const older = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
-    check(older.some((t) => /^How likely are you to recommend/.test(t)) && older.indexOf('The partner’s language') !== -1 && !older.some((t) => /^Rating of/.test(t)),
-      'older route code: the jump builder falls back to the rows up to this one: ' + older.join(' / '));
-    await click('editor-back');
-    await click('screen-edit-support');
-    await click('rule-mode-if');
-    const olderRule = await page.$$eval(T('rule-answer-0') + ' option', (os) => os.map((o) => o.value));
-    check(olderRule.indexOf('support_gate') !== -1 && !olderRule.some((v) => /^support:/.test(v)), 'older route code: the rule builder offers the earlier rows: ' + olderRule.join(', '));
-    await click('rule-mode-always');
-    await click('editor-back');
-    // a route code whose answersAt fails: the route tools keep working, and the builders offer the earlier rows
+    // a route code whose answersAt fails: the route tools keep working
     await control('flow_code', { failing: true });
     await openPanel();
     await flowReady();
     await click('nav-questions');
     check(!(await exists('flow-error-note')) && (await exists('open-map')), 'answersAt failing: the route tools keep working');
     check(/this jump can never happen/.test(await text('screen-jump-problem-nps')), 'answersAt failing: the badge is still there');
-    await click('screen-edit-nps');
-    await el('after-card');
-    const failing = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.textContent));
-    check(failing.some((t) => /^How likely are you to recommend/.test(t)) && failing.indexOf('The partner’s language') !== -1 && !failing.some((t) => /^Rating of/.test(t)),
-      'answersAt failing: the jump builder falls back to the rows up to this one: ' + failing.join(' / '));
-    await click('editor-back');
     await control('flow_code', { older: false });
     await control('reset');
     await openPanel();
     await flowReady();
   });
 
-  await step('a kind of question added in web/js/types/ (the guide\'s example) comes with the list of kinds: the jump builder and Try a path know its answer', async () => {
+  await step('a rule in the Sheet that tests a later answer is marked on its card, with what to change in the table', async () => {
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    const m = (await serverState()).model;
+    m.screens.find((x) => x.id === 'support_gate').show_if = { answer: 'one_fix', answered: true };
+    await control('model', { model: m });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    check(/^⚠ The rule tests a later or hidden answer$/.test(await text('screen-rule-problem-support_gate')), 'the badge: ' + (await text('screen-rule-problem-support_gate')));
+    const notes = await text('screen-notes-support_gate');
+    check(/^Its rule \(“show only if”\) tests the question “If Valmo could fix just one thing/.test(notes) && /In the table, test an earlier answer, or move this row further down\./.test(notes), 'what to change: ' + notes);
+    await control('reset');
+    await openPanel();
+    await flowReady();
+  });
+
+  await step('a kind of question added in web/js/types/ (the guide\'s example) comes with the list of kinds: the table takes its code as a kind, and Try a path knows its answer', async () => {
     const types = screenTypesWithStars();
     const row = types.find((t) => t.type === 'stars_1_10');
     check(row && row.catalogue && row.catalogue.type === 'stars_1_10' && row.catalogue.answer && row.catalogue.answer.kind === 'number' && row.catalogue.answer.max === 10,
@@ -2085,30 +2565,16 @@ async function main() {
     await openPanel();
     await flowReady();
     await click('nav-questions');
-    await click('add-question');
-    await click('type-pick-stars_1_10');
-    await typeInto('new-question-text', 'How many stars would you give us?');
     const code = 'how_many_stars_would_you_give_us';
-    check((await text('new-question-code')).includes(code), 'code: ' + (await text('new-question-code')));
-    await click('new-question-create');
-    await el('after-card');
-    await click('jump-add');
-    await el('jump-0');
-    const answers = await page.$$eval(T('jump-0-answer-0') + ' option', (os) => os.map((o) => o.value + '=' + o.textContent));
-    check(answers.some((t) => t.indexOf(code + '=How many stars would you give us?') === 0), 'its own answer is offered: ' + answers.join(' / '));
-    check((await value('jump-0-answer-0')) === code, 'a new jump starts from its own answer: ' + (await value('jump-0-answer-0')));
-    await select('jump-0-test-0', 'at_least');
-    const values = await page.$$eval(T('jump-0-value-0') + ' option', (os) => os.map((o) => o.value));
-    check(values.join(',') === '1,2,3,4,5,6,7,8,9,10', 'its answer is 1 to 10, as the kind says: ' + values.join(','));
-    await select('jump-0-value-0', '9');
-    await select('jump-0-goto', 'thanks');
-    await checkTestNames('a jump on an added kind');
-    await click('editor-back');
+    const stars = { code, kind: 'stars_1_10', 'question (English)': 'How many stars would you give us?', required: 'yes', jumps: 'if ' + code + ' >= 9 go to thanks', show: 'yes' };
+    await useTable(tableEdit(await copyRoute(), { insert: [{ after: 'one_fix', cells: stars }] }));
+    await el('screen-card-' + code);
     check(!(await exists('screen-jump-problem-' + code)), 'the jump can happen: no warning');
+    check(/^↪ goes to the thank-you screen when/.test(await text('screen-jump-' + code + '-0')), 'its jump badge: ' + (await text('screen-jump-' + code + '-0')));
     await click('open-try');
     await el('try-inputs');
     const tryValues = await page.$$eval(T('try-answer-' + code) + ' option', (os) => os.map((o) => o.value));
-    check(tryValues.join(',') === ',1,2,3,4,5,6,7,8,9,10', 'Try a path offers its answer: ' + tryValues.join(','));
+    check(tryValues.join(',') === ',1,2,3,4,5,6,7,8,9,10', 'Try a path offers its answer, 1 to 10 as the kind says: ' + tryValues.join(','));
     check(!(await exists('try-unknown')), 'and never says no screen stores it');
     await select('try-answer-' + code, '9');
     await click('try-sent-toggle');
@@ -2118,6 +2584,25 @@ async function main() {
     await control('screen_types', { types: null });
     await control('reset');
     await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await openPanel();
+    await flowReady();
+  });
+
+  await step('an empty draft (a Sheet nobody imported into): Questions says to import the questionnaire from GitHub first, and its button opens Settings there', async () => {
+    await control('reset');
+    const m = (await serverState()).model;
+    m.screens = [];
+    await control('model', { model: m });
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await openPanel();
+    await flowReady();
+    await click('nav-questions');
+    check(/^First copy the questionnaire stored in GitHub \(Settings > Import from GitHub\)/.test(await page.$eval('[data-test="route-now"] .empty p', (e) => e.innerText)), 'the empty list says what to do first');
+    await checkTestNames('questions, empty draft');
+    await click('questions-empty-import');
+    await el('import-go');
+    check((await page.$eval('[aria-current="page"]', (e) => e.getAttribute('data-test'))) === 'nav-settings', 'the button opens Settings, at Import from GitHub');
+    await control('reset');
     await openPanel();
     await flowReady();
   });

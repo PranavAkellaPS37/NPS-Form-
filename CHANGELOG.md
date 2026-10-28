@@ -37,6 +37,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 
 Nothing yet. Next up is **Phase 3: pipeline**. A Python program that downloads the answers from each round's data spreadsheet, transcribes the voice notes, and sorts comments and voice notes into the same area and problem codes.
 
+## [0.3.1] - 2026-10-28 - Paste a route
+
+Questions and their route are no longer made one by one in the control panel. The **whole route is one table**, one row per screen: you copy it into Excel or Google Sheets (or let Claude or ChatGPT write it from your notes, an Excel sheet or a flowchart picture), change it, paste it back, check it and use it. Pranav's decision of 27 Oct ([docs/spec.md §4](docs/spec.md#4-decisions-log)): "paste the route is awesome … the current flow should be gone". The Map and Try a path stay. **For partners nothing changes:** the files phones load are untouched, and today's route copied as a table and pasted back gives exactly the same route (tested, in every format).
+
+### Added
+
+**In the control panel (Questions)**
+
+- **"1. Get the route as a table"**, with three buttons:
+  - **Copy the current route**: today's route as a table on the clipboard, ready to paste into Excel or Google Sheets. If the browser blocks copying, a **Copy by hand** box opens.
+  - **Download the Excel template**: the same table as a file, `partner-pulse-route.csv`, that opens in Excel with the Hindi intact.
+  - **Copy the instruction for Claude/ChatGPT**: what to paste into the AI before your notes, Excel sheet or flowchart picture. It explains every column, kind and rule word, lists today's areas and problem codes, support questions and languages, gives a short made-up example and today's route, and tells the AI to output only the table and to copy only the Hindi you give it, **never translating**.
+- **"2. Paste a route"**: a large box for the table. It reads rows copied from Excel or Google Sheets, a CSV file's text, or the Markdown table an AI writes (with words or code fences around it). **Check** (or **Ctrl+Enter**) reads it and checks it with the same checker as Publish. Each problem shows its **row** (the header row is row 1, as Excel numbers it) and **column**, with a plain-English sentence, and nothing in the draft changes. A clean check says what would change (screens added, removed or changed, the order, texts new or reworded), or that it is the same route.
+- **The pasted route on the Map and in Try a path** before you use it: both offer "The pasted route (not used yet)".
+- **Use this route**: checks the table once more, then replaces the draft's questions and their texts. Areas, problems, support questions, settings, languages and rounds stay as they are. A message with **Undo** follows; then **Save**, **Preview** and **Publish** as usual.
+- **The table** (format `pp-route-table/1`): columns `code`, `kind`, `question (English)`, `question (Hindi)`, `answers`, `answers (Hindi)`, `message (English)`, `message (Hindi)`, `required`, `show only if`, `then go to`, `jumps`, `ask for` and `show`, in any order, with forgiving names (and optional `left end`, `right end` and `hint` for a 0 to 10 question). Rules are short sentences such as `nps <= 6`, `support_gate = yes`, `language = hi` or `fn_rating:payments <= 2`, joined with `and` / `or`; a jump reads `if nps >= 9 go to support_gate`. The guide, [docs/control-panel.md](docs/control-panel.md#recipe-2-change-the-questions-paste-a-route), lists them all.
+- **Codes partners answered can't leave the table.** Once a real round has opened, a table that drops such a question, or an answer of a pick-one question, is refused at Check ("hide, never delete": write `no` in `show`). `nps` and `support_gate` can never be removed or given another code.
+- **New texts are never translated.** English and the Hindi you give go in; a real translation already there is kept; every other language gets the usual `[TRANSLATE]` placeholder.
+
+**Safety checks added after the independent review (28 Oct)**
+
+- **A placeholder never wipes words.** A cell holding only `NA`, `N/A`, `-`, `—`, `TBD`, `(to be translated)` or similar counts as empty (today's words stay), with a warning. Before, "NA" in a Hindi cell replaced every real Hindi text.
+- **Every Hindi text a table adds or changes is flagged** (old → new: "keep them only if a person wrote them"), and so is new English on a built-in screen. Under "Compared with your draft", a fold-out lists every text that would change; it opens by itself when a translation would change.
+- **A question partners answered keeps its kind** (for example voice/typing can't become faces): refused at Check and at Publish.
+- **A route that runs on into another route** is now found by Check too, not only by Publish: it is one rule in the route code that both use.
+- **Only the first `thank you` row is the main thank-you screen.** A later one with its own words is read as an `ending` (before, its words replaced the main thank-you's). `end` now means `ending`. An ending above the thank-you row, or with a `show only if`, is refused.
+- **Answers:** a pick one needs at least 2 answers separated by `;` (commas and slashes don't separate them); a label with `;` goes in double quotes (and Copy the current route writes it that way); list marks and an AI's `` `code` `` or `**bold**` are removed.
+- **Other pastes:** the Sheet's own Screens tab is refused ("use Copy the current route"), and so is a text that looks like a text key (`q.nps`); column names in Hindi script (`प्रश्न (हिंदी)`, `हिंदी`) and `Hindi translation` are read; an unknown column with words in it is named; a second table is joined when it has the same columns, else refused; a "Left out: …" line under an AI's table is repeated as a warning; a rule on a round that doesn't exist gets a warning ("Did you mean DEMO-R1?").
+- **The instruction for Claude/ChatGPT** now also says: leave cells empty (never NA or -), exactly one thank-you row, end each route below it, `;` between answers, one table only, and list what was left out.
+- **Pasting works even if the panel window can't run the route code:** Check, Use this route and the three table buttons then ask Google to run the same code (a few seconds slower); only the Map, Try a path and the badges are off.
+
+**For developers**
+
+- `web/js/flow-panel.js`: `PP.flowPanel.fromTable`, `toTable`, `templateCsv`, `aiInstruction`, and the rule language `parseRule` / `ruleText`, `parseJumps` / `jumpsText` ([docs/flow-engine.md §9.8](docs/flow-engine.md#98-the-route-as-a-table-paste-a-route-27-oct-2026)). `apps-script/Flow.gs` regenerated (about 770 KB, up from about 480 KB). Since 28 Oct: `fromTable` options `liveKinds` and `rounds`; the run-on rule is the `fromRows` note G5 (Model.gs's own copy removed); Model.gs `PP_mdlCheckLiveKinds_` and `PP_mdlLiveKinds_`; PanelServer.gs `panelRouteTable(request)` (admin-only server fallback) and `live_ids.kinds`.
+- **Tests:** `tests/flow/route_table_test.js` (36 tests; fake fixtures in `tests/flow/fixtures/route-table/`); `panel_rows_test.js` 17 (G5 compared with a frozen copy of the old Model.gs rule on 3,000 generated routes); model 235; the panel bench rewritten around the table (82 steps, including a check that no control of the old question editor is left, and the server fallback with the real `PanelServer.gs`, through the new `tests/panel/real_server.js`); planted mistakes 85; a fake-server hook for a `Flow.gs` from before the table (`/control/flow_code {noTable: true}`).
+
+### Changed
+
+- **The Questions list is read only ("The route now").** Each card keeps its badges (rules, jumps, repeats, endings, hidden, problems), shows its place in the table ("row N in the table") and shows the checker's words under the card, not only in a tooltip. The badges now say "⚠ nothing leads here" and "⚠ The rule tests a later or hidden answer" (without the old "add a jump" / "edit it" advice, since the fix is made in the table).
+- **Publish's "Go there"** on a question problem opens that question's card with a note naming the table row and column to change (for example its `show only if`, or its `then go to` or `jumps`), with **Close**.
+- **Texts that go with a removed question.** When **Use this route** removes a question or an answer, the texts named after its code (`q.<code>`, `choice.<code>.…`, `end.<code>.…`) that nothing else uses go too; Undo brings them back. A built-in screen's standard texts always stay.
+- When the route tools can't start in the panel window, pasting still works through Google (see above) and Questions says so, with **Try again**; only when Google can't run them either does it say that pasting a route, the Map and Try a path are switched off. With a `Flow.gs` older than this release, the paste card asks for the latest one. An empty draft points to **Settings > Import from GitHub**.
+- The control panel's page is smaller: 358 KB (was 387 KB).
+- `apps-script/PanelServer.gs`: the "Flow file missing" message no longer mentions jumps.
+- **Publish's messages use the route table's words** ("then go to", "jumps", "show only if", "show"), no longer the removed editor's.
+- The Support section's note now points to **Paste a route** and **Texts & translations** for the support question's wording.
+
+### Removed
+
+- From the control panel: **Add a question**; the question editor (its wording, answers, "required", the rule builder "Only show it if…", "After this question" with **Usually go to** and **Add a jump**, "Ask this question", and the settings cards of the built-in screens); **Add an ending**; and adding, hiding, moving, deleting and renaming questions. All of it is done in the table now. The problem-screen, support and rating settings stay in **Settings** (and **Support questions**); wording stays editable in **Texts & translations**.
+
+### To upgrade
+
+Phones are unaffected. In the Apps Script project `Flow`, `Model`, `PanelServer` and `Panel` changed (paste all four together); `Code` is unchanged, and **Set up or repair** is not needed.
+
+1. Upload the project to GitHub and wait for the green tick (the Home banner compares the route code on GitHub with the panel's, and `web/js/flow-panel.js` changed).
+2. Paste **Flow**, **Model**, **PanelServer** and **Panel** into the Apps Script project, save, then **Deploy > Manage deployments > Edit > Version: New version**. [apps-script/README.md](apps-script/README.md#this-release-paste-a-route-27-oct-2026) has the steps and what you should see.
+3. Open the panel > **Questions**: "1. Get the route as a table" and "2. Paste a route" are there. Click **Copy the current route**, paste it straight back, and click **Check**: it should say "This is the same route as your draft: using it changes nothing."
+
+The app version (`APP_VERSION` in `web/js/app.js`) still says `0.2.0`, as noted under 0.3.0: phones load none of the changed files.
+
+**Known gaps (for a later change):**
+
+- A question that is **hidden** in today's live version could still change its kind without a warning: the protected list of codes partners answered holds codes, not kinds. A shown question is protected.
+- **[UNCONFIRMED] on real Google:** whether the panel window runs the route code (if not, pasting goes through Google instead; the Map and Try a path are then off), how long a check through Google takes, and whether the Apps Script editor takes the ~770 KB `Flow` file in one paste (the setup guide has the clasp route if not).
+
 ## [0.3.0] - 2026-10-26 - The route: jumps, loops and endings
 
 The questionnaire's **route** (which screen comes after which) can now branch: a question can send partners to a later question or to an ending of its own, a question can be asked once for each area (or each area rated low), and there can be several thank-you screens. All of it is edited in the control panel, without JSON. Behind it there is one engine, one checker and one converter, shared by the phones, the control panel, the command line and GitHub's check, so they can never disagree. Pranav approved the design on 23 Oct ([docs/flow-graph-proposal.md](docs/flow-graph-proposal.md)); it was built, reviewed and fixed by 26 Oct. **For partners nothing changes yet:** today's questionnaire shows exactly the same screens and sends exactly the same data (proven on 73 questionnaires).
