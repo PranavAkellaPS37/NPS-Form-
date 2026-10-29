@@ -647,7 +647,7 @@ const RULES = [
     ['show: perhaps', H + NPS + 'q1\tyes/no\tOne?\t\t\t\t\t\t\tperhaps\n' + GATE + THANKS, [[3, 'show', 'q1', /"perhaps" is not yes or no/]]],
     ['ask for: twice', H + NPS + 'q1\tyes/no\tOne?\t\t\t\t\t\ttwice\tyes\n' + GATE + THANKS, [[3, 'ask for', 'q1', /"twice" is not one of: once/]]],
     ['ask for on a built-in', H + NPS + 'fn_ratings\tarea ratings\t\t\t\t\t\t\teach area\tyes\n' + GATE + THANKS,
-      [[3, 'ask for', 'fn_ratings', /a "area ratings" row is never asked once per area\. Only these kinds can be: 0 to 10, faces, yes\/no, pick one, voice\/typing, info card/]]],
+      [[3, 'ask for', 'fn_ratings', /a "area ratings" row is never asked once per area\. Only these kinds can be: 0 to 10, faces, yes\/no, pick one, pick several, voice\/typing, info card/]]],
     ['a rule that cannot be read', H + NPS + 'q1\tyes/no\tOne?\t\t\tnps <= 6 and support_gate = yes or nps = 1\t\t\t\tyes\n' + GATE + THANKS,
       [[3, 'show only if', 'q1', /the rule "nps <= 6 and .*" cannot be read: it mixes "and" and "or"/]]],
     ['then go to a code no row has', H + NPS + 'q1\tyes/no\tOne?\t\t\t\tsuport_gate\t\t\tyes\n' + GATE + THANKS,
@@ -756,7 +756,7 @@ const RULES = [
   assert.ok(/the code was empty, so the panel made one from the English question: "did_you_get_your_payout_on_time"\. Answers are saved under it/.test(w[8]), w[8]);
   assert.ok(/a "info card" row has nothing to answer, so "required" changes nothing/.test(w[10]), w[10]);
   assert.ok(/a "yes\/no" row shows no message/.test(w[11]), w[11]);
-  assert.ok(/only "pick one" questions have answers to write here/.test(w[12]), w[12]);
+  assert.ok(/only "pick one" and "pick several" questions have answers to write here/.test(w[12]), w[12]);
   assert.ok(/the answer code "Phone-Call" is written "phone_call"/.test(w[13]), w[13]);
   assert.ok(/answers without a code got one made from their English: phone_call_2, in_the_app/.test(w[14]), w[14]);
   assert.ok(/made one from the English question: "bye_for_now"/.test(w[15]), w[15]);
@@ -1367,7 +1367,7 @@ const shortText = (t, n) => { const x = String(t).trim().replace(/\s+/g, ' '); r
   assert.ok(panel.toTable(res.rows, strings, s).indexOf('stars\tstars_1_10\t') !== -1, 'written with its code as the kind');
   const ins = panel.aiInstruction(SURVEY_FILE, STRINGS);
   assert.ok(/- also: stars_1_10\./.test(ins), 'the instruction names the added kind');
-  assert.ok(/Only for 0 to 10, faces, yes\/no, pick one, voice\/typing, info card, stars_1_10\./.test(ins), 'and says it can be asked for each area');
+  assert.ok(/Only for 0 to 10, faces, yes\/no, pick one, pick several, voice\/typing, info card, stars_1_10\./.test(ins), 'and says it can be asked for each area');
   ok('a kind added as a plug-in (web/js/types/): read by its code or its name, round trip, checked, and named in the instruction');
 }
 
@@ -1386,6 +1386,66 @@ const shortText = (t, n) => { const x = String(t).trim().replace(/\s+/g, ' '); r
     assert.ok(source.trimEnd().endsWith("}(typeof window !== 'undefined' ? window : globalThis));"), 'the exact footer Flow.gs relies on');
     ok('flow-panel.js parses as ES5, is plain ASCII, and ends with the footer the Flow.gs generator needs');
   }
+}
+
+// Pick several (28 Oct 2026): the kind "pick several" (and its other spellings), its answers like a pick
+// one, a rule "areas = load" meaning "load is one of the ticked", one follow-up per ticked area, the round
+// trip, and "multiple choice" refused as ambiguous.
+{
+  const lines = todayLines('tsv');
+  const H = lines[0].split('\t');
+  const col = (name) => H.indexOf(name);
+  const mk = (f) => { const b = H.map(() => ''); Object.keys(f).forEach((k) => { b[col(k)] = f[k]; }); return b.join('\t'); };
+  const table = (kind, answers, rule) => {
+    const rows = lines.slice(1).filter(Boolean);
+    const at = rows.findIndex((l) => l.split('\t')[0] === 'nps');
+    rows.splice(at + 1, 0,
+      mk({ code: 'areas', kind: kind, 'question (English)': 'Which areas? You can pick more than one.', answers: answers }),
+      mk({ code: 'load_low', kind: 'pick one', 'question (English)': 'What went wrong with load?', answers: 'a: Late; other: Others', 'show only if': rule }));
+    return [H.join('\t')].concat(rows).join('\n');
+  };
+  const res = panel.fromTable(table('pick several', 'load: Load & volume; payments: Payments; app: App', 'nps <= 8 and areas = load'),
+    survey(), STRINGS, { rows: todayRows() });
+  assert.ok(res.ok, JSON.stringify(res.problems));
+  const r = res.rows.find((x) => x.id === 'areas');
+  assert.strictEqual(r.type, 'multi_choice');
+  deep(r.options, ['load', 'payments', 'app']);
+  deep(res.texts['choice.areas.load'].en, 'Load & volume');
+  deep(res.rows.find((x) => x.id === 'load_low').show_if, { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] });
+  // the compiled route: one follow-up per ticked area (the engine reads "=" as "is one of the ticked")
+  const walk = (answers) => checker.simulate(res.survey, Object.assign({}, answers), { lang: 'en' }).steps.map((s) => s.screen);
+  assert.ok(walk({ nps: 4, areas: ['load', 'app'] }).indexOf('load_low') !== -1, 'load ticked with others: its follow-up shows');
+  assert.strictEqual(walk({ nps: 4, areas: ['app'] }).indexOf('load_low'), -1, 'load not ticked: no follow-up');
+  assert.strictEqual(walk({ nps: 10, areas: ['load'] }).indexOf('load_low'), -1, 'a promoter: no "went wrong"');
+  // round trip: the table writes "pick several" and reads back the same rows, with no text changes
+  const strings2 = withTexts(STRINGS, res.texts);
+  const back = panel.toTable(res.rows, strings2, survey(), { format: 'tsv' });
+  assert.ok(back.split('\n').some((l) => l.split('\t')[0] === 'areas' && l.split('\t')[1] === 'pick several'), 'written as "pick several"');
+  const again = panel.fromTable(back, survey(), strings2, { rows: res.rows });
+  assert.ok(again.ok, JSON.stringify(again.problems));
+  deep(again.rows, res.rows, 'the same rows');
+  deep(again.texts, {}, 'no text changes');
+  // other spellings of the kind
+  ['multi select', 'Pick all that apply', 'checkboxes', 'multi_choice', 'Tick all that apply'].forEach((w) => {
+    const x = panel.fromTable(table(w, 'load: Load; payments: Payments', 'areas = load'), survey(), STRINGS, { rows: todayRows() });
+    assert.ok(x.ok, w + ': ' + JSON.stringify(x.problems));
+    assert.strictEqual(x.rows.find((y) => y.id === 'areas').type, 'multi_choice', w);
+  });
+  // "multiple choice" can mean either: a problem at its kind, never a guess
+  const mc = panel.fromTable(table('Multiple choice', 'load: Load; payments: Payments', ''), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(!mc.ok);
+  assert.ok(mc.problems.some((p) => p.column === 'kind' && /can mean two things: write "pick one" .* or "pick several"/.test(p.message)), JSON.stringify(mc.problems));
+  // a number test on a list is refused by the checker; fewer than 2 answers too
+  const num = panel.fromTable(table('pick several', 'load: Load; payments: Payments', 'areas <= 2'), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(!num.ok && num.problems.some((p) => /never a number/.test(p.message)), JSON.stringify(num.problems));
+  const one = panel.fromTable(table('pick several', 'load: Load', ''), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(!one.ok && one.problems.some((p) => p.column === 'answers' && /"pick several" question needs at least 2 answers/.test(p.message)), JSON.stringify(one.problems));
+  // the AI instruction teaches it, and says never to write "multiple choice"
+  const ins = panel.aiInstruction(survey(), STRINGS, { rows: todayRows() });
+  assert.ok(/- pick several: a list of answers; the partner ticks one or more/.test(ins));
+  assert.ok(/Never write "multiple choice"/.test(ins));
+  assert.ok(/"= x" means x is one of the answers ticked/.test(ins));
+  ok('pick several: read and written as "pick several", answers like pick one, "= x" means x is ticked, round trip, "multiple choice" refused');
 }
 
 console.log(count, 'tests passed');

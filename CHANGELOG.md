@@ -37,6 +37,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 
 Nothing yet. Next up is **Phase 3: pipeline**. A Python program that downloads the answers from each round's data spreadsheet, transcribes the voice notes, and sorts comments and voice notes into the same area and problem codes.
 
+## [0.3.2] - 2026-10-28 - Pick several, help videos
+
+From the first feedback on form v2 (Pranav, 28 Oct): partners may name more than one area behind their score, the language buttons come first, and partners can watch short help videos. **For partners:** a new kind of question and an optional ⓘ button; nothing changes until the questionnaire uses them.
+
+### Added
+
+- **A new kind of question, "pick several"** (`multi_choice`): a list of answers; the partner ticks one or more, then taps **Next**, with "You can tick more than one." under the question. A rule tests it answer by answer: `areas = load` is true when load is one of the answers ticked, so every ticked area gets its own follow-up (`!=`: not ticked; `in`: any of them; `answered`: at least one). The answer is sent as the list of codes ticked. Known everywhere: on phones, in the route table (`pick several`; "multi select", "pick all that apply", "checkboxes" too; "multiple choice" is refused because it can mean either), in the checks (a number test on it is refused), in Publish (its answers are locked like a pick one's once partners answered, and a live pick one can't become one), in Try a path (tick boxes) and in the instruction for Claude/ChatGPT.
+- **Help videos** (Settings > Help videos): two YouTube links, "How to fill this form" and "How your answers help". When one is set, an ⓘ button at the top of every screen opens one button per video; a YouTube video plays inside the form only after the tap (nothing loads before), any other link opens in a new tab. Titles in Texts & translations (`help.button`, `help.how_to_fill`, `help.why_it_helps`).
+- **The form's new texts reach older Sheets by themselves:** when the control panel opens a Sheet made before 28 Oct 2026, it adds the four new texts (English and Hindi, the others waiting for a translator) and says so; Save keeps them.
+
+### Changed
+
+- The route table (v2.1 for Pranav): the language buttons always first (`always` in their "show only if"), the area question as pick several (a new code, `score_areas`; the pick-one `nps_area` stays hidden in case partners answered it), the support questions hidden (a separate support survey later). Pasted in the panel; no code.
+- Page weight: 93% of the 300 KB budget (was 89%).
+
+### For developers
+
+- `web/js/flow.js`: `evalCondition` reads a list answer as "is one of"; kind `multi_choice` (answer kind `choices`). `web/js/types.js`: its drawing. `web/js/flow-check.js`: `choices` (values, candidates, `answersAt` kind `choices`, the simulator's lists). `web/js/flow-panel.js`: the table kind. `scripts/flow.js`: ANSWER_KINDS gains `choices`. Model.gs: settings `help.*`, `PP_MDL_NEWER_FORM_TEXTS_`, `PP_MDL_HELP_VIDEOS_`; PanelServer.gs: `catalog.newer_texts`. The old engine comparison's variant `form-viii` now uses the unknown kind `checkbox_grid` (it used the name `multi_choice` as its example of an unknown kind).
+- Tests: flow 27, check 100, types 11, route_table 37, model 239, panel bench 84, end to end 36 (Z10 pick several, Z11 help videos).
+
+### To upgrade
+
+Push, wait for the green tick, then paste **Flow**, **Model**, **PanelServer** and **Panel** again and make a **New version** (apps-script/README.md, "This release"). Open the panel once and **Save** (it adds the four new texts). Then paste the v2.1 route table, Check, Use this route, Save, Preview, Publish.
+
 ## [0.3.1] - 2026-10-28 - Paste a route
 
 Questions and their route are no longer made one by one in the control panel. The **whole route is one table**, one row per screen: you copy it into Excel or Google Sheets (or let Claude or ChatGPT write it from your notes, an Excel sheet or a flowchart picture), change it, paste it back, check it and use it. Pranav's decision of 27 Oct ([docs/spec.md §4](docs/spec.md#4-decisions-log)): "paste the route is awesome … the current flow should be gone". The Map and Try a path stay. **For partners nothing changes:** the files phones load are untouched, and today's route copied as a table and pasted back gives exactly the same route (tested, in every format).

@@ -172,7 +172,7 @@ VOICE_GESTURES = ["hold", "tap"]
 # Sections of survey.json. The first list has rules of its own below, so a
 # missing one is an error; a missing optional one is only a warning.
 REQUIRED_SECTIONS = ["branding", "backend", "rating", "deep_dive", "support", "voice", "text"]
-OPTIONAL_SECTIONS = ["links", "navigation", "read_aloud", "whats_changed", "telemetry"]
+OPTIONAL_SECTIONS = ["links", "navigation", "read_aloud", "whats_changed", "telemetry", "help"]
 
 KNOWN_AREA_FIELDS = ["id", "issues", "threshold"]
 
@@ -873,6 +873,14 @@ def check_small_sections(survey: dict, r: Report) -> None:
     whats_changed = survey.get("whats_changed")
     if isinstance(whats_changed, dict) and "timeout_seconds" in whats_changed:
         check_positive(whats_changed, "whats_changed", "timeout_seconds", r)
+    # The help videos (28 Oct 2026): empty, or a full https:// link (a YouTube link plays inside the form).
+    help_section = survey.get("help")
+    if isinstance(help_section, dict):
+        for key in ("how_to_fill_video", "why_it_helps_video"):
+            value = help_section.get(key, "")
+            if not isinstance(value, str) or (value.strip() and not re.match(r"^https://\S+$", value.strip())):
+                r.error(SURVEY_FILE, f'help.{key} must be empty ("") or a full web address that starts with https://, '
+                                     f'for example "https://youtu.be/AbCdEfGhIjK". Right now it is {json.dumps(value)}.')
 
 
 def check_rating(rating, r: Report) -> None:

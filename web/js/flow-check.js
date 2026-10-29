@@ -569,8 +569,11 @@
       out.min = a.min;
       out.max = a.max;
       if (isText(a.na_by)) out.na = n[a.na_by] === true;
-    } else if (a.kind === 'choice') {
+    } else if (a.kind === 'choice' || a.kind === 'choices') {
       out.values = Array.isArray(a.values) ? a.values.map(String) : arr(k.options).map(function (o) { return String(o.code); });
+      // "choices" (pick several, 28 Oct 2026): the answer is the list of codes ticked; a rule's
+      // "equals" means "is one of them" (flow.js evalCondition), so the same values are allowed.
+      if (a.kind === 'choices') out.multi = true;
     } else if (a.kind === 'text') {
       out.text = true;
     } else {
@@ -780,7 +783,7 @@
   function listOptions(c, line, label) {
     var o = line.options;
     if (!Array.isArray(o) || !o.length) {
-      c.add('error', 'F1', line, label + ': a single_choice screen needs "options": a list of answer codes, like ["daily", "weekly"]. Their labels go in strings.json as choice.' + line.id + '.<code>.');
+      c.add('error', 'F1', line, label + ': a ' + line.type + ' screen needs "options": a list of answer codes, like ["daily", "weekly"]. Their labels go in strings.json as choice.' + line.id + '.<code>.');
       return;
     }
     var seen = [];
@@ -1655,7 +1658,13 @@
     var out = [];
     if (kind.num) for (var i = kind.min; i <= kind.max; i++) out.push({ a: i, label: String(i) });
     if (kind.na) out.push({ a: 'na', label: 'na' });
-    arr(kind.values).forEach(function (v) { out.push({ a: v, label: v }); });
+    if (kind.multi) {
+      // pick several: each answer ticked alone, and (with 2 or more) all of them at once
+      arr(kind.values).forEach(function (v) { out.push({ a: [v], label: v }); });
+      if (arr(kind.values).length > 1) out.push({ a: arr(kind.values).slice(), label: 'all' });
+    } else {
+      arr(kind.values).forEach(function (v) { out.push({ a: v, label: v }); });
+    }
     if (kind.text) out.push({ t: true, label: 'text' });
     if (kind.skip) out.push({ none: true, label: '(blank)' });
     if (!out.length) out.push({ none: true, label: '(blank)' });
@@ -1891,7 +1900,7 @@
   function inside(entry, e) { for (var a = entry; a; a = a.parent) if (a === e) return true; return false; }
   function answerEntry(inst, key, kind, mine, strings) {
     var row = arr((inst.keys || {}).rows).filter(function (r) { return isObj(r) && r.key === key; })[0];
-    var d = { key: key, kind: kind.num ? 'number' : kind.text ? 'text' : 'choice', label: answerLabel(inst, key, strings), what: kind.what,
+    var d = { key: key, kind: kind.num ? 'number' : kind.text ? 'text' : kind.multi ? 'choices' : 'choice', label: answerLabel(inst, key, strings), what: kind.what,
       node: inst.entry.id, item: row ? String(row.id) : itemOf(inst), own: mine, optional: kind.skip === true };
     if (kind.num) {
       d.min = kind.min;
@@ -2030,16 +2039,22 @@
 
   /* The phone's saved state for a set of answers written like the command
      line's --set: numbers, codes, "na", "text:..." (typed) or "voice". */
-  function stateFrom(answers) {
+  /* A list given for one answer is its parts: a value, "text:..." (typed) and "voice". For the answer of
+     a pick-several question (m, 28 Oct 2026) the values together are the answer: the codes ticked. */
+  function stateFrom(answers, m) {
     var state = { answers: {}, texts: {}, audio: {}, lang_chosen: true, submission_id: 'sub_simulated', session_id: 'ses_simulated',
       opened_at: null, started_at: null, submitted_at: null, resume_count: 0, events: [] };
     Object.keys(isObj(answers) ? answers : {}).forEach(function (key) {
       var v = answers[key];
+      var prods = m ? own(m.producers, key) || [] : [];
+      var kind = prods.length ? answerKind(prods[0], key) : null;
+      var ticked = kind && kind.multi ? [] : null;
       (Array.isArray(v) ? v : [v]).forEach(function (x) {
         if (typeof x === 'string' && x.indexOf('text:') === 0) state.texts[key] = x.slice(5);
         else if (x === 'voice') state.audio[key] = { mime: 'audio/webm;codecs=opus', duration_s: 5, bytes: 10000 };
-        else if (x !== undefined && x !== null && x !== '') state.answers[key] = x;
+        else if (x !== undefined && x !== null && x !== '') { if (ticked) ticked.push(x); else state.answers[key] = x; }
       });
+      if (ticked && (ticked.length || Array.isArray(v))) state.answers[key] = ticked;
     });
     return state;
   }
@@ -2130,7 +2145,7 @@
     opts = isObj(opts) ? opts : {};
     var m = model(survey);
     if (!m.ok) throw new Error('flowCheck.simulate: the questionnaire has no usable "flow" (run the check).');
-    var F = m.F, state = stateFrom(answers), f = factsFrom(m.survey, facts);
+    var F = m.F, state = stateFrom(answers, m), f = factsFrom(m.survey, facts);
     var steps = F.path(m.graph, m.survey, { facts: f }, state);
     var scope = scopeOf(m, steps, state);
     var blocked = [];

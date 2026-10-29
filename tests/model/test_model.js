@@ -932,7 +932,8 @@ test(G5, 'a save that shrinks EVERY tab, with fake Sheets that (like Google) hav
   const big = richModel();
   big.languages.push({ code: 'gu', bcp47: 'gu-IN', native_name: 'ગુજરાતી', active: false });   // an 8th language, nothing translated
   MS.PP_writeModel(ss, big);
-  ss.getSheetByName('Settings').getRange(41, 1, 1, 2).setValues([["'old.setting", 'x']]);   // a left-over row under the settings
+  // a left-over row under the settings (40 since 28 Oct 2026: under the heading, rows 2-41)
+  ss.getSheetByName('Settings').getRange(43, 1, 1, 2).setValues([["'old.setting", 'x']]);
   // Only a language with an EMPTY column is dropped: a dropped language's column is left alone like any
   // column the code does not know (its old values would stay in the Texts and What changed tabs).
   const small = richModel();
@@ -951,7 +952,7 @@ test(G5, 'a save that shrinks EVERY tab, with fake Sheets that (like Google) hav
   MS.PP_writeModel(ss, small);
   const after = {};
   ss.getSheets().forEach(sheet => { after[sheet.getName()] = sheet.getLastRow(); });
-  eqJson(after, { Settings: 39, Languages: 8, Areas: 2, Chips: 3, Support: 2, Screens: 4, Texts: 5, 'What changed': 2, 'Audio clips': 2, Rounds: 2 }, 'rows per tab after shrinking');
+  eqJson(after, { Settings: 41, Languages: 8, Areas: 2, Chips: 3, Support: 2, Screens: 4, Texts: 5, 'What changed': 2, 'Audio clips': 2, Rounds: 2 }, 'rows per tab after shrinking');
   check(Object.keys(after).every(tab => after[tab] < before[tab]), 'every tab shrank: ' + JSON.stringify([before, after]));
   check(ss.calls.clearContent - cleared === 10, 'left-over rows emptied in every tab: ' + (ss.calls.clearContent - cleared));
   eqJson(plain(MS.PP_readModel(ss)), plain(MS.PP_normalizeModel(small)), 'model read back');
@@ -1360,11 +1361,11 @@ test(G9, 'PP_FORM_TEXT_KEYS is the same list as FIXED_STRING_KEYS in scripts/che
   return M.PP_FORM_TEXT_KEYS.length + ' keys';
 });
 
-test(G9, 'PP_SETTINGS_SCHEMA: 38 rows, every field present, groups from the contract, defaults pass their own check', () => {
+test(G9, 'PP_SETTINGS_SCHEMA: 40 rows, every field present, groups from the contract, defaults pass their own check', () => {
   const groups = ['Form address', 'Languages', 'Look & feel', 'Moving between screens', 'Ratings', 'Problem screens',
-    'Support questions', 'Voice notes', 'Typing', 'Read aloud', 'What changed', 'Progress messages', 'Sending'];
+    'Support questions', 'Voice notes', 'Typing', 'Read aloud', 'What changed', 'Progress messages', 'Help videos', 'Sending'];
   const schema = plain(M.PP_SETTINGS_SCHEMA);
-  check(schema.length === 38, 'rows: ' + schema.length);
+  check(schema.length === 40, 'rows: ' + schema.length);   // 40 since 28 Oct 2026: the two help videos
   schema.forEach(entry => {
     eqJson(Object.keys(entry), ['key', 'type', 'default', 'min', 'max', 'options', 'help', 'group', 'label'], entry.key);
     check(groups.includes(entry.group), entry.key + ' group ' + entry.group);
@@ -1427,7 +1428,9 @@ test(G9, 'PP_SCREEN_TYPES matches the contract table', () => {
     language_picker: [true, false, ['skip_if']], whats_changed: [true, false, ['skip_if']], function_ratings: [true, false, []],
     function_deep_dives: [true, false, []], support_block: [true, true, []], thank_you: [true, false, []],
     nps_0_10: [false, true, ['low_label', 'high_label', 'scale_hint', 'required']], rating_1_5: [false, true, ['required']],
-    yes_no: [false, true, ['required']], single_choice: [false, true, ['options', 'required']], free_text: [false, true, ['required']],
+    yes_no: [false, true, ['required']], single_choice: [false, true, ['options', 'required']],
+    multi_choice: [false, true, ['options', 'required']],   // pick several, since 28 Oct 2026
+    free_text: [false, true, ['required']],
     info_card: [false, true, ['body']]
   };
   eqJson(types.map(t => t.type), Object.keys(table), 'types');
@@ -2082,6 +2085,15 @@ const PARITY_REWORDED = [
     now: 'or hide the screen by writing no in the "show" column of its row in the route table (Questions > Paste a route).',
     old: 'or hide the screen.' }
 ];
+/* Texts of the form added after the frozen copy (it calls them "not used"), each with its reason. */
+const PARITY_NEWER_FORM_TEXTS = { 'ui.pick_several': 'the hint under a pick-several question (28 Oct 2026), a text the form\'s code uses',
+  'help.button': 'the help button (28 Oct 2026)', 'help.how_to_fill': 'a help video\'s title (28 Oct 2026)', 'help.why_it_helps': 'a help video\'s title (28 Oct 2026)' };
+/* Both copies check each questionnaire without these texts: the frozen copy would call them "not used". */
+function withoutNewerFormTexts(model) {
+  const m = plain(model);
+  if (m && m.texts) Object.keys(PARITY_NEWER_FORM_TEXTS).forEach(k => { delete m.texts[k]; });
+  return m;
+}
 const reworded = {};   // the rewordings the corpus met: now -> count
 function asOldWords(message) {
   return PARITY_REWORDED.reduce((text, r) => {
@@ -2265,18 +2277,22 @@ test(G13, 'parity on the corpus: nothing the old route checks reported is lost; 
   let oldFlow = 0;
   let compared = 0;
   corpus.forEach(item => {
-    const old = plain(OLD.PP_validate(plain(item.model), item.live, item.everLive));
-    const now = plain(M.PP_validate(plain(item.model), item.live, item.everLive));
+    const old = plain(OLD.PP_validate(withoutNewerFormTexts(item.model), item.live, item.everLive));
+    const now = plain(M.PP_validate(withoutNewerFormTexts(item.model), item.live, item.everLive));
     CORPUS_NOW.push({ name: item.name, result: now });
     compared++;
     const oldIssues = issuesOf(old);
     const newIssues = issuesOf(now);
     // 1. the other sections: exactly the same (apart from deleted live codes, below, and PARITY_REWORDED)
+    // The size of the published questionnaire is compared without its number: since 28 Oct 2026 it carries
+    // a "help" section (Settings > Help videos), a few dozen characters more than the frozen copy's.
+    const sizeless = (i) => Object.assign({}, i, { message: i.message.replace(/would be \d+ characters long/, 'would be N characters long') });
     const others = (list, now) => list.filter(i => i.section !== 'screens' && !isLiveCodeIssue(i))
-      .map(i => issueKey(now ? Object.assign({}, i, { message: asOldWords(i.message) }) : i)).sort();
+      .map(i => issueKey(sizeless(now ? Object.assign({}, i, { message: asOldWords(i.message) }) : i))).sort();
     if (JSON.stringify(others(oldIssues)) !== JSON.stringify(others(newIssues, true))) {
-      problems.push(item.name + ': the other sections changed:\n        old ' + JSON.stringify(others(oldIssues)).slice(0, 400) +
-        '\n        new ' + JSON.stringify(others(newIssues, true)).slice(0, 400));
+      const o = others(oldIssues), w = others(newIssues, true);
+      problems.push(item.name + ': the other sections changed:\n        only old ' + JSON.stringify(o.filter(x => w.indexOf(x) === -1)).slice(0, 600) +
+        '\n        only new ' + JSON.stringify(w.filter(x => o.indexOf(x) === -1)).slice(0, 600));
     }
     // 2. deleted live codes: still reported at the same place (a warning may become an error: C1)
     oldIssues.filter(isLiveCodeIssue).forEach(i => {
@@ -3089,6 +3105,91 @@ test(G16, 'W8 finding 14: the checker\'s words become the route table\'s, as in 
     .forEach(words => check(published.indexOf(words) !== -1 && checked.indexOf(words) !== -1,
       'both say "' + words + '":\n      Publish ' + published + '\n      Check ' + checked));
   return published;
+});
+
+const G17 = '17. 28 Oct: pick several (multi_choice) in Publish';
+
+/* A draft with a pick-several question "areas" (answers load, app) after nps, and its texts. */
+function withAreas(model) {
+  addScreenBefore(model, 'fn_ratings', { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'app'], required: true });
+  addText(model, 'q.areas', 'Which areas is your score about?');
+  addText(model, 'choice.areas.load', 'Load & volume');
+  addText(model, 'choice.areas.app', 'App & tech');
+  return model;
+}
+
+test(G17, 'a pick-several question publishes like a pick one: no problem, compiled with its answers, its texts required', () => {
+  const m = withAreas(fresh());
+  const r = plain(M.PP_validate(m, null));
+  check(!r.errors.length, 'no error: ' + JSON.stringify(r.errors));
+  const doc = plain(M.PP_compile(m, STAMP));
+  const node = doc.survey.flow.nodes.filter(n => n.id === 'areas')[0];
+  check(node && node.type === 'multi_choice', 'compiled as multi_choice: ' + JSON.stringify(node));
+  eqJson(node.options, ['load', 'app'], 'its answers');
+  check(doc.strings['choice.areas.load'] && doc.strings['choice.areas.load'].en === 'Load & volume', 'its answer texts are published');
+  const missing = withAreas(fresh());
+  delete missing.texts['choice.areas.app'];
+  const r2 = plain(M.PP_validate(missing, null));
+  check(r2.errors.some(e => e.section === 'texts' && e.ref === 'choice.areas.app'), 'a missing answer text stops Publish: ' + JSON.stringify(r2.errors));
+  const one = withAreas(fresh());
+  one.screens[screenIndex(one, 'areas')].options = [];
+  check(plain(M.PP_validate(one, null)).errors.some(e => e.section === 'screens'), 'without answers: an error');
+});
+
+test(G17, 'pick several: a live answer stays (codes lock), and a live pick one can\'t become a pick several (its kind)', () => {
+  const v1 = withAreas(fresh());
+  const live = M.PP_compile(v1, STAMP);
+  const everLive = everLiveOf(v1);
+  check(everLive.indexOf('option:areas/load') !== -1, 'its answers are among the codes partners answered: ' + JSON.stringify(everLive.filter(x => /areas/.test(x))));
+  const dropped = withAreas(fresh());
+  dropped.screens[screenIndex(dropped, 'areas')].options = ['app'];
+  const r = plain(M.PP_validate(dropped, live, everLive));
+  check(r.errors.some(e => /"Load & volume"/.test(e.message) && /can never be deleted/.test(e.message)), 'removing a live answer stops Publish: ' + JSON.stringify(r.errors));
+  // a live pick one turned into a pick several
+  const pick = withAreas(fresh());
+  pick.screens[screenIndex(pick, 'areas')].type = 'single_choice';
+  const livePick = M.PP_compile(pick, STAMP);
+  const r2 = plain(M.PP_validate(withAreas(fresh()), livePick, everLiveOf(pick)));
+  const hit = r2.errors.filter(e => /its kind can't change/.test(e.message));
+  check(hit.length === 1 && /is now of the kind "pick several", but partners have already answered it as a question of the kind "pick one"/.test(hit[0].message),
+    'kind change refused: ' + JSON.stringify(r2.errors));
+});
+
+const G18 = '18. 28 Oct: help videos (Settings > Help videos) and the form\'s newer texts';
+
+test(G18, 'the newer texts (PP_MDL_NEWER_FORM_TEXTS_) are the English and Hindi of web/i18n/strings.json, and never "not used"', () => {
+  const newer = plain(M.PP_MDL_NEWER_FORM_TEXTS_);
+  const strings = JSON.parse(fs.readFileSync(REPO_PATHS.strings, 'utf8'));
+  eqJson(Object.keys(newer), ['ui.pick_several', 'help.button', 'help.how_to_fill', 'help.why_it_helps'], 'the newer texts');
+  Object.keys(newer).forEach(key => {
+    check(strings[key] && strings[key].en === newer[key].en && strings[key].hi === newer[key].hi, key + ': the same words as strings.json');
+    check(M.PP_MDL_CODE_TEXT_KEYS_.indexOf(key) !== -1, key + ' counts as used by the form');
+  });
+});
+
+test(G18, 'help videos: empty is fine (no button), a link must start with https://, and a video that is set needs its title and the button\'s name', () => {
+  const m = fresh();
+  check(m.settings['help.how_to_fill_video'] === '' && m.settings['help.why_it_helps_video'] === '', 'empty by default');
+  check(!plain(M.PP_validate(m, null)).errors.length, 'no error without videos');
+  const doc = plain(M.PP_compile(m, STAMP));
+  eqJson(doc.survey.help, { how_to_fill_video: '', why_it_helps_video: '' }, 'published as survey.help');
+  const bad = fresh();
+  bad.settings['help.how_to_fill_video'] = 'youtu.be/AbCdEfGhIjK';
+  const e = plain(M.PP_validate(bad, null)).errors.filter(x => x.section === 'settings');
+  check(e.length === 1 && /must be empty or a full web address that starts with https:\/\//.test(e[0].message), 'a link without https:// is refused: ' + JSON.stringify(e));
+  const good = fresh();
+  good.settings['help.how_to_fill_video'] = 'https://youtu.be/AbCdEfGhIjK';
+  check(!plain(M.PP_validate(good, null)).errors.length, 'a YouTube link is fine: ' + JSON.stringify(plain(M.PP_validate(good, null)).errors));
+  const noTitle = fresh();
+  noTitle.settings['help.why_it_helps_video'] = 'https://www.youtube.com/watch?v=AbCdEfGhIjK';
+  delete noTitle.texts['help.why_it_helps'];
+  delete noTitle.texts['help.button'];
+  const t = plain(M.PP_validate(noTitle, null)).errors.filter(x => x.section === 'texts').map(x => x.ref).sort();
+  eqJson(t, ['help.button', 'help.why_it_helps'], 'its title and the button\'s name are needed');
+  const unset = fresh();
+  delete unset.texts['help.why_it_helps'];
+  delete unset.texts['help.button'];
+  check(!plain(M.PP_validate(unset, null)).errors.some(x => x.section === 'texts'), 'without a video they are not needed (a Sheet made before 28 Oct)');
 });
 
 // =============================================================================

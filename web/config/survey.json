@@ -117,6 +117,12 @@
     "enabled": true
   },
 
+  "help": {
+    "_help": "Help videos (control panel: Settings > Help videos). how_to_fill_video and why_it_helps_video are YouTube links (unlisted is fine); when one is set, an ⓘ button at the top of every screen plays it inside the form (any other https:// link opens in a new tab). Their titles are the texts help.how_to_fill and help.why_it_helps; the button is help.button. Empty = no video.",
+    "how_to_fill_video": "",
+    "why_it_helps_video": ""
+  },
+
   "flow": {
     "_help": "The route through the questionnaire (format pp-flow/1, explained in docs/flow-engine.md). nodes = the screens, in the order the control panel lists them. next = where to go after a screen; a list means: the first \"when\" that is true wins, otherwise \"default\". show_if = show the screen only when the rule is true. repeat_for = ask it once per area (where = only the areas rated low). Live, the route is edited in the control panel (Questions), which also writes this copy (Publish > Backup copy in GitHub). Codes (id, store_as) are permanent once partners have answered. After any edit here run:  python3 scripts/flow.py check",
     "format": "pp-flow/1",

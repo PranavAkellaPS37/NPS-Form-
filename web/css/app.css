@@ -115,6 +115,22 @@ button { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-colo
   white-space: nowrap;
 }
 .lang-btn .icon { width: 20px; height: 20px; margin-right: 6px; color: var(--c-primary); }
+.topbar-buttons { display: flex; align-items: center; flex-shrink: 0; }
+.topbar-buttons > * + * { margin-left: 8px; }
+/* The help button: an "i" in a circle, as big a target as the language button */
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1.5px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+  color: var(--c-primary);
+}
+.help-btn .icon { width: 22px; height: 22px; }
 
 .progress {
   height: 6px;
@@ -419,6 +435,12 @@ button { cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-colo
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .sheet-head .q-title { font-size: 1.15rem; }
+/* The help sheet: one big button per video, then the video itself (16:9, made only on a tap) */
+.help-video { display: flex; align-items: center; width: 100%; margin-bottom: 10px; text-align: left; }
+.help-video .icon { width: 24px; height: 24px; margin-right: 10px; flex-shrink: 0; }
+.help-title { margin: 0 0 10px; font-weight: 600; }
+.video-frame { position: relative; width: 100%; padding-top: 56.25%; border-radius: 12px; overflow: hidden; background: #000; }
+.video-frame iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
 
 @keyframes pp-pulse { 50% { opacity: 0.3; } }
 @keyframes pp-spin { to { transform: rotate(360deg); } }

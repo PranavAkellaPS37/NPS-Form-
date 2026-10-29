@@ -240,6 +240,7 @@ The form sends this once the partner finishes the last question.
 | `yes_no` | `"yes"` or `"no"` |
 | `rating_1_5` | 1–5 |
 | `single_choice` | The option code |
+| `multi_choice` (pick several, since 28 Oct 2026) | A **list** of the option codes ticked, in the options' order, for example `["load", "payments"]`; not sent when nothing is ticked. The server stores it as it is, inside `answers_json`; whoever reads the answers must expect a list here |
 
 A kind of question added as a plug-in (`web/js/types/`) sends what its description's `records` say ([flow-engine.md](flow-engine.md) §10): usually just its value in `answers`. A ratings row is only ever sent for a value from 1 to 5.
 

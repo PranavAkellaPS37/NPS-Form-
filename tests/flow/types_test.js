@@ -3,7 +3,7 @@
    plug-ins (flow-graph stage 5, 26 Oct 2026).
 
    WHAT IT CHECKS
-     1. The registry (PP.types in web/js/flow.js): the 12 built-in kinds, in
+     1. The registry (PP.types in web/js/flow.js): the 13 built-in kinds, in
         order; register / get / list; a description that cannot be used is
         refused with a plain message.
      2. Nothing changed by the move: the catalogue says exactly what the
@@ -64,12 +64,12 @@ const FROZEN_SCREENS = path.join(__dirname, 'legacy', 'screens_before_types.js')
 const FROZEN_SCREENS_SHA = 'ee709e2a3100c1eab6dbb40efeadfa8e56b74b6e4ff01804915e5fdb639e1cee';
 const STARS = path.join(__dirname, 'fixtures', 'types', 'stars_1_10.js');
 const BUILTIN = ['language_picker', 'whats_changed', 'function_rating', 'function_deep_dive', 'support_block', 'thank_you',
-  'nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'free_text', 'info_card'];
+  'nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'multi_choice', 'free_text', 'info_card'];
 const COMMON_FIELDS = ['id', 'type', 'store_as', 'show_if', 'repeat_for', 'next', 'required', 'text', 'help', 'label'];
 
 /* ---- 1. the registry ---------------------------------------------------------------------------- */
 {
-  assert.deepStrictEqual(T.list(), BUILTIN, 'the 12 built-in kinds, in the catalogue order');
+  assert.deepStrictEqual(T.list(), BUILTIN, 'the 13 built-in kinds, in the catalogue order');
   assert.strictEqual(typeof flow.types, 'object');
   assert.deepStrictEqual(Object.keys(flow.types), BUILTIN, 'PP.flow.types is the same registry');
   BUILTIN.forEach((t) => assert.strictEqual(T.get(t), flow.types[t]));
@@ -79,7 +79,7 @@ const COMMON_FIELDS = ['id', 'type', 'store_as', 'show_if', 'repeat_for', 'next'
     assert.throws(() => T.register(d), /PP\.types\.register: a description needs "type"/, JSON.stringify(d));
   });
   assert(flow.isEnd({ type: 'thank_you' }) && !flow.isEnd({ type: 'nps_0_10' }) && !flow.isEnd({ type: 'mystery' }));
-  ok('registry: 12 built-in kinds in order, PP.flow.types is it, unusable descriptions refused');
+  ok('registry: 13 built-in kinds in order, PP.flow.types is it, unusable descriptions refused');
 }
 
 /* ---- 2. nothing changed by the move: the old hand-kept lists, frozen ------------------------------ */
@@ -91,6 +91,8 @@ const OLD_CHECKER = {
   rating_1_5: { label: 'Faces question (1-5)', needs: ['text'], answer: true },
   yes_no: { label: 'Yes / No question', needs: ['text'], answer: true },
   single_choice: { label: 'Pick-one question', fields: ['options'], needs: ['text', 'options'], answer: true },
+  // not in the old checker: built in since 28 Oct 2026 (pick several), described like a pick-one question
+  multi_choice: { label: 'Pick-several question', fields: ['options'], needs: ['text', 'options'], answer: true },
   free_text: { label: 'Voice or typing', fields: ['block'], needs: ['text'], answer: true },
   info_card: { label: 'Information card', fields: ['body'], needs: ['text'] },
   function_rating: { label: 'Area rating (faces)', fields: ['allow_not_applicable', 'issue_code_from'], answer: true },
@@ -107,7 +109,7 @@ const OLD_LIST_NEEDS_TEXT = ['nps_0_10', 'yes_no', 'free_text', 'rating_1_5', 's
 const OLD_LIST_SKIP_IF = { language_picker: 'lang_in_url', whats_changed: 'empty' };
 function oldRecords(t, keys) {   // flow-check.js records() before the move
   const r = { answers: 0, ratings: 0, free_text: 0 };
-  if (t === 'nps_0_10' || t === 'yes_no' || t === 'single_choice') r.answers = 1;
+  if (t === 'nps_0_10' || t === 'yes_no' || t === 'single_choice' || t === 'multi_choice') r.answers = 1;   // multi_choice: since 28 Oct 2026
   else if (t === 'rating_1_5') { r.answers = 1; r.ratings = 1; }
   else if (t === 'function_rating') r.ratings = 1;
   else if (t === 'function_deep_dive' || t === 'free_text') r.free_text = 1;
@@ -122,6 +124,7 @@ function oldAnswerKind(t, n, key, keys) {   // flow-check.js answerKind() before
     case 'function_rating': return { num: true, min: 1, max: 5, na: n.allow_not_applicable === true, skip: false };
     case 'yes_no': return { values: ['yes', 'no'], skip: n.required === false };
     case 'single_choice': return { values: opts, skip: n.required === false };
+    case 'multi_choice': return { values: opts, multi: true, skip: n.required === false };   // pick several, since 28 Oct 2026
     case 'function_deep_dive': return { values: opts, skip: n.require_choice === false };
     case 'free_text': return { text: true, skip: n.required !== true };
     case 'support_block':
@@ -138,7 +141,8 @@ function newAnswerKind(t, n, key, keys) {
   if (!a) return null;
   const out = {};
   if (a.kind === 'number') { out.num = true; out.min = a.min; out.max = a.max; if (a.na_by) out.na = n[a.na_by] === true; }
-  if (a.kind === 'choice') out.values = Array.isArray(a.values) ? a.values.map(String) : (keys.options || []).map((o) => String(o.code));
+  if (a.kind === 'choice' || a.kind === 'choices') out.values = Array.isArray(a.values) ? a.values.map(String) : (keys.options || []).map((o) => String(o.code));
+  if (a.kind === 'choices') out.multi = true;
   if (a.kind === 'text') out.text = true;
   const by = 'required_by' in a ? a.required_by : 'required';
   out.skip = a.optional === true || (by !== null && !T.isRequired(d, n, by));
@@ -161,8 +165,9 @@ function newAnswerKind(t, n, key, keys) {
   assert.deepStrictEqual(T.get('function_deep_dive').texts, { text: 'q.deep_dive', label: 'fn.{area}.name', detail_text: 'q.tell_more',
     detail_text_required: 'q.tell_more_required', options: { from: 'area.issues', text: 'issue.{area}.{code}', other: 'issue.other' } });
   const rows = cat.filter((e) => e.row).map((e) => e.row);
-  assert.deepStrictEqual(rows.map((r) => r.type).slice().sort(), OLD_LIST_TYPES.slice().sort(), 'the kinds of line of the list format');
-  assert.deepStrictEqual(rows.filter((r) => r.needs_text).map((r) => r.type).sort(), OLD_LIST_NEEDS_TEXT.slice().sort(), 'lines that need "text"');
+  // pick several (multi_choice) is a line kind since 28 Oct 2026, needing "text" like pick one
+  assert.deepStrictEqual(rows.map((r) => r.type).slice().sort(), OLD_LIST_TYPES.concat(['multi_choice']).sort(), 'the kinds of line of the list format');
+  assert.deepStrictEqual(rows.filter((r) => r.needs_text).map((r) => r.type).sort(), OLD_LIST_NEEDS_TEXT.concat(['multi_choice']).sort(), 'lines that need "text"');
   const skip = {};
   rows.forEach((r) => { if (r.skip_if) skip[r.type] = r.skip_if; });
   assert.deepStrictEqual(skip, OLD_LIST_SKIP_IF, 'skip_if per kind of line');
@@ -202,23 +207,24 @@ function newAnswerKind(t, n, key, keys) {
     ['rating_1_5', 'Faces question (1 to 5)', false, true, 'One row of five faces, from very bad to very good.', ['required'], true],
     ['yes_no', 'Yes / No question', false, true, 'Two big buttons: Yes and No.', ['required'], true],
     ['single_choice', 'Pick one answer', false, true, 'A list of answers; the partner taps one.', ['options', 'required'], true],
+    ['multi_choice', 'Pick several answers', false, true, 'A list of answers; the partner ticks one or more.', ['options', 'required'], true],
     ['free_text', 'Voice note or typing', false, true, 'The partner records a voice note or types an answer.', ['required'], false],
     ['info_card', 'Information card', false, true, 'A title and an optional longer text, with nothing to answer.', ['body'], null]
   ];
   const OLD_ICON = { language_picker: '🌐', whats_changed: '📰', function_ratings: '⭐', function_deep_dives: '🔍', support_block: '🎧', thank_you: '🙏',
-    nps_0_10: '🔟', rating_1_5: '🙂', yes_no: '👍', single_choice: '☑️', free_text: '🎙️', info_card: 'ℹ️' };
-  const OLD_ORDER = ['nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'free_text', 'info_card', 'language_picker', 'whats_changed',
+    nps_0_10: '🔟', rating_1_5: '🙂', yes_no: '👍', single_choice: '☑️', multi_choice: '✅', free_text: '🎙️', info_card: 'ℹ️' };
+  const OLD_ORDER = ['nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'multi_choice', 'free_text', 'info_card', 'language_picker', 'whats_changed',
     'function_ratings', 'function_deep_dives', 'support_block', 'thank_you'];
   const OLD_IDS = { language_picker: 'language', whats_changed: 'whats_changed', function_ratings: 'fn_ratings', function_deep_dives: 'fn_deep_dives',
     support_block: 'support', thank_you: 'thanks' };
   const OLD_TEXT_KEYS = { support_block: 'q.support_block' };
   const OLD_AFTER = { function_ratings: ' (one screen per area)', function_deep_dives: ' (one screen per area rated low)', support_block: ' (all support questions on one screen)' };
-  const OLD_GENERIC = ['nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'free_text', 'info_card'];
+  const OLD_GENERIC = ['nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'multi_choice', 'free_text', 'info_card'];
   const ctx = vm.createContext({ console: { log() {}, warn() {}, error() {} } });
   vm.runInContext(read('apps-script/Model.gs'), ctx, { filename: 'Model.gs' });
   const types = JSON.parse(JSON.stringify(vm.runInContext('PP_SCREEN_TYPES', ctx)));
   assert.deepStrictEqual(types.map((r) => [r.type, r.label, r.builtin, r.needs_text, r.description, r.fields, r.required_default]), OLD_MODEL,
-    'Model.gs PP_SCREEN_TYPES: the same 12 kinds, in the same order, with the same names, texts and settings');
+    'Model.gs PP_SCREEN_TYPES: the same 13 kinds, in the same order, with the same names, texts and settings');
   types.forEach((r) => {
     assert.strictEqual(r.icon, OLD_ICON[r.type], r.type + ' icon');
     assert.strictEqual(r.default_id, OLD_IDS[r.type], r.type + ' standard code');
@@ -514,7 +520,9 @@ function drawCase(space, c, tap) {
   let compared = 0;
   ['en', 'hi', 'ta'].forEach((lang) => {
     const oldSpace = drawingSpace('old', lang), newSpace = drawingSpace('new', lang);
-    assert.deepStrictEqual(Object.keys(newSpace.PP.screens).sort(), Object.keys(oldSpace.PP.screens).sort(), 'the same 12 drawings');
+    assert.deepStrictEqual(Object.keys(newSpace.PP.screens).filter((t) => t !== 'multi_choice').sort(), Object.keys(oldSpace.PP.screens).sort(),
+      'the same 12 drawings (and multi_choice, new on 28 Oct 2026: tested below)');
+    assert.ok(newSpace.PP.screens.multi_choice, 'pick several has its drawing');
     cases.forEach((c) => {
       const taps = ['blocked', 'statuses'].concat([0, 1, 2, 3, 5, 8, 11, 12]);
       [null].concat(taps).forEach((tap) => {
@@ -590,4 +598,47 @@ function drawCase(space, c, tap) {
   ok('files: ES5' + (acorn ? '' : ' (acorn not installed: skipped)') + '; index.html loads ui.js and types.js (defer) before app.js; no screens.js; default texts drawn');
 }
 
+// pick several (multi_choice, 28 Oct 2026): not in the frozen drawings; drawn with the pick-one buttons,
+// each tap ticks or unticks one answer (kept in the options' order), Next is pressed by hand, and the hint
+// "You can tick more than one." shows only when the questionnaire has that text (never a text's name).
+{
+  ['en', 'hi'].forEach((lang) => {
+    const space = drawingSpace('new', lang);
+    const { D, PP } = space;
+    const node = { id: 'areas', type: 'multi_choice', text: 'q.one_fix', options: ['load', 'payments', 'app'] };
+    const step = { id: 'areas', type: 'multi_choice', node: node, entry: {}, vars: {}, keys: { text: 'q.one_fix', options: [
+      { code: 'load', text: 'choice.areas.load' }, { code: 'payments', text: 'choice.areas.payments' }, { code: 'app', text: 'choice.areas.app' }] } };
+    const draw = (strings) => {
+      const state = { answers: {}, texts: {}, audio: {}, lang: lang, lang_chosen: true };
+      const log = [];
+      if (strings) PP.i18n.strings = strings;
+      const out = PP.screens.multi_choice({ step: step, config: {}, state: state, wc: null, mode: 'mock', preview: false, ns: 't',
+        setAnswer: (id, v, adv) => { state.answers[id] = v; log.push([id, v, adv]); }, refreshNav() {}, save() {}, saveSoon() {}, activity() {},
+        onCleanup() {}, chooseLanguage() {}, retryNow() {}, startOver() {} });
+      const buttons = [];
+      (function walk(n) { if (n.listeners && n.listeners.length) buttons.push(n); (n.childNodes || []).forEach(walk); }(out.el));
+      return { out, state, log, buttons, html: () => JSON.stringify(serialize(out.el, D)) };
+    };
+    const a = draw();
+    assert.strictEqual(a.out.auto, false, 'pick several: never moves on by itself');
+    assert.strictEqual(a.buttons.length, 3, 'one button per answer');
+    const tap = (i) => a.buttons[i].listeners.forEach((l) => l.fn({ target: a.buttons[i] }));
+    tap(2); tap(0);
+    assert.deepStrictEqual(clone(a.state.answers.areas), ['load', 'app'], 'two ticks, kept in the order of the options');
+    assert.deepStrictEqual(a.log.map((x) => x[2]), [false, false], 'never asks to move on');
+    tap(2);
+    assert.deepStrictEqual(clone(a.state.answers.areas), ['load'], 'a second tap unticks');
+    tap(0);
+    assert.deepStrictEqual(clone(a.state.answers.areas), [], 'nothing ticked: an empty list');
+    assert.ok(/aria-pressed=false/.test(a.html()) && !/aria-pressed=true/.test(a.html()), 'every button shows as not ticked');
+    assert.strictEqual(a.out.blockedHint(), PP.t('ui.choose_one'));
+    assert.ok(a.html().indexOf(PP.t('ui.pick_several')) !== -1, 'the hint shows when the questionnaire has its text');
+    const strings = JSON.parse(JSON.stringify(PP.i18n.strings));
+    delete strings['ui.pick_several'];
+    const b = draw(strings);
+    assert.ok(b.html().indexOf('ui.pick_several') === -1, 'without the text, no hint, and never the text\'s name');
+    assert.strictEqual(b.buttons.length, 3);
+  });
+  ok('pick several: ticks and unticks in the options\' order, Next by hand, the hint only when its text exists');
+}
 console.log(passed, 'tests passed');

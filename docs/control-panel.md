@@ -241,6 +241,7 @@ Each recipe ends with the [everyday loop](#the-everyday-loop-save-preview-publis
 - [Recipe 10: Check how many partners answered](#recipe-10-check-how-many-partners-answered)
 - [Recipe 11: Undo a bad publish (Restore)](#recipe-11-undo-a-bad-publish-restore)
 - [Recipe 12: Refresh the GitHub copy](#recipe-12-refresh-the-github-copy)
+- [Recipe 21: Add help videos for partners (the ⓘ button)](#recipe-21-add-help-videos-for-partners-the--button)
 
 **The route** (which screen comes after which): start with [How the route works](#how-the-route-works).
 
@@ -602,7 +603,7 @@ The **route** is which screen comes after which. Since 27 Oct 2026 you change it
 | **kind** | What the row is: one of [the kinds](#the-kinds). The only column a table must have. | A problem (unless the code is a built-in's, such as `nps`). |
 | **question (English)** | The words partners read. For an ending or an info card: its title. | Keep the words it has. A new question needs them. |
 | **question (Hindi)** | Your Hindi for the same words. Never machine-translated. | Keep the Hindi it has. |
-| **answers** | Only for **pick one**: at least 2 answers, each as `code: English words`, separated by `;`, for example `phone: Phone call; app: In the app; visit: A visit`. Commas and slashes don't separate answers. A label that contains `;` goes in double quotes: `b: "Yes; always"`. List marks (`-`, `1.`) and an AI's formatting (`` `code` ``, `**bold**`) are removed. | Keep the answers it has. A new pick one needs them. |
+| **answers** | Only for **pick one** and **pick several**: at least 2 answers, each as `code: English words`, separated by `;`, for example `phone: Phone call; app: In the app; visit: A visit`. Commas and slashes don't separate answers. A label that contains `;` goes in double quotes: `b: "Yes; always"`. List marks (`-`, `1.`) and an AI's formatting (`` `code` ``, `**bold**`) are removed. | Keep the answers it has. A new pick one needs them. |
 | **answers (Hindi)** | The same answers in Hindi, with the same codes: `phone: …; app: …`. | Keep. |
 | **message (English)** | The longer text of an **info card** or an **ending**, under its title. | Keep. |
 | **message (Hindi)** | Its Hindi. | Keep. |
@@ -634,11 +635,13 @@ The **route** is which screen comes after which. Since 27 Oct 2026 you change it
 | `faces` | Five faces, from 1 (very bad) to 5 (very good). | your own |
 | `yes/no` | Two buttons, Yes and No. | your own |
 | `pick one` | Your **answers**; the partner taps one. | your own |
+| `pick several` | Your **answers**; the partner ticks one or more, then taps **Next**. Under the question the form adds "You can tick more than one." (28 Oct 2026). | your own |
 | `voice/typing` | The partner records a voice note or types an answer. | your own |
 | `info card` | A title and an optional **message**, with nothing to answer. | your own |
 
 - Each built-in screen appears once at most (thank-you screens excepted). Leave its **question (English)** empty to keep today's words.
 - Write `0 to 10` and `faces`, not "0-10" or "1-5": Excel turns those into dates. (If it already did, the Check says the kind is unknown.)
+- Never write "multiple choice": some people mean pick one by it, others pick several, so the Check asks you to choose. "Multi select", "pick all that apply", "tick all that apply" and "checkboxes" are read as `pick several`.
 - Other spellings work too, such as "Yes or No", "Pick one answer", "Voice note or typing", "Information card" or "Thanks"; `end` means `ending`. A kind a developer added (in `web/js/types/`) is written with its code.
 
 #### Rules: "show only if" and jumps
@@ -663,6 +666,7 @@ A rule is a short sentence: an answer, a test and a value.
 | `(nps <= 6 or support_gate = no) and language = hi` | brackets: needed whenever you mix `and` and `or` |
 | `not (language = hi)` | the opposite |
 
+- **A pick-several question** is tested answer by answer: `areas = load` is true when **load is one of the answers ticked** (with others or alone), `areas != load` when it is not ticked, `areas in (load, app)` when either is, `areas answered` when at least one is ticked. So a follow-up question with `show only if` = `areas = load` is asked of everyone who ticked load: tick three areas, get three follow-ups. `<=` and `>=` make no sense for it and the Check refuses them.
 - **What each answer can be tested for:** `nps` and any 0 to 10 question: 0 to 10. A faces question: 1 to 5. A yes/no question: `yes` or `no`. A pick-one question: its answer codes. A voice/typing question: only `answered` or `not answered`. An area's rating: `fn_rating:<area code>`, 1 to 5 (or `na`, "I don't handle this", which never counts as low). The problem picked for an area: `fn_deep_dive:<area code>` = a problem code (or `other`). A support rating: `support:<support code>`, 1 to 5. A question asked for each area: `<its code>:<area code>`. The area, problem and support codes are in **Areas & problems** and **Support questions**; the instruction for Claude/ChatGPT lists them too.
 - **Only earlier answers.** A rule may test only answers given **before** its row (a jump may also test its own row's answer), plus the language and the round.
 - **The tests:** `=`, `!=`, `<=`, `>=`, `in (a, b)`, `answered` and `not answered`. Also understood: `==`, `<>`, `≤`, `≥`, `≠`, `is`, `is not`, `&&`, `||`, and `<` or `>` with whole numbers (`nps < 7` is the same as `nps <= 6`).
@@ -821,9 +825,23 @@ See which screens a partner with certain answers gets, without opening the form.
    - **What would be sent**: how many answers, ratings and typed or recorded items. **Show the data** shows the whole message.
 4. Change any list: the result changes at once. **← All questions** goes back.
 
+<a id="recipe-21-add-help-videos-for-partners-the--button"></a>
+### Recipe 21: Add help videos for partners (the ⓘ button)
+
+Partners can watch two short videos from inside the form: **How to fill this form**, and **How your answers help** (a neutral one: what answers are used for, never how to answer). Since 28 Oct 2026.
+
+1. Put each video on **YouTube** as **Unlisted** (anyone with the link can watch; it does not show up in searches). YouTube plays smoothly on weak mobile data, and nothing loads until a partner taps.
+2. **Settings > Help videos**: paste the links into **Video: how to fill the form** and **Video: how answers help** (one is enough). A link must start with `https://`, for example `https://youtu.be/AbCdEfGhIjK`.
+3. **Save**, **Preview**: a round **ⓘ** button appears in the top bar of every screen, next to the language button. It opens a sheet with one button per video; the video plays inside the form, and closing the sheet stops it. A link that is not YouTube opens in a new tab instead.
+4. **Publish**.
+
+- **The words** (the button's name "Help" and the two titles) are in **Texts & translations**: `help.button`, `help.how_to_fill`, `help.why_it_helps`, in English and Hindi, the other languages waiting for a translator like every text.
+- **One video per link, for every language.** If you make a Hindi version, use it as the link (or put both languages in one video).
+- **To remove a video**, empty its box and Publish: the button disappears when no video is left.
+
 ### A live answer of a pick-one question
 
-Once the first real round has opened, every answer of a **pick one** question that partners could pick in a real round is locked: the dashboard compares rounds by its code. It must stay in its question's **answers** cell, with the same code. A table that leaves it out (or changes its code) is refused by the Check, for example: "Row 9 (contact_way), answers: the answer "visit" was already picked by partners in a real round, so it must stay (the dashboard compares rounds by its code). Put it back in "answers"; you can still change its words."
+(The same goes for a **pick several** question.) Once the first real round has opened, every answer of a **pick one** question that partners could pick in a real round is locked: the dashboard compares rounds by its code. It must stay in its question's **answers** cell, with the same code. A table that leaves it out (or changes its code) is refused by the Check, for example: "Row 9 (contact_way), answers: the answer "visit" was already picked by partners in a real round, so it must stay (the dashboard compares rounds by its code). Put it back in "answers"; you can still change its words."
 
 - **To change what partners read**, change its words after the colon (`visit: A visit to our office`), or in **Texts & translations**. Its code stays.
 - **To stop asking the question**, hide the whole question (`no` in **show**).
@@ -910,6 +928,7 @@ The **Check** of a pasted table uses the table's own words; its messages are exp
 | "The column "…" means the same as the column "…". Keep only one of them." | Two columns are read as the same one, for example `question` and `question (English)`. | Delete one of the two columns. |
 | "this row has more cells than the header row has columns (…), so some of its words would be lost." | Usually a comma inside a text of a CSV file, or a `|` inside a text of an AI's table; otherwise a column name is missing. | Put that text in "double quotes" (CSV), write the `|` as `\|` (an AI's table), or add the missing column name. |
 | "the kind is empty. Write one of: …" | The **kind** cell is empty. | Write one of [the kinds](#the-kinds). |
+| ""…" can mean two things: write "pick one" when partners choose one answer, or "pick several" when they may tick more than one." | The kind says "multiple choice". | Write `pick one` or `pick several`. |
 | ""…" is not a kind the panel knows. Did you mean "…"? The kinds are: …" | A typo, or Excel changed the cell: it turns `0-10` and `1-5` into dates such as `10-Jan`. | Write one of the kinds listed; `0 to 10` and `faces` instead of 0-10 and 1-5. |
 | "there is already a "…" row (row …). It can appear only once: remove one of them." | A built-in screen (language, what changed, area ratings, problem screens, support ratings) appears twice. | Remove one of the two rows. |
 | ""…" cannot be a code: use small letters a-z, digits and _, starting with a letter (for example "…")." | The code has spaces or other signs, or starts with a digit. (Capitals alone are fine: they are read as small letters.) | Use the code the message suggests, or one like it. |
@@ -977,7 +996,7 @@ The **Check** of a pasted table uses the table's own words; its messages are exp
 | "the code was empty, so the panel made one from the English question: "…". Answers are saved under it, so keep it from now on." | | Write that code into your table, and keep it. (Before the first real round you may still choose a shorter one.) |
 | "answers without a code got one made from their English: …" / "the answer code "…" is written "…"" | | Write those codes into your table, like `phone: Phone call`, and keep them. |
 | "it has … answers but "answers" has …, so they are matched in order." (column **answers (Hindi)**) | The Hindi answers have no codes, and their number differs. | Write the Hindi answers with their codes: `phone: …; app: …`. |
-| "only "pick one" questions have answers to write here, so this is left out." | | Nothing (or empty the cell). |
+| "only "pick one" and "pick several" questions have answers to write here, so this is left out." | | Nothing (or empty the cell). |
 | "a "…" row has nothing to answer, so "required" changes nothing." / "a "…" row shows no message, so it is left out." | | Nothing (or empty the cell). |
 | "the Hindi words are left out: write the English too." | A new text has Hindi but no English. | Write the English. |
 | "a thank-you row ends the survey, so its "then go to" and jumps are not used." | | Empty those cells. |
@@ -1025,6 +1044,7 @@ The **Check** of a pasted table uses the table's own words; its messages are exp
 | Partners still see the old version | You saved but did not publish, or their page was already open. | Publish. Partners get it the next time they open their link. |
 | Partners see "This survey is not open yet" | The round is a draft, or the round in their link is one the backend does not know (a typo in `round=…`, or a round that was never saved), which also counts as not open yet. | Open it ([Recipe 8](#recipe-8-open-or-close-a-round)). If it is open already, check that the link's `round=…` is exactly the round's code, capitals included. |
 | A partner sees "This link is not valid" | The link was cut when it was copied, or edited by hand. | Send the full link again from the **Links** section. |
+| A message when the panel opens: "4 new texts of the form were added to Texts & translations (…). Save to keep them." | Your Sheet was made before 28 Oct 2026, and the form now has texts it didn't have then (the "You can tick more than one." hint and the help videos' names). The panel adds them, with English and Hindi; the other languages wait for a translator. | Click **Save** (Publish also saves first). It appears only once. |
 | The panel says "The control panel could not open" | A tab is missing, or Google was busy. If the message also says "Google Drive would not open … for you", you don't have the Drive folder (see the row about that message above). | Click **Try again**. If it keeps happening, run **Partner Pulse > Set up or repair**, then open the panel again. In the Drive case, ask the admin to share the folder instead. |
 | A red banner on **Home**: "The form on GitHub does not run the same route code as this control panel." | The form on GitHub Pages and this control panel run different versions of the route code, so phones could follow other rules than the ones the panel shows and checks (jumps, repeats, endings). The banner's last line shows the start of both codes and when they were compared. | Make them the same, from one copy of the project: whoever looks after GitHub uploads the newest form files (`web/js/flow.js`, `flow-panel.js` and `flow-check.js`) and waits for the green tick, and the admin pastes the newest `apps-script/Flow.gs` into the Apps Script project ([setup guide](../apps-script/README.md#update-the-code-later-same-address)). The comparison is kept for 10 minutes: open the panel again after that. If the form can't be reached, no banner shows. |
 | In **Questions**: "The route tools could not start: …" and "Pasting a route still works: Check, Use this route and the table buttons ask Google instead, so they take a few seconds longer. …" | The panel window could not run the route code, so the panel asks Google to run the same code. Pasting a route, Save, Preview and Publish all work; only the **Map**, **Try a path** and the route badges are off. **[UNCONFIRMED]** that Google's panel window always allows the route code to run: it is tested only in Chrome outside Google. | Click **Try again** in the note. If it stays, keep working, and send the whole note to whoever maintains the scripts. |

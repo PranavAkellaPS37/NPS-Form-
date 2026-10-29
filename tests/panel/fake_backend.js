@@ -472,7 +472,7 @@ function validate(model, liveDoc) {
 /* ---- which logic the bench uses -------------------------------------------------- */
 const logic = REAL ? {
   name: 'real Model.gs',
-  schema: REAL.SETTINGS_SCHEMA, types: REAL.SCREEN_TYPES, formKeys: REAL.FORM_TEXT_KEYS,
+  schema: REAL.SETTINGS_SCHEMA, types: REAL.SCREEN_TYPES, formKeys: REAL.FORM_TEXT_KEYS, newerTexts: REAL.NEWER_TEXTS,
   importStatic: (files) => REAL.importStatic(files),
   prepareSave: (prev, model) => REAL.applyTranslationHelpers(prev, REAL.normalizeModel(model), istDate(nowIso())) || REAL.normalizeModel(model),
   validate: (model, live) => REAL.validate(REAL.normalizeModel(model), live),
@@ -483,7 +483,7 @@ const logic = REAL ? {
   exportFiles: (model, url) => REAL.exportStatic(model, { apps_script_url: url })
 } : {
   name: 'bench stand-in',
-  schema: SETTINGS_SCHEMA, types: SCREEN_TYPES, formKeys: FORM_TEXT_KEYS,
+  schema: SETTINGS_SCHEMA, types: SCREEN_TYPES, formKeys: FORM_TEXT_KEYS, newerTexts: {},
   importStatic: (files) => importStatic(files),
   prepareSave: (prev, model) => { const m = clone(model); applyTranslationHelpers(m, prev); return m; },
   validate: (model, live) => validate(model, live),
@@ -643,7 +643,8 @@ const api = {
     const unknown = codesLocked() && (!d || state.liveUnknown);
     return {
       revision: state.revision, model: clone(state.model),
-      catalog: { settings_schema: clone(logic.schema), screen_types: clone(state.screenTypes || logic.types), form_text_keys: logic.formKeys.slice() },
+      catalog: { settings_schema: clone(logic.schema), screen_types: clone(state.screenTypes || logic.types), form_text_keys: logic.formKeys.slice(),
+        newer_texts: clone(logic.newerTexts || {}) },
       live: d ? { version: d.version, config_version: d.config_version, published_at: d.published_at, published_by: d.published_by, note: d.note } : null,
       live_ids: codesLocked() && !unknown ? liveIds() : { screens: [], areas: [], chips: {}, support: [], options: {} },
       live_ids_unknown: unknown,

@@ -92,6 +92,7 @@ V, N      := a literal, or {"var": "<loopvar>.<field>"}
 - `in`: it exists and `String(value)` is among the list's values as text.
 - `answered: true|false`: it exists, or it doesn't.
 - Free text counts as `true` when there is non-blank text or a voice note.
+- **A list answer** (a `multi_choice` "pick several" answer, 28 Oct 2026: the codes ticked): `equals` V is true when V is one of them, `not_equals` V when it is not, `in` when any listed value is, `answered` when at least one is ticked (an empty list is not answered); `at_most` / `at_least` are never true of a list (checker R3 refuses them). No answer before 28 Oct 2026 was a list, so every older rule means exactly what it meant (legacy_diff: no differences).
 - An unknown test is **true** (the screen shows), as before; the checker refuses it (R2).
 - **Symbols.** The panel, map and simulator show `==  !=  <=  >=  in  exists`; only the words above are stored.
 - **Own keys only.** Answers, facts and loop items are read as the object's own properties (`own()` in flow.js), so an answer key equal to a name every JavaScript object inherits (`constructor`, `toString`, `valueOf`) is never "answered" before a tap (26 Oct 2026).
@@ -134,6 +135,7 @@ The table is the **old behaviour, unchanged**: `canProceed` and `buildSubmission
 | `nps_0_10` | 0–10 | `required === false` or answered | `answers[id]` |
 | `yes_no` | `"yes"` / `"no"` | same | `answers[id]` |
 | `single_choice` | an option code | same | `answers[id]` |
+| `multi_choice` (28 Oct 2026) | the list of option codes ticked, in the options' order | `required === false`, or at least one ticked | `answers[id]` = the list; nothing when none is ticked |
 | `rating_1_5` | 1–5 | same | `answers[id]` + ratings row `{block:"question", item:id, rating, not_applicable:false, threshold:null, below_threshold:null, issue_code:null}` |
 | `free_text` | text/voice under `texts[id]` / `audio[id]` | `required !== true` or has text/voice | free_text row `{item_id:id, block: node.block or "question", function:null, issue_code:null, question_key: node.text or null, text, audio}` |
 | `info_card` | — | always | — |
@@ -245,7 +247,7 @@ Every kind of screen is described **once**, with `PP.types.register(description)
 |---|---|
 | `PP.types.register(d)` | Adds a kind, or adds to one already registered (fields merge; `undefined` values are skipped). Throws when `d.type` isn't a code `^[a-z][a-z0-9_]*$` or is `group`. Sets `end` from `flags.end`. A `render` function makes `PP.screens[type]` (the drawing app.js calls; `auto` defaults to `flags.auto`). |
 | `PP.types.get(type)` | The description (own key), or `undefined`. |
-| `PP.types.list()` | The types in registration order: the 6 built-in blocks first (`language_picker` … `thank_you`), then `nps_0_10`, `rating_1_5`, `yes_no`, `single_choice`, `free_text`, `info_card`, then added kinds. The checker's "Use one of" list follows it; the panel sorts its "Add a question" list by each kind's `row.order`. |
+| `PP.types.list()` | The types in registration order: the 6 built-in blocks first (`language_picker` … `thank_you`), then `nps_0_10`, `rating_1_5`, `yes_no`, `single_choice`, `multi_choice` (since 28 Oct 2026), `free_text`, `info_card`, then added kinds. The checker's "Use one of" list follows it; the panel sorts its "Add a question" list by each kind's `row.order`. |
 | `PP.types.isRequired(d, node, field)` | Is the answer required? The node's own true/false `field` (usually `required`), else that field's `default` in the kind's `fields`, else true. The checker asks this too. `d` may be a description or a type name. |
 
 `PP.flow.types` is the same map (type → description), kept for older code.
@@ -257,7 +259,7 @@ Every kind of screen is described **once**, with `PP.types.register(description)
 | `type` | The permanent code. |
 | `label`, `description` | Names for the map, the checker's messages and the panel. |
 | `fields` | Its settings: `{ name: { kind, required?, default? } }`, kinds `text_key`, `bool`, `choice` (with `values`), `number`, `answer_key`, `options`, `rows`, `comment`. Anything not listed (and not common, §2.1) is checker F2. |
-| `answer` | What a rule can test, or `null` (nothing to answer): `{ kind: "number", min, max, na_by? }`, `{ kind: "choice", values | values_from }`, `{ kind: "text" }` (only `answered`), or `rows` (a block). `what` names it in messages; `required_by` names the setting that makes it required (`null` = always); `optional: true` = never required. |
+| `answer` | What a rule can test, or `null` (nothing to answer): `{ kind: "number", min, max, na_by? }`, `{ kind: "choice", values | values_from }`, `{ kind: "choices", values | values_from }` (a list of codes ticked: `multi_choice`, 28 Oct 2026; scripts/flow.js ANSWER_KINDS), `{ kind: "text" }` (only `answered`), or `rows` (a block). `what` names it in messages; `required_by` names the setting that makes it required (`null` = always); `optional: true` = never required. |
 | `records` | What it sends: `answers` (1 = `answers[id]`), `ratings` (1 = one `question` ratings row; only for answers from 1 to 5, §10.3), `free_text` (1 = the typed text or voice note). Counted by check D3. |
 | `flags` | `end` (an ending), `auto` (one tap answers it), `first` (must be the start: P1), `once` (at most one: P2), `early` (before the questions: P2). |
 | `texts` | Its default text keys, with templates (`fn.{area}.name`). |
@@ -374,7 +376,7 @@ Messages are plain English and say how to fix the problem.
 | `sentence(cond)` | A condition in words, for messages and the map. |
 | `toMermaid(survey, strings)` | Mermaid `flowchart TD` text |
 | `toMarkdown(survey, strings, opts)` | the whole `docs/flow.md` (§7); `opts.source` names where the questionnaire came from |
-| `simulate(survey, answers, facts, opts)` | `{ steps, skipped: [{id, reason}], blocked: [ids], submission, facts, unknown }`; `unknown` lists answer keys no screen stores (a typo such as `nsp`), which are ignored |
+| `simulate(survey, answers, facts, opts)` | `{ steps, skipped: [{id, reason}], blocked: [ids], submission, facts, unknown }`; `unknown` lists answer keys no screen stores (a typo such as `nsp`), which are ignored. A list given for one answer is its parts (a value, `"text:…"`, `"voice"`), except for a pick-several answer, where the values together are the codes ticked (`--set areas=load --set areas=app` on the command line; since 28 Oct 2026). `answersAt` describes such an answer with `kind: "choices"` |
 | `paths(survey, opts)` | `{ routes: [{ nodes, screens, count, example, repeats }], total, sets, exhaustive }`, the most common route first |
 | `compare(surveyA, surveyB, opts)` | `{ same, sets, differences, count }`: the answer sets where the screens or the submission differ |
 | `screens(survey, strings?)` | The screen catalogue for the dashboard: `[{screen, node, type, item, label_en, end}]` in display order. `screen` equals what pings and the `events` tab call the screen (e.g. `fn_rating:losses`). |
@@ -597,6 +599,7 @@ Header names are compared as plain words: lower case, every run of other charact
 | `faces` | `rating_1_5` | its own | also `1-5`, `1 to 5`, `rating`, `smileys` |
 | `yes/no` | `yes_no` | its own | |
 | `pick one` | `single_choice` | its own | needs `answers` |
+| `pick several` | `multi_choice` | its own | needs `answers` (28 Oct 2026). Also read: multi select, pick all that apply, tick all that apply, checkboxes. "multiple choice" (or "MCQ") is a problem: it can mean either |
 | `voice/typing` | `free_text` | its own | |
 | `info card` | `info_card` | its own | title in `question`, text in `message` |
 | an added kind | its `row.type` | its own | read by its type code or its panel label; written as its type code (§10) |

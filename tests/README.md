@@ -69,7 +69,16 @@ No browser; each needs only Node.
 
 **About the fix checks.** `verify-locks.js` was written when the Google imitation could not reach the lock, permission and owner fixes. Since 21 Oct the Google imitation's scenarios G1–G3 and G5 reach them too, and `verify-locks.js` stays as a second, independent check.
 
-### Last full run (28 Oct 2026, "Paste a route" with its review fixes)
+### Last full run (29 Oct 2026, pick several and help videos)
+
+The regression of 28–29 Oct 2026, every suite one after another with the browser lock (`local_data/regress-28oct-b.log`, git-ignored; the Google imitation and the planted mistakes rerun after their contract lists learned the new kind and settings); `Flow.gs` fingerprint `d8b72ec2fa1d…`. All passed:
+- flow_test **27**, legacy_diff `No differences`, check_test **100**, sim_test 34, types_test **11**, panel_rows_test 17, route_table_test **37**;
+- model **239/239**, shrink `true`, fixes 81 + 40, `build_flow_gs.js --check` up to date, check_config 0 errors (page 93% of 300 KB), ES5 gate all ES5;
+- Google imitation 45 passed + 1 known warning (46 scenarios); planted mistakes 85 of 85;
+- panel bench **84 passed, 0 failed**; narrow sizes `ok`; panel smoke clean;
+- end to end **36/36** (new: Z10 pick several, Z11 help videos).
+
+### Earlier full run (28 Oct 2026, "Paste a route" with its review fixes)
 
 The final regression of 28 Oct 2026 (12:33–12:46 IST), every suite one after another with the browser lock, saved on this Mac in `local_data/regress-28oct.log` (git-ignored); `Flow.gs` fingerprint `f6444937805f…`. Every suite exited 0:
 - flow_test 26, legacy_diff `No differences` (73 questionnaires, 25 s), check_test 99, sim_test 34, types_test 10, panel_rows_test **17**, route_table_test **36**: all passed;

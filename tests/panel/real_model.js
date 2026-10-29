@@ -49,6 +49,8 @@ function loadRealModel(repo) {
     SETTINGS_SCHEMA: value('PP_SETTINGS_SCHEMA'),
     SCREEN_TYPES: value('PP_SCREEN_TYPES'),
     FORM_TEXT_KEYS: value('PP_FORM_TEXT_KEYS'),
+    // the form's texts added after its first release (28 Oct 2026), which panelLoad sends (an older Model.gs: none)
+    NEWER_TEXTS: vm.runInContext('typeof PP_MDL_NEWER_FORM_TEXTS_', context) === 'object' ? value('PP_MDL_NEWER_FORM_TEXTS_') : {},
     importStatic: call('PP_importStatic'),
     normalizeModel: call('PP_normalizeModel'),
     applyTranslationHelpers: call('PP_applyTranslationHelpers'),

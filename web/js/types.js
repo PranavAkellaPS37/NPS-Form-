@@ -6,11 +6,11 @@
      registry is in web/js/flow.js). The built-in kinds' names, settings,
      answers and data are described in web/js/flow.js, which the control
      panel and the command-line checks run too; how they LOOK on the phone,
-     render(ctx), is here, for the 12 built-in kinds:
+     render(ctx), is here, for the 13 built-in kinds:
        language_picker, whats_changed, nps_0_10, function_rating (one per
        area), function_deep_dive (main problem + tell us more), yes_no,
-       support_block, free_text, rating_1_5, single_choice, info_card,
-       thank_you
+       support_block, free_text, rating_1_5, single_choice, multi_choice
+       (pick several, since 28 Oct 2026), info_card, thank_you
      A NEW kind of question is ONE file, web/js/types/<name>.js, with its whole
      description (render included), plus one <script> line in web/index.html:
      docs/config-guide.md, "How to add a question type".
@@ -430,6 +430,58 @@
     return {
       el: section([questionHead(textKey, speak), list]),
       auto: true,
+      blockedHint: function () { return t('ui.choose_one'); }
+    };
+  };
+
+  /* Pick several (28 Oct 2026): the same buttons as a pick-one question, but
+     each tap ticks or unticks one answer and the partner presses Next. The
+     answer is the list of codes ticked, kept in the order of the options;
+     nothing ticked is an empty list (flow.js: not answered). */
+  S.multi_choice = function (ctx) {
+    var e = ctx.step.entry || {};
+    var textKey = keyOf(ctx.step, 'text', e.text);
+    var ownId = (ctx.step.node && ctx.step.node.id) || ctx.step.id;
+    var options = withTexts(keyOf(ctx.step, 'options', null) || e.options, function (code) {
+      return 'choice.' + ownId + '.' + code;
+    });
+    var codes = options.map(function (option) { return option.code; });
+    var ticked = function () {
+      var v = ctx.state.answers[ctx.step.id];
+      return Array.isArray(v) ? v.filter(function (code) { return codes.indexOf(code) !== -1; }) : [];
+    };
+    var list = h('div', { 'class': 'chips one-col', role: 'group', 'aria-label': t(textKey) });
+    options.forEach(function (option) {
+      var code = option.code;
+      var on = ticked().indexOf(code) !== -1;
+      var b = h('button', {
+        type: 'button',
+        'class': 'choice chip' + (on ? ' is-selected' : ''),
+        'aria-pressed': on ? 'true' : 'false'
+      }, [PP.icon('check'), textEl('span', null, option.text)]);
+      b.addEventListener('click', function () {
+        var now = ticked();
+        var at = now.indexOf(code);
+        if (at === -1) now.push(code);
+        else now.splice(at, 1);
+        now.sort(function (x, y) { return codes.indexOf(x) - codes.indexOf(y); });
+        b.className = 'choice chip' + (at === -1 ? ' is-selected' : '');
+        b.setAttribute('aria-pressed', at === -1 ? 'true' : 'false');
+        ctx.setAnswer(ctx.step.id, now, false);
+      });
+      list.appendChild(b);
+    });
+    // The hint "You can tick more than one." shows only when the questionnaire
+    // has that text (one published before 28 Oct 2026 does not: the question's
+    // own words then say it), so a phone never shows a text's name.
+    var strings = PP.i18n && PP.i18n.strings;
+    var hasHint = Boolean(strings && Object.prototype.hasOwnProperty.call(strings, 'ui.pick_several'));
+    var speak = [{ key: textKey }].concat(hasHint ? [{ key: 'ui.pick_several' }] : [], options.map(function (option) {
+      return { key: option.text };
+    }));
+    return {
+      el: section([questionHead(textKey, speak)].concat(hasHint ? [textEl('p', 'hint', 'ui.pick_several')] : [], [list])),
+      auto: false,
       blockedHint: function () { return t('ui.choose_one'); }
     };
   };

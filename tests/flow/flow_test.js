@@ -620,7 +620,7 @@ const gSend = (s, state, steps) => flow.buildSubmission(s, state, steps, G_META,
     'dc', 't', 'round', 'lang', 'mode', 'opened_at', 'started_at', 'submitted_at', 'sent_at', 'attempt', 'resume_count', 'client',
     'answers', 'ratings', 'free_text', 'events'], 'the message keeps its key order');
   assert.deepStrictEqual(Object.keys(flow.types).sort(), ['free_text', 'function_deep_dive', 'function_rating', 'info_card', 'language_picker',
-    'nps_0_10', 'rating_1_5', 'single_choice', 'support_block', 'thank_you', 'whats_changed', 'yes_no']);
+    'multi_choice', 'nps_0_10', 'rating_1_5', 'single_choice', 'support_block', 'thank_you', 'whats_changed', 'yes_no']);
   ok('graph: what each type allows (canProceed) and sends (buildSubmission)');
 }
 
@@ -701,5 +701,64 @@ const gSend = (s, state, steps) => flow.buildSubmission(s, state, steps, G_META,
   assert.deepStrictEqual(flow.items({ collections: { a: { list: 'x', defaults: { constructor: 1 } } } }, { x: ['p'] }, 'a'), [{ id: 'p', constructor: 1 }],
     'a default named like an inherited property is still filled in');
   ok('"constructor", "toString" and "valueOf" are ordinary answer keys: not answered before a tap, nothing sent, rules see only real answers');
+}
+// 27. pick several (multi_choice, 28 Oct 2026): the answer is the list of codes ticked. A rule's "=" means
+//     "is one of them", so each ticked area gets its own follow-up; nothing ticked is no answer at all.
+{
+  const s = gSurvey([
+    { id: 'nps', type: 'nps_0_10', text: 'q.nps', next: 'areas' },
+    { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'payments', 'app'], next: 'load_low' },
+    { id: 'load_low', type: 'single_choice', text: 'q.load_low', options: ['x', 'other'],
+      show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] }, next: 'pay_low' },
+    { id: 'pay_low', type: 'single_choice', text: 'q.pay_low', options: ['y', 'other'],
+      show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'payments' }] }, next: 'not_app' },
+    { id: 'not_app', type: 'yes_no', text: 'q.not_app', show_if: { answer: 'areas', not_equals: 'app' }, next: 'any_of' },
+    { id: 'any_of', type: 'yes_no', text: 'q.any_of', show_if: { answer: 'areas', 'in': ['app', 'payments'] }, next: 'none' },
+    { id: 'none', type: 'yes_no', text: 'q.none', show_if: { answer: 'areas', answered: false }, next: 'thanks' },
+    { id: 'thanks', type: 'thank_you' }]);
+  // the rules
+  const E = (cond, v) => flow.evalCondition(cond, { areas: v }, {});
+  assert.strictEqual(E({ answer: 'areas', equals: 'load' }, ['load', 'app']), true, '"= load": load is ticked');
+  assert.strictEqual(E({ answer: 'areas', equals: 'payments' }, ['load', 'app']), false, '"= payments": not ticked');
+  assert.strictEqual(E({ answer: 'areas', not_equals: 'payments' }, ['load', 'app']), true, '"!= payments": not ticked');
+  assert.strictEqual(E({ answer: 'areas', not_equals: 'load' }, ['load']), false);
+  assert.strictEqual(E({ answer: 'areas', in: ['app', 'payments'] }, ['load', 'app']), true, '"in": any of them ticked');
+  assert.strictEqual(E({ answer: 'areas', in: ['payments'] }, ['load']), false);
+  assert.strictEqual(E({ answer: 'areas', answered: true }, ['load']), true);
+  assert.strictEqual(E({ answer: 'areas', answered: true }, []), false, 'nothing ticked is not answered');
+  assert.strictEqual(E({ answer: 'areas', answered: false }, []), true);
+  assert.strictEqual(E({ answer: 'areas', not_equals: 'load' }, []), true, 'nothing ticked: load is not ticked');
+  assert.strictEqual(E({ answer: 'areas', at_most: 3 }, ['load']), false, 'a number test is never true of a list');
+  assert.strictEqual(E({ answer: 'areas', at_least: 0 }, ['load']), false);
+  // the route: one follow-up per ticked area
+  assert.deepStrictEqual(gIds(s, gState({ nps: 4, areas: ['load', 'payments'] })),
+    ['nps', 'areas', 'load_low', 'pay_low', 'not_app', 'any_of', 'thanks'], 'two areas ticked: two follow-ups');
+  assert.deepStrictEqual(gIds(s, gState({ nps: 4, areas: ['app'] })), ['nps', 'areas', 'any_of', 'thanks']);
+  assert.deepStrictEqual(gIds(s, gState({ nps: 10, areas: ['load', 'payments'] })), ['nps', 'areas', 'not_app', 'any_of', 'thanks'],
+    'a promoter gets no "went wrong" screen');
+  assert.deepStrictEqual(gIds(s, gState({ nps: 4 })), ['nps', 'areas', 'not_app', 'none', 'thanks'], 'not answered yet');
+  // Next: at least one tick when required; an optional one may stay empty
+  const steps = gPath(s, gState({ nps: 4, areas: [] }));
+  const step = steps.filter((x) => x.id === 'areas')[0];
+  assert.strictEqual(flow.canProceed(step, gState({ nps: 4, areas: [] }), s), false, 'required: an empty list waits');
+  assert.strictEqual(flow.canProceed(step, gState({ nps: 4 }), s), false, 'required: nothing yet waits');
+  assert.strictEqual(flow.canProceed(step, gState({ nps: 4, areas: ['app'] }), s), true, 'one tick is enough');
+  const opt = gSurvey([{ id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['a', 'b'], required: false, next: 'thanks' }, { id: 'thanks', type: 'thank_you' }]);
+  assert.strictEqual(flow.canProceed(gPath(opt, gState({}))[0], gState({ areas: [] }), opt), true, 'optional: may stay empty');
+  // what is sent: the list (a copy), never an empty list
+  const ticked = gState({ nps: 4, areas: ['load', 'payments'], load_low: 'x', pay_low: 'other', not_app: 'yes', any_of: 'no' });
+  const sent = gSend(s, ticked, gPath(s, ticked));
+  assert.deepStrictEqual(sent.answers.areas, ['load', 'payments'], 'the codes ticked are sent as a list');
+  assert.notStrictEqual(sent.answers.areas, ticked.answers.areas, 'a copy, not the phone\'s own list');
+  assert.strictEqual(sent.answers.load_low, 'x');
+  const empty = gState({ nps: 4, areas: [] });
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(gSend(s, empty, gPath(s, empty)).answers, 'areas'), false, 'nothing ticked: nothing sent');
+  // the kind's description (the catalogue, the checks and the panel read it)
+  const d = flow.types.multi_choice;
+  assert.strictEqual(d.answer.kind, 'choices');
+  assert.strictEqual(d.answer.values_from, 'options');
+  assert.strictEqual(d.row.label, 'Pick several answers');
+  assert.ok(d.row.repeatable, 'may be asked once per area');
+  ok('pick several: rules test "is one of the ticked", each ticked area gets its follow-up, Next needs a tick, the list is sent');
 }
 console.log(n, 'tests passed');

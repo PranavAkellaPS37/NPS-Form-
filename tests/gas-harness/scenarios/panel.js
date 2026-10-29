@@ -163,7 +163,7 @@ module.exports = function register(add) {
       s.ok(H.plainEnglish(e.help), `schema ${key}: help is plain English`, K.show(e.help));
     }
     const types = cat.screen_types || [];
-    s.eq(types.map((t) => t.type).sort(), Object.keys(C.SCREEN_TYPES).sort(), 'catalog.screen_types lists the 12 screen types');
+    s.eq(types.map((t) => t.type).sort(), Object.keys(C.SCREEN_TYPES).sort(), 'catalog.screen_types lists the 13 screen types');
     for (const [type, want] of Object.entries(C.SCREEN_TYPES)) {
       const t = types.find((x) => x.type === type);
       if (!t) continue;

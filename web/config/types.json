@@ -123,6 +123,18 @@
       "custom": []
     },
     {
+      "type": "multi_choice",
+      "label": "Pick-several question",
+      "description": "A list of answers; the partner ticks one or more.",
+      "fields": { "text": { "kind": "text_key", "required": true }, "options": { "kind": "options", "required": true }, "required": { "kind": "bool", "default": true } },
+      "answer": { "kind": "choices", "values_from": "options", "what": "the pick-several question" },
+      "records": { "answers": 1, "ratings": 0, "free_text": 0 },
+      "flags": {},
+      "texts": {},
+      "row": { "type": "multi_choice", "label": "Pick several answers", "description": "A list of answers; the partner ticks one or more.", "builtin": false, "needs_text": true, "fields": ["options", "required"], "required_default": true, "repeatable": true, "icon": "✅", "order": 45 },
+      "custom": ["isComplete", "collect"]
+    },
+    {
       "type": "free_text",
       "label": "Voice or typing",
       "description": "The partner records a voice note or types an answer.",

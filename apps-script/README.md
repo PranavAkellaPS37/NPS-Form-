@@ -566,6 +566,19 @@ Good to know:
 - If the panel says "The script behind this Sheet has no step called …", one of the files was not pasted (usually `PanelServer`). Paste it, save, and open the panel again.
 - If the developer says so, run **Partner Pulse > Set up or repair** afterwards, to add any new tabs, columns or settings.
 
+### This release: Pick several and help videos (28 Oct 2026)
+
+A new kind of question, **pick several** (partners tick one or more answers; each ticked area can have its own follow-up), and **help videos** behind an ⓘ button on every screen (Settings > Help videos). [CHANGELOG 0.3.2](../CHANGELOG.md).
+
+**Four Apps Script files changed** since the "Paste a route" release (`70b214c`): **Flow**, **Model**, **PanelServer** and **Panel**. **Code** is unchanged, and **Set up or repair** is not needed.
+
+1. **Put the new project on GitHub first** (as in the release below, step 1) and wait for the green tick. **You should see** the green tick in GitHub's **Actions** tab (about 2 minutes). Why first: the form's own files changed (the new kind and the ⓘ button), and the control panel's **Home** compares its route code with the form's on GitHub.
+2. **Paste the four changed files**: `Flow`, `Model`, `PanelServer` and `Panel`, each into the editor file with the same name. Save (**Cmd+S**). `Flow` is now about 780 KB (782,503 bytes): scroll to its very end and check that the last lines are `PP_flowLib_.lib = root.PP;`, `return root.PP;` and `}`.
+3. **Make a New version** (Deploy > Manage deployments > Edit > Version: New version > Deploy). The address doesn't change. In an Incognito window, the address with `?action=health` shows a `"flow_fingerprint"` starting `d8b72ec2fa1d`.
+4. **Open the control panel.** **You should see** the message "4 new texts of the form were added to Texts & translations (ui.pick_several, help.button, help.how_to_fill, help.why_it_helps). Save to keep them." Click **Save**. (It shows only once; a Sheet made after 28 Oct already has them.)
+5. **When your videos are on YouTube** (unlisted): **Settings > Help videos**, paste the links, **Save** ([control panel guide, Recipe 21](../docs/control-panel.md#recipe-21-add-help-videos-for-partners-the--button)).
+6. **Paste the new route** (Questions > 2. Paste a route > **Check** > **Use this route** > **Save** > **Preview**), then **Publish**.
+
 ### This release: Paste a route (27 Oct 2026)
 
 The release of 27 Oct 2026 changes how the questions are made in the control panel: the whole route is **one table** that you copy, change in Excel (or have Claude or ChatGPT write) and paste back. The question-by-question editor is gone; the Map and Try a path stay ([control panel guide, Recipe 2](../docs/control-panel.md#recipe-2-change-the-questions-paste-a-route)). It includes the review fixes of 28 Oct: the **Check** of a pasted table also catches a "filler" such as `NA` or `-` in a cell (it keeps today's words), new or changed Hindi (it asks you to keep only Hindi a person wrote), a new kind for a question partners already answered, and a route that runs on into another one; Publish's messages now use the table's words; and if the panel window can't run the route code, pasting a route still works through Google.

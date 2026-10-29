@@ -1236,7 +1236,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     border: 'Lines around buttons', error: '“Please choose an answer”', success: '“Voice note added”'
   };
   var GROUP_ORDER = ['Form address', 'Languages', 'Moving between screens', 'Ratings', 'Problem screens',
-    'Support questions', 'Voice notes', 'Typing', 'Read aloud', 'What changed', 'Progress messages', 'Sending'];
+    'Support questions', 'Voice notes', 'Typing', 'Read aloud', 'What changed', 'Progress messages', 'Help videos', 'Sending'];
   var ADVANCED_GROUPS = { 'Sending': true };
   var SECTION_NAMES = {
     settings: 'Settings', languages: 'Languages', areas: 'Areas', chips: 'Problems', support: 'Support',
@@ -1493,6 +1493,30 @@ details.group > .group-body { padding: 0 16px 14px; }
     if (M().text_notes[key] === undefined) M().text_notes[key] = '';
   }
 
+  /* The form's texts added after its first release (28 Oct 2026: the
+     pick-several hint, the help videos), as the server sends them (Model.gs
+     PP_MDL_NEWER_FORM_TEXTS_: English and Hindi): a Sheet made before has
+     none, so they are added here, the other languages waiting for a
+     translator, and saved with the next Save (Publish saves first). Until
+     then the form leaves out what needs them. */
+  function addNewerTexts(newer) {
+    var added = [];
+    Object.keys(newer).forEach(function (key) {
+      var v = obj(newer[key]);
+      if (M().texts[key] || !str(v.en)) return;
+      var values = { en: str(v.en) };
+      if (str(v.hi) && M().languages.some(function (l) { return l.code === 'hi'; })) values.hi = str(v.hi);
+      addTextKey(key, values);
+      added.push(key);
+    });
+    if (!added.length) return;
+    changed();
+    setTimeout(function () {
+      toast(plural(added.length, 'new text') + ' of the form ' + (added.length === 1 ? 'was' : 'were') + ' added to Texts & translations (' +
+        added.join(', ') + '). Save to keep ' + (added.length === 1 ? 'it' : 'them') + '.', { kind: 'info', timeout: 9000 });
+    }, 0);
+  }
+
   function removeTextKey(key) {
     delete M().texts[key];
     delete M().text_notes[key];
@@ -1526,7 +1550,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     m.screens.forEach(function (s) {
       if (!s.active) return;
       ['text', 'low_label', 'high_label', 'scale_hint', 'body'].forEach(function (f) { if (s[f]) need[s[f]] = true; });
-      if (s.type === 'single_choice') s.options.forEach(function (o) { need['choice.' + s.id + '.' + o] = true; });
+      if (s.type === 'single_choice' || s.type === 'multi_choice') s.options.forEach(function (o) { need['choice.' + s.id + '.' + o] = true; });
     });
     arr(S.catalog.form_text_keys).forEach(function (k) { need[k] = true; });
     return need;
@@ -1818,6 +1842,8 @@ details.group > .group-body { padding: 0 16px 14px; }
   function choiceAnswer(ref, label, subject, values, group) {
     return { ref: ref, label: label, subject: subject, asked: subject, kind: 'choice', values: values, group: group };
   }
+  /* A pick-several answer (28 Oct 2026): the list of codes ticked; "equals" means "is one of them". */
+  function multiAnswer(d) { d.multi = true; return d; }
   function textAnswer(ref, label, asked, group) {
     return { ref: ref, label: label, subject: asked, asked: asked, kind: 'text', values: [], group: group };
   }
@@ -1837,6 +1863,8 @@ details.group > .group-body { padding: 0 16px 14px; }
         out.push(choiceAnswer(s.id, q, 'the answer to ' + quote(q), [{ v: 'yes', label: en('ui.yes') || 'Yes' }, { v: 'no', label: en('ui.no') || 'No' }], 'Questions')); break;
       case 'single_choice':
         out.push(choiceAnswer(s.id, q, 'the answer to ' + quote(q), s.options.map(function (o) { return { v: o, label: optionLabel(s.id, o) }; }), 'Questions')); break;
+      case 'multi_choice':
+        out.push(multiAnswer(choiceAnswer(s.id, q, 'the answers ticked in ' + quote(q), s.options.map(function (o) { return { v: o, label: optionLabel(s.id, o) }; }), 'Questions'))); break;
       case 'free_text':
         out.push(textAnswer(s.id, q + ' (typed or recorded)', 'the question ' + quote(q), 'Questions')); break;
       case 'function_ratings':
@@ -1946,11 +1974,11 @@ details.group > .group-body { padding: 0 16px 14px; }
     var ans = describeAnswer(c.answer);
     var subject = ans ? ans.subject : quote(c.answer);
     switch (c.test) {
-      case 'equals': return subject + ' is ' + valueLabel(ans, c.value);
-      case 'not_equals': return subject + ' is not ' + valueLabel(ans, c.value);
+      case 'equals': return ans && ans.multi ? subject + ' include ' + valueLabel(ans, c.value) : subject + ' is ' + valueLabel(ans, c.value);
+      case 'not_equals': return ans && ans.multi ? subject + ' do not include ' + valueLabel(ans, c.value) : subject + ' is not ' + valueLabel(ans, c.value);
       case 'at_most': return subject + ' is ' + valueLabel(ans, c.value) + ' or lower';
       case 'at_least': return subject + ' is ' + valueLabel(ans, c.value) + ' or higher';
-      case 'in': return subject + ' is ' + joinWith(arr(c.value).map(function (v) { return valueLabel(ans, v); }), 'or');
+      case 'in': return subject + (ans && ans.multi ? ' include ' : ' is ') + joinWith(arr(c.value).map(function (v) { return valueLabel(ans, v); }), 'or');
       case 'answered': return (ans ? ans.asked : subject) + ' was answered';
       case 'not_answered': return (ans ? ans.asked : subject) + ' was not answered';
     }
@@ -2360,10 +2388,13 @@ details.group > .group-body { padding: 0 16px 14px; }
       case 'yes_no':
         d = choiceAnswer(e.key, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea, [{ v: 'yes', label: en('ui.yes') || 'Yes' }, { v: 'no', label: en('ui.no') || 'No' }], 'Questions'); break;
       case 'single_choice':
-        d = choiceAnswer(e.key, q + (forArea ? ' –' + forArea : ''), 'the answer to ' + quote(q) + forArea, arr(n.options).map(function (o) {
+      case 'multi_choice':
+        d = choiceAnswer(e.key, q + (forArea ? ' –' + forArea : ''), (t === 'multi_choice' ? 'the answers ticked in ' : 'the answer to ') + quote(q) + forArea, arr(n.options).map(function (o) {
           var code = o && typeof o === 'object' ? str(o.code) : str(o);
           return { v: code, label: optionLabel(n.id, code) };
-        }), 'Questions'); break;
+        }), 'Questions');
+        if (t === 'multi_choice') multiAnswer(d);
+        break;
       case 'free_text':
         d = textAnswer(e.key, q + (forArea ? ' –' + forArea : '') + ' (typed or recorded)', 'the question ' + quote(q) + forArea, 'Questions'); break;
       case 'function_rating':
@@ -2405,12 +2436,13 @@ details.group > .group-body { padding: 0 16px 14px; }
       if (!isFinite(min) || !isFinite(max) || Math.floor(min) !== min || Math.floor(max) !== max || max < min || max - min > 100) return null;
       return numberAnswer(e.key, label, subject, min, max, { na: k.na === true ? (en('rating.na') || 'I don’t handle this') : null, group: 'Questions' });
     }
-    if (k.kind === 'choice') {
+    if (k.kind === 'choice' || k.kind === 'choices') {
       var texts = k.value_texts && typeof k.value_texts === 'object' ? k.value_texts : {};
-      return choiceAnswer(e.key, label, subject, arr(k.values).map(function (v) {
+      var made = choiceAnswer(e.key, label, subject, arr(k.values).map(function (v) {
         var key = Object.prototype.hasOwnProperty.call(texts, v) ? texts[v] : '';
         return { v: v, label: (key && en(key)) || String(v) };
       }), 'Questions');
+      return k.kind === 'choices' ? multiAnswer(made) : made;
     }
     if (k.kind === 'text') return textAnswer(e.key, label + ' (typed or recorded)', 'the question ' + quote(label), 'Questions');
     return null;
@@ -4073,6 +4105,26 @@ details.group > .group-body { padding: 0 16px 14px; }
     }
     controls.push(h('div', { class: 'group-label', style: 'margin-top:16px', text: tested.answers.length ? 'Answers that rules and jumps test' : 'No rule or jump tests an answer yet.' }));
     tested.answers.forEach(function (d) {
+      if (d.multi) {   // pick several: one tick box per answer; the answer is the list ticked, in the list's order
+        var box = h('div', { class: 'try-ticks', test: 'try-answer-' + d.ref, role: 'group', 'aria-label': d.label });
+        var now = Array.isArray(st.answers[d.ref]) ? st.answers[d.ref] : [];
+        d.values.forEach(function (v) {
+          var tick = h('input', { type: 'checkbox', test: 'try-tick-' + d.ref + '-' + v.v, checked: now.indexOf(v.v) !== -1 });
+          tick.addEventListener('change', function () {
+            var cur = Array.isArray(st.answers[d.ref]) ? st.answers[d.ref].slice() : [];
+            var at = cur.indexOf(v.v);
+            if (tick.checked && at === -1) cur.push(v.v);
+            if (!tick.checked && at !== -1) cur.splice(at, 1);
+            var order = d.values.map(function (x) { return x.v; });
+            cur.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+            if (cur.length) st.answers[d.ref] = cur; else delete st.answers[d.ref];
+            run();
+          });
+          box.appendChild(h('label', { style: 'display:flex;gap:8px;align-items:flex-start;margin-top:4px;cursor:pointer' }, tick, h('span', { text: v.label })));
+        });
+        controls.push(h('div', { style: 'margin-top:8px' }, field(d.label + ' (tick any)', box)));
+        return;
+      }
       var opts = [{ value: '', label: '(not answered)' }];
       if (d.kind === 'text') opts.push({ value: 'text:typed answer', label: 'Typed an answer' }, { value: 'voice', label: 'Recorded a voice note' });
       else d.values.forEach(function (v) { opts.push({ value: String(v.v), label: v.label }); });
@@ -5818,6 +5870,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     S.dirty = false;
     if (S.undo && S.undo.remove) S.undo.remove();
     S.undo = null;
+    addNewerTexts(obj(cat.newer_texts));
     if (!keepSection && res.open_section) {
       var hint = String(res.open_section).toLowerCase().replace(/[^a-z]/g, '');
       SECTIONS.forEach(function (sec) { if (hint === sec.id || hint.indexOf(sec.id) === 0) S.section = sec.id; });

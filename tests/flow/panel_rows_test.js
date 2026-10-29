@@ -480,7 +480,7 @@ function referenceRunInto(model) {
   assert.ok(/Correct it in the route table \(Questions > Paste a route\)\./.test(notes.find((w) => w.code === 'G2').message));
   assert.ok(/its "ask for" says "twice", which the form does not know, so it is asked once\. Write one of: once \(empty\), each area, each area rated low\./
     .test(notes.find((w) => w.code === 'F1' && w.node === 'support_gate').message));
-  assert.ok(/only some kinds of question \(0 to 10, faces, yes\/no, pick one, voice\/typing, info card\) can be asked once per area, so its "ask for" is not used here\. \(Its code is "fn_ratings"; its kind is "area ratings"\.\)/
+  assert.ok(/only some kinds of question \(0 to 10, faces, yes\/no, pick one, pick several, voice\/typing, info card\) can be asked once per area, so its "ask for" is not used here\. \(Its code is "fn_ratings"; its kind is "area ratings"\.\)/
     .test(notes.find((w) => w.code === 'F1' && w.node === 'fn_ratings').message));
   ok('fromRows notes use the route table\'s words ("then go to", "jumps", "ask for", "Correct it in the route table"), and name the main thank-you like any row');
 }

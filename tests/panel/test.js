@@ -693,6 +693,40 @@ async function main() {
     if (REAL) check(canon(serverSurvey(after).flow) === canon(pasted.flow), 'the server compiles the saved draft into exactly the pasted route');
   });
 
+  await step('pick several (28 Oct 2026): a pasted "pick several" question is checked clean; Try a path gives it tick boxes and each ticked area brings its follow-up; the read-only list says "include"', async () => {
+    const table = await copyRoute();
+    const edited = tableEdit(table, { insert: [
+      { after: 'nps', cells: { code: 'areas', kind: 'pick several', 'question (English)': 'Which areas is your score mostly about?',
+        answers: 'load: Load & volume; payments: Payments & COD; app: App & tech', required: 'yes', show: 'yes' } },
+      { after: 'areas', cells: { code: 'load_low', kind: 'pick one', 'question (English)': 'What went wrong with Load & volume?',
+        answers: 'late: My load keeps changing; other: Others', required: 'yes', 'show only if': 'nps <= 8 and areas = load', show: 'yes' } }] });
+    await checkTable(edited, 'ok');
+    await click('paste-preview-try');
+    await el('try-inputs');
+    check(await exists('try-answer-areas'), 'Try a path offers the pick-several answer');
+    check(await exists('try-tick-areas-load') && await exists('try-tick-areas-app'), 'as tick boxes, one per answer');
+    await select('try-answer-nps', '4');
+    check(!/What went wrong with Load/.test(await text('try-steps')), 'nothing ticked: no follow-up');
+    await click('try-tick-areas-app');
+    await click('try-tick-areas-load');
+    await sleep(200);
+    check(/What went wrong with Load/.test(await text('try-steps')), 'load ticked (with app): its follow-up is asked: ' + (await text('try-steps')));
+    await click('try-tick-areas-load');
+    await sleep(200);
+    check(!/What went wrong with Load/.test(await text('try-steps')), 'load unticked: no follow-up');
+    await checkTestNames('try a path with tick boxes');
+    await shot('pick-several-try');
+    await click('qview-back');
+    await el('paste-ok');
+    await click('paste-use');
+    await el('screen-card-load_low');
+    check(/include .Load & volume./.test(await text('screen-card-load_low')), 'the read-only card says "include": ' + (await text('screen-card-load_low')));
+    await click('discard');
+    await click('modal-confirm');
+    await idle();
+    check(!(await exists('screen-card-load_low')) && /All changes saved/.test(await statusText()), 'Discard puts the saved draft back');
+  });
+
   await step('Download the Excel template: one CSV file with the header and today\'s route, Hindi intact; pasted back, it changes nothing', async () => {
     await click('route-template');
     const csv = await waitForFile('partner-pulse-route.csv');
@@ -2586,6 +2620,39 @@ async function main() {
     await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
     await openPanel();
     await flowReady();
+  });
+
+  await step('help videos and the form\'s newer texts (28 Oct 2026): a Sheet made before gets the new texts added when the panel opens and Save keeps them; Settings > Help videos takes a YouTube link', async () => {
+    const NEWER = ['ui.pick_several', 'help.button', 'help.how_to_fill', 'help.why_it_helps'];
+    const saved = (await serverState()).model;
+    const older = JSON.parse(JSON.stringify(saved));
+    NEWER.forEach((k) => { delete older.texts[k]; if (older.text_notes) delete older.text_notes[k]; });
+    await control('model', { model: older });
+    await openPanel();
+    await sleep(200);
+    check(/4 new texts of the form were added to Texts & translations/.test(await toastText()), 'it says so: ' + (await toastText()));
+    check(/Unsaved/.test(await statusText()), 'the draft has unsaved changes: ' + (await statusText()));
+    await click('save');
+    await waitSaved();
+    const after = (await serverState()).model;
+    check(NEWER.every((k) => after.texts[k] && after.texts[k].en), 'saved: ' + JSON.stringify(NEWER.map((k) => after.texts[k])));
+    check(after.texts['help.how_to_fill'].hi === 'यह फ़ॉर्म कैसे भरें' && /^\[TRANSLATE\] How to fill this form$/.test(after.texts['help.how_to_fill'].ta),
+      'English and Hindi as the form has them, the other languages waiting for a translator: ' + JSON.stringify(after.texts['help.how_to_fill']));
+    await openPanel();
+    await sleep(200);
+    check(!/new texts of the form/.test(await toastText()) && /All changes saved/.test(await statusText()), 'once saved, nothing more to add');
+    await click('nav-settings');
+    await el('setting-help.how_to_fill_video');
+    check(await exists('settings-group-toggle-help-videos'), 'Settings has the group "Help videos"');
+    await typeInto('setting-help.how_to_fill_video', 'https://youtu.be/AbCdEfGhIjK');
+    await click('save');
+    await waitSaved();
+    check((await serverState()).model.settings['help.how_to_fill_video'] === 'https://youtu.be/AbCdEfGhIjK', 'the link is saved');
+    await shot('settings-help-videos');
+    await typeInto('setting-help.how_to_fill_video', '');
+    await click('save');
+    await waitSaved();
+    check((await serverState()).model.settings['help.how_to_fill_video'] === '', 'and emptied again');
   });
 
   await step('an empty draft (a Sheet nobody imported into): Questions says to import the questionnaire from GitHub first, and its button opens Settings there', async () => {

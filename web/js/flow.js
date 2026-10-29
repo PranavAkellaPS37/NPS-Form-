@@ -7,7 +7,7 @@
      2. canProceed: may the partner press Next on this screen?
      3. buildSubmission: the message sent at the end (docs/submission-format.md,
         schema_version 1, unchanged). Only answers on the FINAL path are sent.
-     4. PP.types: the kinds of screen, each described once (the 12 built-in
+     4. PP.types: the kinds of screen, each described once (the 13 built-in
         ones at the bottom; drawn by web/js/types.js; a new kind is one file
         in web/js/types/: docs/config-guide.md, "How to add a question type").
 
@@ -130,6 +130,20 @@
     else if ('var' in cond) value = varValue(cond['var'], vars);
     else value = own(scope, fill(cond.answer, vars));
     var has = value !== undefined && value !== null && value !== '';
+
+    /* A "pick several" answer is the list of codes ticked (28 Oct 2026):
+       "= x" is true when x is one of them, "!= x" when it is not, "in (a, b)"
+       when any of a, b is, "answered" when at least one is ticked. A number
+       test is never true of a list. No other answer is ever a list, so every
+       older rule means exactly what it meant before. */
+    if (Array.isArray(value)) {
+      var ticked = value.map(function (x) { return String(x); });
+      var tickedOne = function (x) { return ticked.indexOf(String(arg(x, vars))) !== -1; };
+      if ('equals' in cond) return tickedOne(cond.equals);
+      if ('not_equals' in cond) return !tickedOne(cond.not_equals);
+      if ('in' in cond) return Array.isArray(cond['in']) && cond['in'].some(tickedOne);
+      if ('answered' in cond) return (ticked.length > 0) === Boolean(cond.answered);
+    }
 
     if ('equals' in cond) return has && String(value) === String(arg(cond.equals, vars));
     if ('not_equals' in cond) return !has || String(value) !== String(arg(cond.not_equals, vars));
@@ -458,7 +472,7 @@
      collect (else the standard rules below), render (phones only). The
      fields are explained in docs/flow-engine.md 3 and docs/config-guide.md
      ("How to add a question type"). Registering a type again adds to it
-     (web/js/types.js adds the drawings of the 12 built-in kinds below).
+     (web/js/types.js adds the drawings of the 13 built-in kinds below).
      ------------------------------------------------------------------------- */
   var T = PP.types = {};
   var order = [];                  // the types, in the order they were registered
@@ -532,7 +546,7 @@
     }
   }
 
-  /* ---- The 12 built-in kinds: exactly the old behaviour (docs/flow-engine.md 3;
+  /* ---- The 13 built-in kinds: exactly the old behaviour (docs/flow-engine.md 3;
      their drawings: web/js/types.js). "row" = the control panel's Screens tab. */
   var KEY = { kind: 'text_key' };
   var KEY_NEEDED = { kind: 'text_key', required: true };
@@ -649,6 +663,26 @@
     answer: { kind: 'choice', values_from: 'options', what: 'the choice question' }, records: { answers: 1 }, flags: { auto: true },
     row: { label: 'Pick one answer', needs_text: true, fields: ['options', 'required'], required_default: true, repeatable: true,
       icon: '☑️', order: 40 } });
+
+  /* Pick several (28 Oct 2026, Pranav: "which area is your score mostly
+     about" with more than one answer): the answer is the list of codes
+     ticked, in the order of the options; rules test it as "is x one of
+     them" (flow.evalCondition). Required: at least one tick. Nothing ticked
+     is sent as no answer at all. */
+  reg({ type: 'multi_choice', label: 'Pick-several question', description: 'A list of answers; the partner ticks one or more.',
+    fields: { text: KEY_NEEDED, options: { kind: 'options', required: true }, required: REQUIRED },
+    answer: { kind: 'choices', values_from: 'options', what: 'the pick-several question' }, records: { answers: 1 },
+    row: { label: 'Pick several answers', needs_text: true, fields: ['options', 'required'], required_default: true, repeatable: true,
+      icon: '✅', order: 45 },
+    isComplete: function (step, state) {
+      if (!T.isRequired('multi_choice', step.node, 'required')) return true;
+      var v = own(state.answers, step.id);
+      return Array.isArray(v) && v.length > 0;
+    },
+    collect: function (step, a, out) {
+      var v = own(a, step.id);
+      if (Array.isArray(v) && v.length) out.answers[step.id] = v.slice();
+    } });
 
   reg({ type: 'free_text', label: 'Voice or typing', description: 'The partner records a voice note or types an answer.',
     fields: { text: KEY_NEEDED, block: { kind: 'choice', values: ['question', 'one_fix'] }, required: { kind: 'bool', 'default': false } },

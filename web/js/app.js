@@ -187,6 +187,7 @@
       devBanner: document.getElementById('dev-banner'),
       brand: document.getElementById('brand'),
       langBtn: document.getElementById('lang-btn'),
+      helpBtn: document.getElementById('help-btn'),
       progress: document.getElementById('progress'),
       progressFill: document.getElementById('progress-fill'),
       notice: document.getElementById('notice'),
@@ -885,6 +886,74 @@
     }
   }
 
+  /* ---------------------------------------------------------------------------
+     The help videos (28 Oct 2026; control panel: Settings > Help videos):
+     config.help.how_to_fill_video and why_it_helps_video. The ⓘ button in
+     the top bar shows only when one is set (a full https:// link) and the
+     questionnaire has the texts it needs (help.button and the video's title:
+     a version published before 28 Oct has none, and the form never shows a
+     text's name). A YouTube link plays inside the form, in a frame made only
+     when the partner taps it, so nothing extra loads before; any other link
+     opens in a new tab.
+     ------------------------------------------------------------------------- */
+  var HELP_VIDEOS = [['how_to_fill_video', 'help.how_to_fill'], ['why_it_helps_video', 'help.why_it_helps']];
+  function hasText(key) { return Boolean(PP.i18n.strings) && Object.prototype.hasOwnProperty.call(PP.i18n.strings, key); }
+  function helpVideos() {
+    var help = config && config.help && typeof config.help === 'object' ? config.help : {};
+    if (!hasText('help.button')) return [];
+    return HELP_VIDEOS.filter(function (v) {
+      var url = help[v[0]];
+      return typeof url === 'string' && /^https:\/\/\S+$/.test(url.trim()) && hasText(v[1]);
+    }).map(function (v) { return { url: help[v[0]].trim(), key: v[1] }; });
+  }
+  /* The id of a YouTube video (watch?v=, youtu.be/, shorts/, embed/, live/), else null. */
+  function youtubeId(url) {
+    var m = /^https:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?:[?&#\/]|$)/.exec(url);
+    return m ? m[1] : null;
+  }
+  function openHelpSheet() {
+    var videos = helpVideos();
+    if (!videos.length) return;
+    var backdrop = h('div', { 'class': 'sheet-backdrop' });
+    var onKey = function (e) { if (e.key === 'Escape') close(); };
+    var close = function () {
+      if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);   // also stops a video that plays
+      document.removeEventListener('keydown', onKey);
+      try { el.helpBtn.focus(); } catch (e) { /* ignore */ }
+    };
+    var closeBtn = h('button', { type: 'button', 'class': 'icon-btn', 'aria-label': t('ui.close') }, [PP.icon('close')]);
+    closeBtn.addEventListener('click', close);
+    var body = h('div', { 'class': 'help-body' });
+    var play = function (v) {
+      var id = youtubeId(v.url);
+      if (!id) {
+        try { root.open(v.url, '_blank', 'noopener'); } catch (e) { /* the browser refused: nothing else to do */ }
+        return;
+      }
+      PP.clear(body);
+      body.appendChild(h('p', { 'class': 'help-title', text: t(v.key) }));
+      body.appendChild(h('div', { 'class': 'video-frame' }, [h('iframe', {
+        src: 'https://www.youtube-nocookie.com/embed/' + id + '?rel=0&playsinline=1&autoplay=1',
+        title: t(v.key), allow: 'autoplay; encrypted-media; picture-in-picture', allowfullscreen: true
+      })]));
+    };
+    videos.forEach(function (v) {
+      var b = h('button', { type: 'button', 'class': 'choice help-video' }, [PP.icon('play'), h('span', { text: t(v.key) })]);
+      b.addEventListener('click', function () { play(v); });
+      body.appendChild(b);
+    });
+    var sheet = h('div', { 'class': 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('help.button') }, [
+      h('div', { 'class': 'sheet-head' }, [h('h2', { 'class': 'q-title', text: t('help.button') }), closeBtn]),
+      body
+    ]);
+    backdrop.appendChild(sheet);
+    backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(backdrop);
+    var first = body.querySelector('button');
+    if (first) first.focus();
+  }
+
   /* The language button in the top bar. */
   function openLanguageSheet() {
     if (!config) return;
@@ -944,6 +1013,13 @@
     el.langBtn.appendChild(document.createTextNode(L ? L.native_name : PP.i18n.lang));
     el.langBtn.setAttribute('aria-label', t('ui.language') + ': ' + (L ? L.native_name : PP.i18n.lang));
     el.langBtn.hidden = (config.languages || []).length < 2 || Boolean(current && current.type === 'language_picker');
+    if (el.helpBtn) {   // an older index.html (cached) has no help button
+      var videos = helpVideos();
+      PP.clear(el.helpBtn);
+      el.helpBtn.appendChild(PP.icon('info'));
+      if (videos.length) el.helpBtn.setAttribute('aria-label', t('help.button'));
+      el.helpBtn.hidden = !videos.length;
+    }
 
     // The strip at the top: "TEST MODE" (mock mode) or "PREVIEW" (preview
     // links, in every mode), plus how many texts still wait for a translation.
@@ -1397,6 +1473,7 @@
     el.skip.addEventListener('click', function () { if (current && state) goNext(); });
     el.back.addEventListener('click', onBack);
     el.langBtn.addEventListener('click', openLanguageSheet);
+    if (el.helpBtn) el.helpBtn.addEventListener('click', openHelpSheet);
     // Any new tap hides the hint above the bottom bar.
     document.addEventListener(root.PointerEvent ? 'pointerdown' : 'touchstart', hideToast, true);
     // Double-tap guard: a tap on an answer, Next or Skip that lands within

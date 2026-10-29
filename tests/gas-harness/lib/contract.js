@@ -113,12 +113,14 @@ const SETTINGS = [
   ['read_aloud.enabled', 'bool', true],
   ['whats_changed.timeout_seconds', 'number', 4, 1, 20],
   ['telemetry.enabled', 'bool', true],
+  ['help.how_to_fill_video', 'text', ''],     // 28 Oct 2026: the help videos (Settings > Help videos)
+  ['help.why_it_helps_video', 'text', ''],
   ['backend.request_timeout_seconds', 'number', 90, 10, 600],
   ['backend.slow_upload_bytes_per_second', 'number', 1000, 100, 100000],
   ['backend.retry_delays_seconds', 'numlist', '2, 5, 10, 20, 40, 60, 60, 120, 120, 300']
 ];
 const SETTINGS_GROUPS = ['Form address', 'Languages', 'Look & feel', 'Moving between screens', 'Ratings', 'Problem screens',
-  'Support questions', 'Voice notes', 'Typing', 'Read aloud', 'What changed', 'Progress messages', 'Sending'];
+  'Support questions', 'Voice notes', 'Typing', 'Read aloud', 'What changed', 'Progress messages', 'Help videos', 'Sending'];
 
 // Section 6: the screen-type catalogue.
 const SCREEN_TYPES = {
@@ -132,6 +134,7 @@ const SCREEN_TYPES = {
   rating_1_5: { builtin: false, needs_text: true, fields: ['required'] },
   yes_no: { builtin: false, needs_text: true, fields: ['required'] },
   single_choice: { builtin: false, needs_text: true, fields: ['options', 'required'] },
+  multi_choice: { builtin: false, needs_text: true, fields: ['options', 'required'] },   // pick several, 28 Oct 2026
   free_text: { builtin: false, needs_text: true, fields: ['required'] },
   info_card: { builtin: false, needs_text: true, fields: ['body'] }
 };

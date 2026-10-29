@@ -378,6 +378,15 @@ If a phone cannot record, or the partner blocks the microphone, the form quietly
 | `whats_changed.timeout_seconds` | How long the form waits for the backend when a link is opened. Since Phase 2 the "What changed" content arrives together with the published questionnaire, in one request, and the form waits this many seconds **plus 2** for it (4 + 2 = 6 seconds). If it takes longer, the form uses its own copy of all four files, including `whats_changed.json`; if that has nothing for the round, the screen is skipped. Preview links wait up to 20 seconds instead, because Google needs longer to prepare a draft. Allowed: 1 to 20. In the control panel: **Settings > What changed > Wait for the live questionnaire (seconds)**. | `4` |
 | `telemetry.enabled` | Sends small progress messages (started, which screen the partner reached), so the dashboard can show where partners drop off. They never contain answers. The "opened" message is always sent, even when this is `false`, because it also checks that the link is genuine. | `true` |
 
+### help: the help videos (since 28 Oct 2026)
+
+| Setting | What it means | Today |
+|---|---|---|
+| `help.how_to_fill_video` | A YouTube link (unlisted is fine) to a short video on how to fill the form. When it (or the next one) is set, an ⓘ button in the top bar of every screen opens a sheet with one button per video; a YouTube video plays inside the form, in a frame made only on that tap, and any other `https://` link opens in a new tab. Empty: no video. Its title is the text `help.how_to_fill`; the button's name is `help.button`. Live, it is **Settings > Help videos** in the control panel. | `""` |
+| `help.why_it_helps_video` | The same for a short, neutral video on what partners' answers are used for (never how to answer). Its title is the text `help.why_it_helps`. | `""` |
+
+The settings check (`scripts/check_config.py`) refuses a value that is neither empty nor a full `https://` link. A questionnaire published before 28 Oct 2026 has no help texts: the form then shows no button, never a text's name.
+
 ### flow: the screens, in order
 
 `flow` is the **route** through the questionnaire: every screen, and which one comes after which. Since 26 Oct 2026 it is written as a small map (a "graph", format `pp-flow/1`): each screen says where to go next. So a question can send some partners elsewhere (a **jump**), a screen can be asked once for each area (a **loop**), and there can be several thank-you screens (**endings**).
@@ -465,6 +474,7 @@ The **generic** types can be added freely. Every screen costs partners time, tho
 | `rating_1_5` | One row of five faces. | `text`, `required` |
 | `yes_no` | Yes and No buttons. | `text`, `required` |
 | `single_choice` | A list of options; pick one. | `text`, `options`, `required` |
+| `multi_choice` | A list of options; tick one or more, then Next (since 28 Oct 2026). A rule's `equals` means "is one of the ticked". | `text`, `options`, `required` |
 | `free_text` | A voice note or a typed answer. | `text`, `required` |
 | `info_card` | A message, with nothing to answer. | `text` (the title), optional `body` |
 
@@ -598,7 +608,7 @@ Read it as: "show this screen only if the answer to `nps` is at most 6".
 | `"fn_rating:payments"` (any area id after the colon) | That area's rating. | Numbers 1 to 5, or `"na"` for "I don't handle this" |
 | `"fn_deep_dive:payments"` (any area id after the colon) | The problem chip picked on that area's "main problem" screen. | A chip code of that area, or `"other"` |
 | `"support:kept_updated"` (any support item after the colon) | That support row's rating. | Numbers 1 to 5 |
-| The `id` of a screen you added | Its answer. | `yes_no`: `"yes"` or `"no"`. `rating_1_5`: 1 to 5. `single_choice`: an option code. `nps_0_10`: 0 to 10. |
+| The `id` of a screen you added | Its answer. | `yes_no`: `"yes"` or `"no"`. `rating_1_5`: 1 to 5. `single_choice`: an option code. `multi_choice`: an option code, true when it is one of the ticked. `nps_0_10`: 0 to 10. |
 | `"one_fix"`, `"support_comment"` or the `id` of a free-text screen you added | Whether the partner typed something or recorded a voice note there. | Use only with `answered`, e.g. `{ "answer": "one_fix", "answered": true }` |
 
 Info cards have no answer to test. A screen can only test answers from screens that come **before** it on the route. So `fn_rating:…` tests go after `fn_ratings`, `fn_deep_dive:…` tests after `fn_deep_dives`, and `support:…` tests after `support`. A screen asked for each area stores one answer per area, such as `"long_running:payments"` ([Loops](#loops-ask-a-question-for-each-area)).
@@ -1261,7 +1271,7 @@ Keep the quotes. Then run `check_config.py`.
 > [!NOTE]
 > This section needs code. Everything above changes the survey with settings only; a **new kind of question** (a new `type`, for example ten stars, a slider or a pick-several list) also needs a small JavaScript file. Hand it to a developer.
 
-**First, check you need one.** The 12 kinds the form already knows cover most questions: `nps_0_10`, `rating_1_5` (faces), `yes_no`, `single_choice`, `free_text` (voice or typing) and `info_card`, plus the built-in ones (language buttons, "What changed", area ratings, problem screens, support ratings, thank-you). A new wording, a new answer option or a new rule is a setting, not a new kind.
+**First, check you need one.** The 13 kinds the form already knows cover most questions: `nps_0_10`, `rating_1_5` (faces), `yes_no`, `single_choice`, `multi_choice` (pick several, since 28 Oct 2026), `free_text` (voice or typing) and `info_card`, plus the built-in ones (language buttons, "What changed", area ratings, problem screens, support ratings, thank-you). A new wording, a new answer option or a new rule is a setting, not a new kind.
 
 **What a kind is.** Every kind is described **once**, with `PP.types.register({...})`, and everything else reads that description: the phones, the flow checker (`python3 scripts/flow.py check`), `python3 scripts/check_config.py`, GitHub's deployment check and the control panel. The 12 built-in kinds are described in `web/js/flow.js` and drawn in `web/js/types.js`. A new kind is:
 

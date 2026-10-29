@@ -564,4 +564,47 @@ function parseMermaid(text) {
   ok('flow-check.js: ES5 (' + (acorn ? 'parsed by acorn' : 'acorn not installed: text check only') + '), and phones never load it');
 }
 
+// Pick several (multi_choice, 28 Oct 2026): rules may test it with =, !=, in and answered (its codes),
+// never with <= or >=, and a code it does not have is an error; answersAt describes it as "choices";
+// the simulator takes a list as the codes ticked; paths cover each code ticked and all of them.
+{
+  const s = clone(live);
+  const nodes = s.flow.nodes;
+  const at = nodes.findIndex((n) => n.id === 'nps');
+  const after = nodes[at].next;
+  nodes[at].next = 'areas';
+  nodes.splice(at + 1, 0,
+    { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'payments', 'app'], next: 'load_low' },
+    { id: 'load_low', type: 'single_choice', text: 'q.load_low', options: ['late', 'other'], next: after,
+      show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] } });
+  const strings = clone(liveStrings);
+  ['q.areas', 'choice.areas.load', 'choice.areas.payments', 'choice.areas.app', 'q.load_low', 'choice.load_low.late', 'choice.load_low.other']
+    .forEach((k) => { strings[k] = { en: k, hi: '[TRANSLATE] ' + k, ta: '[TRANSLATE] ' + k, te: '[TRANSLATE] ' + k, kn: '[TRANSLATE] ' + k, ml: '[TRANSLATE] ' + k }; });
+  const errors = (sv) => C.check(sv, strings).findings.filter((f) => f.level === 'error');
+  assert.deepStrictEqual(errors(s).map((f) => f.code + ' ' + f.message), [], 'a pick-several rule with "=": no error');
+  const withRule = (rule) => { const t = clone(s); t.flow.nodes.find((n) => n.id === 'load_low').show_if = rule; return t; };
+  const num = errors(withRule({ answer: 'areas', at_most: 2 }));
+  assert.ok(num.some((f) => f.code === 'R3' && /never a number/.test(f.message)), 'a number test on a list: R3 ' + JSON.stringify(num));
+  const bad = errors(withRule({ answer: 'areas', equals: 'trucks' }));
+  assert.ok(bad.some((f) => f.code === 'R3' && /can only be/.test(f.message) && /"trucks"/.test(f.message)), 'an unknown code: R3 ' + JSON.stringify(bad));
+  assert.deepStrictEqual(errors(withRule({ answer: 'areas', 'in': ['app', 'payments'] })), [], '"in": fine');
+  assert.deepStrictEqual(errors(withRule({ answer: 'areas', not_equals: 'app' })), [], '"!=": fine');
+  assert.deepStrictEqual(errors(withRule({ answer: 'areas', answered: true })), [], '"answered": fine');
+  // what the panel reads about it
+  const av = C.answersAt(s, 'load_low', {});
+  const a = av.answers.find((x) => x.key === 'areas');
+  assert.strictEqual(a.kind, 'choices', 'answersAt: "choices"');
+  assert.deepStrictEqual(a.values, ['load', 'payments', 'app']);
+  // the simulator: a list is the codes ticked (each ticked area gets its follow-up)
+  const walk = (answers) => C.simulate(s, answers, { lang: 'en' }).steps.map((x) => x.screen);
+  assert.ok(walk({ nps: 4, areas: ['payments', 'load'] }).indexOf('load_low') !== -1);
+  assert.strictEqual(walk({ nps: 4, areas: ['payments'] }).indexOf('load_low'), -1);
+  const sub = C.simulate(s, { nps: 4, areas: ['load', 'app'], load_low: 'late' }, { lang: 'en' }).submission;
+  assert.deepStrictEqual(sub.answers.areas, ['load', 'app'], 'sent as the list ticked');
+  // paths: the route with load ticked and the one without both exist
+  const routes = C.paths(s).routes.map((r) => r.nodes.join(' '));
+  assert.ok(routes.some((r) => / areas load_low /.test(' ' + r + ' ')) && routes.some((r) => / areas (?!load_low)/.test(' ' + r + ' ')), routes.join(' | '));
+  ok('pick several: rules with =, !=, in and answered; <= and >= refused (R3); unknown codes refused; simulated as the list ticked');
+}
+
 console.log(passed, 'tests passed');

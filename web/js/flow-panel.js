@@ -66,8 +66,8 @@
        a warning (code C2).
      - "repeat" works only on the kinds of question whose description says
        they may be asked once per area ("row": {"repeatable": true} in
-       PP.types: the six ordinary questions of web/js/flow.js, 0-10, faces,
-       yes/no, pick one, voice/typing and information card, plus any kind
+       PP.types: the seven ordinary questions of web/js/flow.js, 0-10, faces,
+       yes/no, pick one, pick several, voice/typing and information card, plus any kind
        added in web/js/types/ that says so). Anything else is ignored with a
        warning (code F1), as are jumps that can't be read.
      - An ending (thank-you screen) never goes anywhere: its next and jumps
@@ -1021,7 +1021,9 @@
          ("q.nps") is a problem, and the Sheet's own Screens tab is refused.
        - Answers: ";" or a line break separates them, except inside "double
          quotes" (toTable quotes words with ";"); list marks, backticks and
-         ** are removed; a shown "pick one" needs 2 answers at least.
+         ** are removed; a shown "pick one" or "pick several" needs 2
+         answers at least. "multiple choice" as a kind is a problem: it can
+         mean either (28 Oct 2026).
        - Only the first "thank you" row is the main thank-you screen (its
          words are thanks.title / .body); a later one with words is read as
          an ending. Endings go below it and have no "show only if".
@@ -1880,13 +1882,16 @@
     { name: '0 to 10', type: 'nps_0_10', also: ['0-10', '0 10 question', '0 to 10 question', 'nps_0_10', 'scale 0 to 10', 'zero to ten'] },
     { name: 'faces', type: 'rating_1_5', also: ['faces 1 5', 'faces 1 to 5', 'faces question', '1 5', '1 to 5', 'rating 1 5', 'rating_1_5', 'rating', 'smileys', 'smiley'] },
     { name: 'yes/no', type: 'yes_no', also: ['yes or no', 'yes_no', 'yes no question', 'yesno'] },
-    { name: 'pick one', type: 'single_choice', also: ['pick one answer', 'single choice', 'single_choice', 'choice', 'choose one', 'select one', 'multiple choice', 'one answer'] },
+    { name: 'pick one', type: 'single_choice', also: ['pick one answer', 'single choice', 'single_choice', 'choice', 'choose one', 'select one', 'one answer'] },
+    { name: 'pick several', type: 'multi_choice', also: ['pick several answers', 'multi choice', 'multi_choice', 'multiple answers',
+      'multi select', 'multiselect', 'multi-select', 'select several', 'choose several', 'pick many', 'select all that apply',
+      'pick all that apply', 'tick all that apply', 'checkboxes', 'checkbox', 'tick several'] },
     { name: 'voice/typing', type: 'free_text', also: ['voice or typing', 'voice note or typing', 'free text', 'free_text', 'text', 'open text', 'voice', 'typing', 'voice note', 'open question'] },
     { name: 'info card', type: 'info_card', also: ['information card', 'info', 'info_card', 'information'] }
   ];
   /* The kinds web/js/flow.js registers itself (a kind added in web/js/types/ is not among them). */
   var STANDARD_TYPES = ['language_picker', 'whats_changed', 'function_rating', 'function_deep_dive', 'support_block', 'thank_you',
-    'nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'free_text', 'info_card'];
+    'nps_0_10', 'rating_1_5', 'yes_no', 'single_choice', 'multi_choice', 'free_text', 'info_card'];
   /* The words partners see on a built-in screen that has no text of its own. */
   var FIXED_TEXT = { language_picker: 'lang.title', whats_changed: 'wc.title', function_ratings: 'q.fn_rating', function_deep_dives: 'q.deep_dive' };
   var SKIP_OF = { language_picker: 'lang_in_url', whats_changed: 'empty' };
@@ -2355,6 +2360,9 @@
         KINDS.forEach(function (x) { if (!k && x.code && x.code === low && !x.ending) k = x; });
         if (k) warn(rec.num, 'kind', low, 'the kind is empty, so the row is read as "' + k.name + '" (its code says so).');
         else problem(rec.num, 'kind', codeCell || null, 'the kind is empty. Write one of: ' + kindNames().join(', ') + '.');
+      } else if (!k && /^(multiple choice|multiple choice question|multi choice question|mcq)$/.test(words(kindCell))) {
+        problem(rec.num, 'kind', codeCell || null, '"' + kindCell + '" can mean two things: write "pick one" when partners choose ' +
+          'one answer, or "pick several" when they may tick more than one.');
       } else if (!k) {
         var all = [];
         var nameOfWord = {};
@@ -2728,7 +2736,7 @@
         }
       } else if (aEn && fields.indexOf('body') === -1 && type !== 'thank_you') {
         var yn = type === 'yes_no' && answerItems(aEn).every(function (it) { return /^(yes|no)$/.test(it.code || words(it.label)); });
-        if (!yn) warn(num, 'answers', c, 'only "pick one" questions have answers to write here, so this is left out.');
+        if (!yn) warn(num, 'answers', c, 'only "pick one" and "pick several" questions have answers to write here, so this is left out.');
       }
       rows.push(row);
       nums.push(num);
@@ -3266,7 +3274,7 @@
       '(language, what changed, area ratings, problem screens, support ratings, thank you) leave it empty to keep ' +
       'today\'s words.');
     if (hi) L.push('- question (Hindi): only Hindi I gave you (rule 5).');
-    L.push('- answers: only for "pick one": each answer as code: English words, separated by ; (for example: phone: Phone ' +
+    L.push('- answers: only for "pick one" and "pick several": each answer as code: English words, separated by ; (for example: phone: Phone ' +
       'call; app: In the app). When an answer\'s words contain ";", put them in double quotes (for example: always: ' +
       '"Yes; always").');
     if (hi) L.push('- answers (Hindi): the same answers in Hindi, only if I gave the Hindi (for example: phone: <my Hindi>; app: <my Hindi>).');
@@ -3303,6 +3311,8 @@
     L.push('- faces: five faces, from 1 (very bad) to 5 (very good).');
     L.push('- yes/no: two buttons, Yes and No.');
     L.push('- pick one: a list of answers; the partner taps one (fill "answers").');
+    L.push('- pick several: a list of answers; the partner ticks one or more (fill "answers"). Never write "multiple choice": ' +
+      'write "pick one" or "pick several".');
     L.push('- voice/typing: the partner records a voice note or types an answer.');
     L.push('- info card: a title (question column) and an optional message, with nothing to answer.');
     var added = kindNames().filter(function (n) { var k = kindByWord(n); return k && k.added; });
@@ -3318,6 +3328,7 @@
     L.push('- What a rule can test:');
     L.push('  nps: 0 to 10. A "0 to 10" question: its code, 0 to 10. A "faces" question: its code, 1 to 5.');
     L.push('  A yes/no question (like support_gate): yes or no. A "pick one" question: one of its answer codes.');
+    L.push('  A "pick several" question: one of its answer codes; "= x" means x is one of the answers ticked, "!= x" that it is not.');
     L.push('  A voice/typing question: only answered or not answered.');
     L.push('  An area\'s rating: fn_rating:<area code>, 1 to 5 (or na = "I don\'t handle this").');
     L.push('  The problem picked for an area: fn_deep_dive:<area code>, one of that area\'s problem codes (or other).');

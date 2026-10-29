@@ -359,14 +359,14 @@ try {
   {
     const r = run(['types', '--check']);
     assert.strictEqual(r.code, 0, r.all);
-    has(r, 'web/config/types.json is up to date (12 kinds of screen: 12 built in, none added).', 'types --check');
+    has(r, 'web/config/types.json is up to date (13 kinds of screen: 13 built in, none added).', 'types --check');
     has(r, 'apps-script/Model.gs: its list of kinds (PP_SCREEN_TYPES) is up to date.', 'types --check');
     const printed = run(['types']);
     assert.strictEqual(printed.code, 0, printed.all);
     assert.strictEqual(printed.out, fs.readFileSync(path.join(REPO, 'web/config/types.json'), 'utf8'), 'types prints exactly web/config/types.json');
     const j = json(run(['types', '--json']), 'types --json');
-    assert.deepStrictEqual([j.types, j.added, j.types_json, j.model_gs, j.problems], [12, [], 'fresh', 'fresh', []]);
-    assert.strictEqual(j.builtin.length, 12);
+    assert.deepStrictEqual([j.types, j.added, j.types_json, j.model_gs, j.problems], [13, [], 'fresh', 'fresh', []]);
+    assert.strictEqual(j.builtin.length, 13);
     const bad = run(['types', '--bogus']);
     assert.strictEqual(bad.code, 2, bad.all);
     has(bad, 'types takes --write, --check, --json and --root', 'types with a wrong option');
@@ -389,7 +389,7 @@ try {
     fs.writeFileSync(indexFile, page.replace('  <script defer src="js/app.js"></script>', '  <script defer src="js/types/stars_1_10.js"></script>\n  <script defer src="js/app.js"></script>'));
     r = run(['types', '--check', '--root', web]);
     assert.strictEqual(r.code, 1, r.all);
-    has(r, 'is OUT OF DATE (13 kinds of screen: 12 built in, 1 added (stars_1_10))', 'types --check: a new kind');
+    has(r, 'is OUT OF DATE (14 kinds of screen: 13 built in, 1 added (stars_1_10))', 'types --check: a new kind');
     has(r, 'its list of kinds (PP_SCREEN_TYPES) is OUT OF DATE', 'types --check: Model.gs');
     const stale = run([CHECK_CONFIG, '--root', dir], { cmd: 'python3' });
     assert.strictEqual(stale.code, 1, stale.all);
@@ -429,7 +429,7 @@ try {
     assert.deepStrictEqual(sim.unknown, [], 'every answer given is stored by a screen');
     const fresh = run([CHECK_CONFIG, '--root', dir], { cmd: 'python3' });
     assert.strictEqual(fresh.code, 0, fresh.all);
-    has(fresh, 'Kinds of screen: 13 in web/config/types.json (12 built in, 1 added in web/js/types/ (stars_1_10)).', 'check_config summary');
+    has(fresh, 'Kinds of screen: 14 in web/config/types.json (13 built in, 1 added in web/js/types/ (stars_1_10)).', 'check_config summary');
     has(fresh, 'web/js/types/stars_1_10.js', 'the page weight counts the new file');
     // taken out again: Model.gs goes back to no added kind
     fs.unlinkSync(path.join(web, 'js', 'types', 'stars_1_10.js'));

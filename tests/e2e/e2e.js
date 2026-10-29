@@ -1,7 +1,7 @@
 /* =============================================================================
    tests/e2e/e2e.js: end-to-end test of the survey form in a real Chrome.
 
-   WHAT IT CHECKS (34 scenarios: A to Y, there is no O, I2 after I, then Z1 to Z9)
+   WHAT IT CHECKS (36 scenarios: A to Y, there is no O, I2 after I, then Z1 to Z11)
      It starts the project's local test server (scripts/mock_server.py) on
      ports 8791-8796, opens the form in headless Chrome at phone size (360 x 740,
      an Android user agent) and goes through it like a partner: every screen,
@@ -24,7 +24,9 @@
      show off the route (Back and Next go on, never to the start). Z8: a
      published graph a phone cannot run (no screens, a start that names no
      screen, straight to an ending) falls back to the form's own copy. Z9: a
-     screen coded "constructor" is an ordinary screen.
+     screen coded "constructor" is an ordinary screen. Z10 (28 Oct 2026): a
+     pick-several question (several ticks, one follow-up per ticked area).
+     Z11 (28 Oct 2026): the help videos (the i button, YouTube on a tap).
 
    HOW TO RUN IT (Terminal, in the project folder)
      First time only: cd tests && npm install && cd ..
@@ -2188,6 +2190,147 @@ const consoleErrors = (page) => page.consoleMessages.filter((m) => /^(error|page
     await context.close();
     pass('Z9: a screen coded "constructor" starts unanswered (Skip, an empty typing box) and sends nothing when skipped');
   } catch (e) { fail('Z9: "constructor" as a code', e); }
+
+  /* ---------------- Z10: pick several (28 Oct 2026) ----------------
+     "Which areas is your score about?" may get several ticks; it never moves on by itself, Next waits for
+     one tick, each ticked area gets its own follow-up, and the list ticked is sent. Without the hint's text
+     in the questionnaire (one published before 28 Oct) the hint is left out, never shown by its name. */
+  if (want('Z10')) try {
+    const strings = STRINGS_JSON();
+    Object.assign(strings, {
+      'q.areas': six('Which areas is your score mostly about?'),
+      'choice.areas.load': six('Load & volume'), 'choice.areas.payments': six('Payments & COD'), 'choice.areas.app': six('App & tech'),
+      'q.load_low': six('What went wrong with Load & volume?'), 'choice.load_low.late': six('My load keeps changing'), 'choice.load_low.other': six('Others'),
+      'q.pay_low': six('What went wrong with Payments & COD?'), 'choice.pay_low.delayed': six('My payment was delayed'), 'choice.pay_low.other': six('Others')
+    });
+    const cfg = graphSurvey((g) => {
+      const after = nodeOf(g, 'support_gate');
+      nodeOf(g, 'nps').next = 'areas';
+      g.nodes.splice(g.nodes.indexOf(after), 0,
+        { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'payments', 'app'], required: true, next: 'load_low' },
+        { id: 'load_low', type: 'single_choice', text: 'q.load_low', options: ['late', 'other'], required: true, next: 'pay_low',
+          show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] } },
+        { id: 'pay_low', type: 'single_choice', text: 'q.pay_low', options: ['delayed', 'other'], required: true, next: 'support_gate',
+          show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'payments' }] } });
+      g.nodes = g.nodes.filter((n) => n.id !== 'fn_ratings' && n.id !== 'fn_deep_dives');
+    });
+    assert.deepStrictEqual(flowErrors(cfg, strings), [], 'the pick-several route passes the flow check');
+    const run = async (dc, texts, ticks) => {
+      const { page, context } = await newPage(browser);
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, texts, { round: '2026-R1' }));
+        else req.continue();
+      });
+      await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 4);
+      await waitScreen(page, 'areas');
+      return { page, context };
+    };
+    // 1. with the hint's text: two ticks, Next, two follow-ups
+    const dc = 'DC-E2E-Z10';
+    const { page, context } = await run(dc, strings);
+    const body = await text(page, 'body');
+    assert(body.includes(strings['ui.pick_several'].en), 'the hint shows: ' + body.slice(0, 200));
+    await page.click('#nav-next');
+    await sleep(200);
+    assert.strictEqual(await screenId(page), 'areas', 'Next waits for a tick');
+    await clickNth(page, '.chip', 0);
+    await clickNth(page, '.chip', 1);
+    await sleep(600);
+    await waitScreen(page, 'areas');   // still here: it never moves on by itself
+    assert.deepStrictEqual(await page.$$eval('.chip', (bs) => bs.map((b) => b.getAttribute('aria-pressed'))), ['true', 'true', 'false'], 'two ticked');
+    await shot(page, 'Z10-01-two-areas-ticked');
+    await noHorizontalScroll(page, 'areas');
+    await page.click('#nav-next');
+    await waitScreen(page, 'load_low'); await clickNth(page, '.chip', 0);
+    await waitScreen(page, 'pay_low'); await clickNth(page, '.chip', 1);
+    await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+    await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+    await waitFinal(page, /Your feedback goes straight/, 10000);
+    await sleep(300);
+    const s = storedFor(main, dc)[0];
+    assert(s, 'stored');
+    assert.deepStrictEqual(s.answers, { nps: 4, areas: ['load', 'payments'], load_low: 'late', pay_low: 'other', support_gate: 'no' }, 'the list ticked is sent');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    // 2. a questionnaire without the hint's text: no hint, never its name
+    const older = STRINGS_JSON();
+    Object.keys(strings).forEach((k) => { if (!older[k]) older[k] = strings[k]; });
+    delete older['ui.pick_several'];
+    const second = await run('DC-E2E-Z10B', older);
+    const body2 = await text(second.page, 'body');
+    assert(!body2.includes('ui.pick_several') && !body2.includes(strings['ui.pick_several'].en), 'no hint and no text name: ' + body2.slice(0, 200));
+    await second.context.close();
+    pass('Z10: pick several: ticks without moving on, Next waits for one, each ticked area gets its follow-up, the list is sent');
+  } catch (e) { fail('Z10: pick several', e); }
+
+  /* ---------------- Z11: the help videos (28 Oct 2026) ----------------
+     With a video set (Settings > Help videos), an "i" button in the top bar opens a sheet with one button per
+     video; a YouTube link plays in a frame made only on that tap (nothing from YouTube loads before), any
+     other link opens in a new tab, and Close removes the frame. No video, or a questionnaire without the
+     help texts (published before 28 Oct): no button. */
+  if (want('Z11')) try {
+    const cfg = SURVEY_JSON();
+    cfg.help = { how_to_fill_video: 'https://youtu.be/AbCdEfGhIjK', why_it_helps_video: 'https://example.com/why.mp4' };
+    const open = async (config, texts) => {
+      const { page, context } = await newPage(browser);
+      const seen = [];
+      await page.evaluateOnNewDocument(() => { window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null; }; });
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (/youtube/.test(req.url())) { seen.push(req.url()); req.respond({ status: 200, contentType: 'text/html', body: '<html><body>video</body></html>' }); }
+        else if (isBootstrap(req)) respondJSON(req, bootstrapFrom(config, texts, { round: '2026-R1' }));
+        else req.continue();
+      });
+      await page.goto(linkFor(main, 'DC-E2E-Z11', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+      await waitScreen(page, 'nps');
+      return { page, context, seen };
+    };
+    const strings = STRINGS_JSON();
+    const a = await open(cfg, strings);
+    const { page } = a;
+    assert.strictEqual(await page.$eval('#help-btn', (b) => b.hidden), false, 'the help button shows');
+    assert.strictEqual(await page.$eval('#help-btn', (b) => b.getAttribute('aria-label')), strings['help.button'].en);
+    assert.deepStrictEqual(a.seen, [], 'nothing from YouTube loads before a tap');
+    await page.click('#help-btn');
+    await page.waitForSelector('.sheet .help-video');
+    assert.deepStrictEqual(await page.$$eval('.help-video', (bs) => bs.map((b) => b.textContent.trim())),
+      [strings['help.how_to_fill'].en, strings['help.why_it_helps'].en], 'one button per video, titled');
+    await shot(page, 'Z11-01-help-sheet');
+    await noHorizontalScroll(page, 'help sheet');
+    await clickNth(page, '.help-video', 0);
+    await page.waitForSelector('.video-frame iframe');
+    const src = await page.$eval('.video-frame iframe', (f) => f.getAttribute('src'));
+    assert(/^https:\/\/www\.youtube-nocookie\.com\/embed\/AbCdEfGhIjK\?/.test(src), 'the YouTube video plays inside the form: ' + src);
+    await sleep(300);
+    await shot(page, 'Z11-02-video');
+    await page.click('.sheet .icon-btn');
+    await sleep(200);
+    assert.strictEqual(await page.$('.video-frame iframe'), null, 'Close removes the video');
+    await page.click('#help-btn');
+    await page.waitForSelector('.sheet .help-video');
+    await clickNth(page, '.help-video', 1);
+    await sleep(200);
+    assert.deepStrictEqual(await page.evaluate(() => window.__opened), ['https://example.com/why.mp4'], 'another link opens in a new tab');
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    assert.strictEqual(await page.$('.sheet'), null, 'Escape closes the sheet');
+    assert.strictEqual(await screenId(page), 'nps', 'the partner is still on the same question');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await a.context.close();
+    // no video set: no button
+    const b = await open(SURVEY_JSON(), strings);
+    assert.strictEqual(await b.page.$eval('#help-btn', (x) => x.hidden), true, 'no video: no button');
+    await b.context.close();
+    // a questionnaire without the help texts: no button (never a text's name)
+    const older = STRINGS_JSON();
+    delete older['help.button']; delete older['help.how_to_fill']; delete older['help.why_it_helps'];
+    const c = await open(cfg, older);
+    assert.strictEqual(await c.page.$eval('#help-btn', (x) => x.hidden), true, 'without its texts: no button');
+    await c.context.close();
+    pass('Z11: help videos: an i button opens one button per video; YouTube plays inside the form only after a tap, other links open in a new tab');
+  } catch (e) { fail('Z11: help videos', e); }
 
   await browser.close();
   await browserNoMic.close();

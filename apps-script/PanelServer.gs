@@ -141,7 +141,9 @@ function panelLoad() {
       catalog: {
         settings_schema: PP_SETTINGS_SCHEMA,
         screen_types: PP_SCREEN_TYPES,
-        form_text_keys: PP_FORM_TEXT_KEYS
+        form_text_keys: PP_FORM_TEXT_KEYS,
+        // the form's texts added after its first release (Model.gs), which the panel adds to an older Sheet
+        newer_texts: typeof PP_MDL_NEWER_FORM_TEXTS_ === 'object' ? PP_MDL_NEWER_FORM_TEXTS_ : {}
       },
       live: PP_liveSummary_(ss, live),
       live_ids: PP_liveIdsOf_(locked ? live : null, locked ? PP_codesEverLive_() : null),

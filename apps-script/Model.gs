@@ -307,6 +307,13 @@ var PP_SETTINGS_SCHEMA = [
     'On: the form sends small progress messages (started, which screen the partner reached) so the ' +
     'dashboard can show where partners stop. They never contain answers. The "opened" message is always ' +
     'sent, because it also checks that the link is genuine.'),
+  PP_mdlSetting_('help.how_to_fill_video', 'text', '', 'Help videos', 'Video: how to fill the form',
+    'A YouTube link (an unlisted video is fine), for example https://youtu.be/AbCdEfGhIjK. When it is set, an ⓘ button at the ' +
+    'top of every screen offers it, and partners watch it inside the form. Its title is the text "How to fill this form" in ' +
+    'Texts & translations. Any other https:// link opens in a new tab instead. Empty: no video.'),
+  PP_mdlSetting_('help.why_it_helps_video', 'text', '', 'Help videos', 'Video: how answers help',
+    'A YouTube link to a short, neutral video on what partners\' answers are used for (it must never suggest how to answer). ' +
+    'Offered under the same ⓘ button. Its title is the text "How your answers help" in Texts & translations. Empty: no video.'),
   PP_mdlSetting_('backend.request_timeout_seconds', 'number', 90, 'Sending', 'Wait for one send (seconds)',
     'How long one attempt to send the answers may take before it is tried again. Bigger sends (with voice ' +
     'notes) automatically get more time.', { min: 10, max: 600 }),
@@ -385,6 +392,9 @@ var PP_SCREEN_TYPES = [
   { "type": "single_choice", "label": "Pick one answer", "builtin": false, "needs_text": true,
     "description": "A list of answers; the partner taps one.",
     "fields": ["options", "required"], "required_default": true, "repeatable": true, "icon": "☑️", "order": 40 },
+  { "type": "multi_choice", "label": "Pick several answers", "builtin": false, "needs_text": true,
+    "description": "A list of answers; the partner ticks one or more.",
+    "fields": ["options", "required"], "required_default": true, "repeatable": true, "icon": "✅", "order": 45 },
   { "type": "free_text", "label": "Voice note or typing", "builtin": false, "needs_text": true,
     "description": "The partner records a voice note or types an answer.",
     "fields": ["required"], "required_default": false, "repeatable": true, "icon": "🎙️", "order": 50 },
@@ -441,6 +451,7 @@ var PP_SURVEY_HELP = {
   'text._help': 'Free-text boxes accept any language or script, including Hindi/Tamil written in English letters. max_chars = maximum length of one answer.',
   'read_aloud._help': 'Speaker button on each question. Uses a pre-recorded clip if one exists for that text and language, otherwise the phone\'s built-in voice. The button hides itself when neither is available for the chosen language. In live mode the clips come with the published questionnaire (the Sheet\'s Audio clips tab, published from the control panel); config/audio_clips.json is used only when that doesn\'t arrive in time, and by the local test server.',
   'whats_changed._help': 'The \'What changed since last time\' screen. In live mode its content comes with the published questionnaire (control panel, Rounds), in the form\'s first request; the form waits at most timeout_seconds + 2 seconds for it, then uses its own copy, including config/whats_changed.json (the local test server uses that file too). If there are no items for the round, the screen is skipped.',
+  'help._help': 'Help videos (control panel: Settings > Help videos). how_to_fill_video and why_it_helps_video are YouTube links (unlisted is fine); when one is set, an ⓘ button at the top of every screen plays it inside the form (any other https:// link opens in a new tab). Their titles are the texts help.how_to_fill and help.why_it_helps; the button is help.button. Empty = no video.',
   'telemetry._help': 'Small \'progress\' messages (started / which screen the partner reached) so the dashboard can show drop-off per screen. They never contain answers. The \'opened\' message is always sent, even when this is false, because it also checks that the link is genuine.'
 };
 
@@ -490,7 +501,22 @@ var PP_MDL_FIELD_NAMES_ = { text: 'question text', low_label: 'label under 0', h
  * (scripts/check_config.py finds them by reading the code). They never count
  * as "not used by anything".
  */
-var PP_MDL_CODE_TEXT_KEYS_ = ['q.tell_more_required', 'support.not_applicable', 'q.support_comment'];
+var PP_MDL_CODE_TEXT_KEYS_ = ['q.tell_more_required', 'support.not_applicable', 'q.support_comment',
+  'ui.pick_several', 'help.button', 'help.how_to_fill', 'help.why_it_helps'];   // 28 Oct 2026: the pick-several hint, the help videos
+/**
+ * The form's texts added after its first release (28 Oct 2026), with their
+ * English and Hindi as in web/i18n/strings.json (tests/model compares them).
+ * A Sheet made before has none of them: the control panel adds the missing
+ * ones when it opens (the other languages waiting for a translator), so
+ * the next Save and Publish carry them. Until then the form leaves out what
+ * needs them (the pick-several hint, the help button).
+ */
+var PP_MDL_NEWER_FORM_TEXTS_ = {
+  'ui.pick_several': { en: 'You can tick more than one.', hi: 'आप एक से ज़्यादा चुन सकते हैं।' },
+  'help.button': { en: 'Help', hi: 'मदद' },
+  'help.how_to_fill': { en: 'How to fill this form', hi: 'यह फ़ॉर्म कैसे भरें' },
+  'help.why_it_helps': { en: 'How your answers help', hi: 'आपके जवाब कैसे मदद करते हैं' }
+};
 /** How messages describe a text the form's own code uses. */
 var PP_MDL_FORM_TEXT_REASON_ = 'one of the form\'s own texts (its buttons and messages)';
 var PP_MDL_LANGUAGE_NAMES_ = { en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', kn: 'Kannada',
@@ -575,6 +601,7 @@ var PP_MDL_TABLE_KINDS_ = [
   { name: 'faces', type: 'rating_1_5' },
   { name: 'yes/no', type: 'yes_no' },
   { name: 'pick one', type: 'single_choice' },
+  { name: 'pick several', type: 'multi_choice' },
   { name: 'voice/typing', type: 'free_text' },
   { name: 'info card', type: 'info_card' }
 ];
@@ -1046,8 +1073,15 @@ function PP_mdlTextSettingProblem_(entry, value) {
     const problem = PP_mdlLogoProblem_(text);
     if (problem) return PP_mdlSettingName_(entry) + ' ' + problem + now;
   }
+  if (PP_mdlHas_(PP_MDL_HELP_VIDEOS_, entry.key) && text && !/^https:\/\/\S+$/.test(text)) {
+    return PP_mdlSettingName_(entry) + ' must be empty or a full web address that starts with https://, without spaces, ' +
+      'for example "https://youtu.be/AbCdEfGhIjK".' + now;
+  }
   return '';
 }
+
+/** The help videos (Settings > Help videos, 28 Oct 2026): each setting with the text that is its title. */
+var PP_MDL_HELP_VIDEOS_ = { 'help.how_to_fill_video': 'help.how_to_fill', 'help.why_it_helps_video': 'help.why_it_helps' };
 
 /** The logo is optional: an https:// address or a path inside web/ (never outside it). */
 function PP_mdlLogoProblem_(text) {
@@ -2081,7 +2115,8 @@ function PP_mdlCompileSurvey_(model, configVersion, flowNotes) {
     text: settings.text,
     read_aloud: settings.read_aloud,
     whats_changed: settings.whats_changed,
-    telemetry: settings.telemetry
+    telemetry: settings.telemetry,
+    help: settings.help
   };
   // A settings group added to the schema later still reaches the form.
   Object.keys(settings).forEach(name => {
@@ -3303,13 +3338,18 @@ function PP_mdlTextKeyReasons_(model, includeHidden) {
   if (model.settings['support.allow_comment'] === true) {
     add(PP_mdlTrim_(model.settings['support.comment_text']), 'the support comment question (setting "Comment question")');
   }
+  Object.keys(PP_MDL_HELP_VIDEOS_).forEach(setting => {
+    if (!PP_mdlTrim_(model.settings[setting])) return;
+    add('help.button', 'the name of the ⓘ help button (Settings > Help videos)');
+    add(PP_MDL_HELP_VIDEOS_[setting], 'the title of a help video (Settings > Help videos)');
+  });
   model.screens.forEach((screen, index) => {
     if (!(includeHidden || screen.active)) return;
     const question = PP_mdlQuestionName_(model, screen, index);
     PP_MDL_SCREEN_TEXT_FIELDS_.forEach(field => {
       if (screen[field]) add(screen[field], 'the ' + PP_MDL_FIELD_NAMES_[field] + ' of ' + question);
     });
-    if (screen.type === 'single_choice') {
+    if (screen.type === 'single_choice' || screen.type === 'multi_choice') {
       screen.options.forEach((option, n) => add('choice.' + screen.id + '.' + option, 'the label of answer ' + (n + 1) +
         ' of ' + question));
     }
@@ -3832,6 +3872,7 @@ function PP_mdlSurveyFileText_(survey, appsScriptUrl, configVersion) {
     [section('read_aloud')],
     [section('whats_changed')],
     [section('telemetry')],
+    [section('help')],
     [JSON.stringify('flow') + ': ' + PP_mdlFlowLib_().flowPanel.formatFlow(survey.flow, 2)]
   ];
   return '{\n' + groups.map(group => group.map(member => '  ' + member).join(',\n')).join(',\n\n') + '\n}\n';
