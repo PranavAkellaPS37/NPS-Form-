@@ -97,6 +97,11 @@
      "Send now" button, another try when the internet comes back, and another
      the next time the link is opened. Every try reuses the same submission_id,
      so the backend never stores the same answers twice.
+   - Every try sends the answers exactly as they were when the partner
+     finished (state.sent_copy, kept from the first try on), even when a
+     later visit loaded another questionnaire (a newer published version, or
+     the form's own copy because Google was slow): building them again from
+     that one could drop answers and stamp the wrong version (30 Oct 2026).
    - "round_not_open" from the backend (the round is a draft): "not open yet"
      is shown and nothing more is sent during this visit (no retries). The
      answers stay on the phone and go the next time the link is opened, once
@@ -131,7 +136,7 @@
   var t = PP.t;
   var h = PP.h;
 
-  var APP_VERSION = '0.2.0';
+  var APP_VERSION = '0.3.3';
   var SAFE_ID = /^[A-Za-z0-9_.-]{1,64}$/; // allowed characters in DC ids and round ids
   var TOKEN = /^[A-Za-z0-9_-]{8,128}$/;    // shape of a link token
   var MAX_EVENTS = 300;
@@ -168,6 +173,9 @@
   var toastTimer = null;
   var navDepth = 0;      // how many history entries we added (for the back button)
   var collapsingHistory = false;
+  var openSheet = null;  // the sheet on show (help videos, languages): { close, entry }
+  var ownSteps = 0;      // the form's own history.back() steps still to arrive (stepBack): not Back presses
+  var finishedHere = false; // the partner finished during this visit (so `config` is the questionnaire they answered)
   var resumed = false;
   var offlineShown = false;
   var lastProgressPing = 0;
@@ -832,7 +840,25 @@
   /* The phone's back (or forward) button. */
   function onPopState(e) {
     var s = (e && e.state) || {};
+    if (ownSteps > 0) {   // one of the form's own steps back (stepBack): not a Back press
+      ownSteps -= 1;
+      return;
+    }
+    // An open sheet (help videos, languages) has a history entry of its own
+    // (showSheet): Back closes the sheet, and the survey stays where it is.
+    if (openSheet) {
+      var hadEntry = openSheet.entry;
+      openSheet.close(true);
+      if (hadEntry) return;
+    }
     var newDepth = typeof s.n === 'number' ? s.n : 0;
+    if (newDepth === navDepth && !collapsingHistory) {
+      // The same depth: a step between a sheet's entry and its screen's (for
+      // example Forward onto a closed sheet's entry). Never a screen change;
+      // a closed sheet's entry is left again.
+      if (s.sheet) stepBack();
+      return;
+    }
     var forward = newDepth > navDepth;
     navDepth = newDepth;
 
@@ -915,10 +941,15 @@
     var videos = helpVideos();
     if (!videos.length) return;
     var backdrop = h('div', { 'class': 'sheet-backdrop' });
+    var me = null;
     var onKey = function (e) { if (e.key === 'Escape') close(); };
-    var close = function () {
+    // fromBack: the phone's Back key closed it (see onPopState). A click passes an event, never true.
+    var close = function (fromBack) {
+      if (!me) return;   // already closed
       if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);   // also stops a video that plays
       document.removeEventListener('keydown', onKey);
+      sheetClosed(me, fromBack === true);
+      me = null;
       try { el.helpBtn.focus(); } catch (e) { /* ignore */ }
     };
     var closeBtn = h('button', { type: 'button', 'class': 'icon-btn', 'aria-label': t('ui.close') }, [PP.icon('close')]);
@@ -932,9 +963,14 @@
       }
       PP.clear(body);
       body.appendChild(h('p', { 'class': 'help-title', text: t(v.key) }));
+      // The page sends no Referer at all (index.html), so a link's dc and token never
+      // leave it. YouTube refuses to play without one ("Video player configuration
+      // error", Error 153: tried on 30 Oct 2026), so this frame alone sends the site's
+      // address (https://<site>/), never its path or the ?dc=&t= part.
       body.appendChild(h('div', { 'class': 'video-frame' }, [h('iframe', {
         src: 'https://www.youtube-nocookie.com/embed/' + id + '?rel=0&playsinline=1&autoplay=1',
-        title: t(v.key), allow: 'autoplay; encrypted-media; picture-in-picture', allowfullscreen: true
+        title: t(v.key), allow: 'autoplay; encrypted-media; picture-in-picture', allowfullscreen: true,
+        referrerpolicy: 'strict-origin-when-cross-origin'
       })]));
     };
     videos.forEach(function (v) {
@@ -949,7 +985,7 @@
     backdrop.appendChild(sheet);
     backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
     document.addEventListener('keydown', onKey);
-    document.body.appendChild(backdrop);
+    me = showSheet(backdrop, close);
     var first = body.querySelector('button');
     if (first) first.focus();
   }
@@ -958,10 +994,14 @@
   function openLanguageSheet() {
     if (!config) return;
     var backdrop = h('div', { 'class': 'sheet-backdrop' });
+    var me = null;
     var onKey = function (e) { if (e.key === 'Escape') close(); };
-    var close = function () {
+    var close = function (fromBack) {   // fromBack: as in openHelpSheet
+      if (!me) return;
       if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
       document.removeEventListener('keydown', onKey);
+      sheetClosed(me, fromBack === true);
+      me = null;
       try { el.langBtn.focus(); } catch (e) { /* ignore */ }
     };
     var closeBtn = h('button', { type: 'button', 'class': 'icon-btn', 'aria-label': t('ui.close') }, [PP.icon('close')]);
@@ -991,9 +1031,54 @@
     backdrop.appendChild(sheet);
     backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
     document.addEventListener('keydown', onKey);
-    document.body.appendChild(backdrop);
+    me = showSheet(backdrop, close);
     var first = grid.querySelector('button');
     if (first) first.focus();
+  }
+
+  /* Sheets and the phone's Back key (30 Oct 2026). Android users press Back to
+     dismiss a video or a list: without this, Back moved the survey a screen
+     back underneath the open sheet, or left the form on the first screen.
+     So an open sheet gets a history entry of its own: Back takes it, and
+     onPopState closes the sheet. A sheet closed another way (its close
+     button, a tap outside it, Escape, a language picked) takes its entry
+     away again; onPopState ignores that step, which keeps the same depth.
+     One sheet at a time; a screen change waiting to happen is cancelled. */
+  function showSheet(backdrop, close) {
+    var reuse = false;
+    if (openSheet) {   // cannot normally happen (the backdrop covers both buttons)
+      reuse = openSheet.entry;
+      openSheet.close(true);   // its history entry is kept, for this sheet
+    }
+    clearTimeout(advanceTimer);
+    advanceTimer = null;
+    var me = { close: close, entry: reuse };
+    // While one of the form's own steps back is still to arrive (a sheet closed a
+    // moment ago), a new entry would be the one it takes: this sheet then goes
+    // without one (Back moves the survey, as before 30 Oct). Practically never.
+    if (!reuse && ownSteps === 0) {
+      try {
+        root.history.pushState({ pp: current ? current.id : null, n: navDepth, sheet: true }, '');
+        me.entry = true;
+      } catch (e) { /* no entry of its own: Back then moves the survey, as before */ }
+    }
+    openSheet = me;
+    document.body.appendChild(backdrop);
+    return me;
+  }
+
+  /* Every sheet's close() calls this. fromBack: the Back key closed it, so its
+     history entry is already gone; otherwise the entry is taken away here. */
+  function sheetClosed(me, fromBack) {
+    if (openSheet === me) openSheet = null;
+    if (me.entry && !fromBack) stepBack();
+  }
+
+  /* One step back that is the form's own (a sheet's entry taken away): its
+     "popstate" is counted out in onPopState, so it never counts as a Back press. */
+  function stepBack() {
+    ownSteps += 1;
+    try { root.history.back(); } catch (e) { ownSteps -= 1; }
   }
 
   /* ---------------------------------------------------------------------------
@@ -1163,6 +1248,8 @@
     state.finished = true;
     state.submitted_at = state.submitted_at || PP.now();
     state.submission_id = state.submission_id || PP.randomId('sub');
+    state.finished_version = config.config_version;   // which questionnaire the answers belong to (buildPayload)
+    finishedHere = true;
     current = endStep || thanksStep();
     state.current = current.id;
     recordView(current.id);
@@ -1193,6 +1280,18 @@
     updateProgress();
   }
 
+  /* The message sent. Its answers are fixed when the partner finishes: the
+     first try (made once any voice note is saved) keeps them on the phone as
+     state.sent_copy (answers, ratings, typed texts, and which voice notes go
+     with them, without their sound, which is stored apart), and every later
+     try, on this visit or a later one, sends that copy. A later visit may have
+     loaded another questionnaire (a newer published version, or the form's
+     own copy because Google was slow): building the answers from that one
+     would drop those its route does not ask, and stamp its version (30 Oct
+     2026). The copy is kept only when no voice note is still being saved (a
+     try can start before: the "online" event, whenIdle's 5 s limit, or the
+     page closing at once); otherwise it is made for this message only, and
+     kept by a later try. */
   function buildPayload() {
     rebuildSteps();
     var meta = {
@@ -1208,9 +1307,55 @@
       attempt: state.submit_attempts,
       client: clientInfo(true)
     };
-    return PP.flow.buildSubmission(config, state, steps, meta, function (itemId) {
-      return PP.voice.loadAudio(ns, itemId);
-    });
+    var copy = state.sent_copy || null;
+    if (!copy && (finishedHere || state.finished_version === config.config_version)) {
+      copy = finishedCopy();
+      if (!(PP.voice.isBusy && PP.voice.isBusy())) {   // (a cached older voice.js has no isBusy)
+        state.sent_copy = copy;
+        save();
+      }
+    }
+    if (!copy) {
+      // Finished on another questionnaire with a form from before 30 Oct 2026, and
+      // never sent: the questionnaire in use is all there is to build from.
+      return PP.flow.buildSubmission(config, state, steps, meta, function (itemId) {
+        return PP.voice.loadAudio(ns, itemId);
+      });
+    }
+    meta.survey_id = copy.survey_id;
+    meta.config_version = copy.config_version;
+    var payload = PP.flow.buildSubmission(config, state, [], meta, null);   // the envelope: dc, round, times, events
+    payload.answers = copy.answers;
+    payload.ratings = copy.ratings;
+    payload.free_text = copy.free_text.map(function (item) {
+      var out = {};
+      Object.keys(item).forEach(function (k) { out[k] = item[k]; });
+      out.audio = null;
+      if (item.audio) {
+        var b64 = PP.voice.loadAudio(ns, item.item_id);
+        if (b64) out.audio = { mime: item.audio.mime, duration_s: item.audio.duration_s, bytes: item.audio.bytes, base64: b64 };
+      }
+      return out;
+    }).filter(function (item) { return item.text || item.audio; });   // a voice note lost from the phone, and no text
+    return payload;
+  }
+
+  /* The answers as the route of the questionnaire in use gives them now, with
+     each voice note's details but not its sound (see buildPayload). */
+  function finishedCopy() {
+    var built = PP.flow.buildSubmission(config, state, steps, {}, function () { return '-'; });
+    return {
+      survey_id: config.survey_id,
+      config_version: config.config_version,
+      answers: built.answers,
+      ratings: built.ratings,
+      free_text: built.free_text.map(function (item) {
+        var out = {};
+        Object.keys(item).forEach(function (k) { out[k] = item[k]; });
+        if (item.audio) out.audio = { mime: item.audio.mime, duration_s: item.audio.duration_s, bytes: item.audio.bytes };
+        return out;
+      })
+    };
   }
 
   function trySubmit() {
@@ -1508,6 +1653,10 @@
     // After a reload, continue counting from the history entry we are on.
     var hs = root.history.state;
     navDepth = hs && typeof hs.n === 'number' ? hs.n : 0;
+    // Reloaded on a sheet's entry (the page was reloaded, or Android brought a
+    // discarded tab back, while a sheet was open): no sheet is open now, so step
+    // off that entry, or the next Back press would do nothing.
+    if (hs && hs.sheet) stepBack();
   }
 
   function absoluteUrl(url) {

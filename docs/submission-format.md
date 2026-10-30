@@ -84,7 +84,7 @@ No ping is sent from a [preview link](#8-preview-links-preview1), nor after the 
   "stage": "opened",
   "survey_id": "valmo-partner-pulse",
   "config_version": "p7-2026-10-21",
-  "app_version": "0.2.0",
+  "app_version": "0.3.3",
   "dc": "DC-DEMO-001",
   "t": "Qm9ndXNUb2tlbkV4YW1wbGU",
   "round": "DEMO-R1",
@@ -103,7 +103,7 @@ No ping is sent from a [preview link](#8-preview-links-preview1), nor after the 
 - `client` is only included on `opened`.
 - `events` is only included on `progress`. It has the same shape as in `submit` (below).
 - A `progress` ping whose `screen` is an ending (`thanks`, or the id of another thank-you screen: [several endings](#several-endings-and-questions-asked-for-each-area)) means: the partner finished, but their answers were not confirmed yet when they left the page. The form sends them again the next time the link is opened on that phone.
-- `config_version` is the version of the questionnaire the partner actually saw (see the field reference in section 3).
+- `config_version` is the version of the questionnaire the phone uses on this visit. (A submission's is the version the partner finished on, even when it is sent on a later visit, with one narrow exception: see the field reference in section 3.)
 
 **Response to `opened`:**
 
@@ -141,7 +141,7 @@ The form sends this once the partner finishes the last question.
   "schema_version": 1,
   "survey_id": "valmo-partner-pulse",
   "config_version": "p7-2026-10-21",
-  "app_version": "0.2.0",
+  "app_version": "0.3.3",
   "submission_id": "sub_5c1d9e0f7a2b4c83",
   "session_id": "ses_8f3a0c2e1b7d4a96",
   "dc": "DC-DEMO-001",
@@ -210,8 +210,8 @@ The form sends this once the partner finishes the last question.
 | Field | Meaning |
 |---|---|
 | `schema_version` | Version of *this* format. It is `1` today. |
-| `config_version` | Which version of the questionnaire the partner saw: the **published** version from the bootstrap (for example `p7-2026-10-21`), or, when the bootstrap did not arrive, `config_version` from the form's own `web/config/survey.json` (for example `2026-10-19.1`). |
-| `app_version` | Version of the form's code (`0.2.0` from Phase 2 on). |
+| `config_version` | The version of the questionnaire the partner **finished** on: the **published** version from the bootstrap (for example `p7-2026-10-21`), or, when the bootstrap did not arrive, `config_version` from the form's own `web/config/survey.json` (for example `2026-10-19.1`). **Since 30 Oct 2026 (`app_version` 0.3.3) this holds even when the send happens on a later visit**, after a failed send, and that visit loaded another questionnaire (a newer published version, or the form's own copy because Google took more than 6 seconds): the first send keeps a copy of the finished answers on the phone, and every later send uses that copy and its `config_version`, so `answers`, `ratings` and `free_text` are exactly as the partner finished them. Any send keeps the copy, the page-closing beacon included, unless a voice note is still being saved (then a later send keeps it), and the copy leaves the phone with everything else once the answers arrive. Before, a later visit rebuilt the answers from its own questionnaire: answers to screens that questionnaire doesn't have were dropped, and its version was stamped. **One narrow exception remains:** the copy is made only when the partner finished during that visit, or when the questionnaire in use is the one they finished on. So answers finished with a form older than 0.3.3, or whose sends before the partner left were all made while a voice note was still being saved, and that are then sent on a later visit running another questionnaire, are still rebuilt from that other questionnaire and carry its version. |
+| `app_version` | Version of the form's code: `0.3.3` since 30 Oct 2026. Before, `0.2.0` from Phase 2 on, also in the releases 0.3.0 to 0.3.2 ([CHANGELOG](../CHANGELOG.md)), which left it unchanged: `0.2.0` alone does not tell those releases apart. |
 | `submission_id` | Random ID, created when the partner finishes. It is the same on every retry, and is the key for de-duplication. |
 | `session_id` | Random ID for this device + DC + round. It stays the same if the partner closes the page and comes back. |
 | `dc`, `t`, `round` | From the link. The backend re-checks `t`. |
@@ -230,7 +230,7 @@ The form sends this once the partner finishes the last question.
 | `answers` | One value per *generic* screen that was answered, keyed by the screen `id` from `flow` (see the table below), or by its `store_as` code: a question asked once for each area sends one value per area, keyed `<id>:<area>` ([below](#several-endings-and-questions-asked-for-each-area)). Screens that were skipped or never shown are left out. |
 | `ratings` | Area and support ratings (see the table below). |
 | `free_text` | One item per voice note and/or typed answer. An item is only included if it has text or audio (see the table below). |
-| `events` | One entry per screen *view*, in order. Going **Back** creates a new view with the next `seq`. The view of the ending the partner reached is the last entry: `thanks`, or the id of another thank-you screen. The form keeps the latest 300 views. |
+| `events` | One entry per screen *view*, in order. Going **Back** creates a new view with the next `seq`, and the views of screens the partner then left behind stay in the list, so `events` is not the final route ([section 9](#reading-the-data-correctly-for-the-pipeline-and-the-dashboard), item 7). The view of the ending the partner reached is the last entry: `thanks`, or the id of another thank-you screen. The form keeps the latest 300 views. |
 
 **Values in `answers`, by screen type:**
 
@@ -269,7 +269,7 @@ A kind of question added as a plug-in (`web/js/types/`) sends what its descripti
 
 ### Only answers on the final path are sent
 
-If a partner rates Payments 2, answers its problem screen, then goes **Back** and changes the rating to 5, the Payments problem answer is **dropped**. The same applies to the support ratings when the support answer changes to **No**. The submission always matches the screens the partner finally saw. Since 23 Oct 2026 the same is true for the rules themselves: a rule ("show only if", a jump) only ever sees answers on the partner's current route, never one left behind by going Back.
+If a partner rates Payments 2, answers its problem screen, then goes **Back** and changes the rating to 5, the Payments problem answer is **dropped**. The same applies to the support ratings when the support answer changes to **No**, and to a pick-several question: a partner who ticks Payments, answers the Payments reason screen, then goes **Back** and unticks Payments sends no Payments reason. The submission always matches the screens the partner finally saw. Since 23 Oct 2026 the same is true for the rules themselves: a rule ("show only if", a jump) only ever sees answers on the partner's current route, never one left behind by going Back.
 
 ### Several endings and questions asked for each area
 
@@ -458,7 +458,7 @@ The full description is in [control-panel-design.md, section 11](control-panel-d
 
 - **Each round has its own data spreadsheet**, "Valmo Partner Pulse - data - &lt;round_id&gt;", in the Drive folder `Valmo Partner Pulse/rounds/<round_id>/`, with the tabs `responses`, `function_ratings`, `free_text`, `events` and `pings`. It is created the first time the round is opened in the control panel (or, if it is missing, by the first message for an open or closed round).
 - **Each data tab is exactly as wide as its columns.** Google counts every cell of a tab, even an empty one, against a spreadsheet's 10 million cell limit, so no spare columns are kept: a round of 10,000 partners stays near 3.5 million cells. The script writes each column in a fixed place, so never insert, delete or move columns in these tabs (an extra column of your own on the far right is fine).
-- **One `responses` row per stored submission**, and at most 10 per DC per round ([section 10](#10-limits-how-big-a-message-may-be)). Like the mock server, it adds `received_at`, `token_valid` (always `TRUE` here, because wrong tokens are refused), `late` and `dc_round_seen_before`, and keeps the whole `answers` object as `answers_json`. The answers to `nps` and `support_gate` also get their own columns, `nps` and `support_contacted`.
+- **One `responses` row per stored submission**, and at most 10 per DC per round ([section 10](#10-limits-how-big-a-message-may-be)). Like the mock server, it adds `received_at`, `token_valid` (always `TRUE` here, because wrong tokens are refused), `late` and `dc_round_seen_before`, and keeps the whole `answers` object as `answers_json` (a pick-several answer stays a list there, for example `"score_areas":["load","app"]`). The answers to `nps` and `support_gate` also get their own columns, `nps` and `support_contacted`.
 - **`function_ratings`** has one row per `ratings` item, **`free_text`** one row per `free_text` item, and **`events`** one row per screen view. Each of these rows carries the submission's `submission_id` and `received_at`.
 - **`pings`** has one row per stored ping ([section 2](#2-message-ping-progress-telemetry-never-contains-answers)), with `received_at` and `token_valid` added, the `client.net` of an `opened` ping as `client_net`, and the `events` of a `progress` ping as JSON text in `events_json`. Its **last** column, since 26 Oct 2026, is **`config_version`**: the version of the questionnaire the phone showed, the same stamp as in `responses` (Pranav's decision 11 of the flow-graph work). The message did not change (`schema_version` is still `1`): the form always sent it, but until then the live backend did not keep it. The cell is empty when a ping has no `config_version`.
   - **A data spreadsheet made before 26 Oct 2026** has a `pings` tab that ends with `events_json`. The first ping that arrives after the update adds the `config_version` column, header included, as a new column right after `events_json`: a column of your own there moves one place to the right, and nothing is overwritten. The rows already stored keep an empty cell. Two pings arriving together never add it twice (the script lock), and a ping is never refused or lost for this: if the column cannot be added at that moment, the ping is stored without its version.
@@ -492,7 +492,14 @@ If anything fails before the `responses` row is written, the phone gets `server_
    - Each entry's `screen` is exactly what a ping's `screen` (and an `events` row's `screen`) says, for example `fn_rating:payments`.
    - An empty `config_version` is a ping stored before 26 Oct 2026, or one stored while the column could not be added (above). The nearest ping in time with the same `session_id` (or that session's submission) usually has the version; a version can change between two visits when a new one is published in between.
 6. **Test data is not partner data.** Leave out rounds whose id starts with `SMOKE`, `DEMO` or `TEST` (in capitals or not: the same rule as `PP_isTestRound_` in Code.gs) and DCs whose id starts with `DC-SMOKE-` (the smoke test makes a new one on every run).
-7. **Routes and endings** ([section 3](#several-endings-and-questions-asked-for-each-area)). A submission's route is the screens in its counted `events` rows; its last row is the ending the partner reached. Answers keyed `<id>:<area>` belong to a question asked once per area: split the key at the first `:` to get the question and the area.
+7. **Routes and endings** ([section 3](#several-endings-and-questions-asked-for-each-area)). A submission's counted `events` rows are every screen **view**, in order, including screens the partner left by going **Back** (for example the reason screen of an area they later unticked), so they are not the final route. The questions answered on the final route are the keys of `answers` plus the `free_text` items (and, for area and support ratings, the `ratings` rows): only answers on the final route are sent ([section 3](#only-answers-on-the-final-path-are-sent)). The last `events` row is still the ending the partner reached. Answers keyed `<id>:<area>` belong to a question asked once per area: split the key at the first `:` to get the question and the area.
+8. **A pick-several answer is a list** of option codes in `answers_json` (for example `"score_areas": ["load", "payments"]`): count each code ticked. **A questionnaire that hides the area ratings** (the v2.1 route, 28 Oct 2026: `fn_ratings`, `fn_deep_dives`, `support_gate` and `support` hidden) needs these rules while they stay hidden:
+   - the `function_ratings` tab gets no rows, and `support_contacted` stays blank;
+   - the areas are `answers_json.score_areas`: a list of `load`, `payments`, `losses`, `ops`, `app` (count each ticked area);
+   - the reason for each ticked area is `answers_json.<area>_low` (score 0–8) or `<area>_high` (9–10): an option code, whose words are the text `choice.<question>.<code>` (for example `choice.load_low.load_changes`) in the `strings` of the published version that partner answered (`config_version`, item 5);
+   - the "Tell us more" answers, one per area (`load_other`, `payments_other`, `losses_other`, `ops_other`, `app_other`, each asked after that area's "Others" reason), and `one_fix` are `free_text` rows whose `function` is empty;
+   - `nps_area` (v2's one area) exists only in answers to v2; v2.1 hides it;
+   - the classifier's taxonomy for v2.1 is the options of `score_areas` and of the `<area>_low` / `<area>_high` questions, not `functions[].issues`.
 
 ## 10. Limits: how big a message may be
 

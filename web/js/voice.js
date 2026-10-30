@@ -57,6 +57,10 @@
   var recordingNow = 0;
   voice.isRecording = function () { return recordingNow > 0; };
 
+  /* Is a recording still being finished? (app.js keeps the finished answers
+     for later sends only once none is: buildPayload.) */
+  voice.isBusy = function () { return busy > 0; };
+
   /* Resolves when no recording is being finished (or after 5 s at most). */
   voice.whenIdle = function () {
     if (!busy) return Promise.resolve();

@@ -63,6 +63,14 @@
    would change); "NA" in a Hindi cell keeps today's Hindi; Check refuses a
    route that runs on into another, and a run-on edited in the Sheet gets an
    error badge on its card.
+   Since 30 Oct 2026: a recovery copy of unsaved changes kept by a panel from
+   before 28 Oct (no newer texts of the form) on a Sheet without them: a copy
+   that lacks only those texts is nothing to bring back; otherwise the copy
+   is kept while the panel asks, "Bring them back" adds the newer texts to it
+   too and says so in one message, and Save sends them with the change.
+   Since the review of 30 Oct 2026: Ctrl+S while that question (or any
+   pop-up) is open saves nothing, so the copy it asks about is not thrown
+   away.
    ============================================================================= */
 'use strict';
 const fs = require('fs');
@@ -693,7 +701,7 @@ async function main() {
     if (REAL) check(canon(serverSurvey(after).flow) === canon(pasted.flow), 'the server compiles the saved draft into exactly the pasted route');
   });
 
-  await step('pick several (28 Oct 2026): a pasted "pick several" question is checked clean; Try a path gives it tick boxes and each ticked area brings its follow-up; the read-only list says "include"', async () => {
+  await step('pick several (28 Oct 2026): a pasted "pick several" question is checked clean; Try a path gives it tick boxes and each ticked area brings its follow-up; the read-only list says "include", the Map\'s text list "includes"', async () => {
     const table = await copyRoute();
     const edited = tableEdit(table, { insert: [
       { after: 'nps', cells: { code: 'areas', kind: 'pick several', 'question (English)': 'Which areas is your score mostly about?',
@@ -716,6 +724,28 @@ async function main() {
     check(!/What went wrong with Load/.test(await text('try-steps')), 'load unticked: no follow-up');
     await checkTestNames('try a path with tick boxes');
     await shot('pick-several-try');
+    // The Map's text list writes the rule as the cards do: "includes" (30 Oct 2026). The drawing library is
+    // held back, so the list stays on screen.
+    await click('qview-back');
+    await el('paste-ok');
+    const heldLib = [];
+    const holdLib = (r) => { if (/cdn\.jsdelivr\.net/.test(r.url())) { heldLib.push(r); return; } r.continue(); };
+    expectBlockedCdn = true;
+    await page.setRequestInterception(true);
+    page.on('request', holdLib);
+    try {
+      await click('paste-preview-map');
+      await page.waitForSelector(T('map-outline'), { visible: true, timeout: 3000 });
+      const lines = await page.$$eval(T('map-outline') + ' > li', (els) => els.map((e) => e.innerText));
+      const rule = lines.find((t) => /What went wrong with Load/.test(t)) || '';
+      check(/areas includes load/.test(rule) && !/areas == load/.test(rule), 'the Map\'s list says "includes": ' + rule.replace(/\s+/g, ' '));
+    } finally {
+      page.off('request', holdLib);
+      heldLib.forEach((r) => { try { r.abort('blockedbyclient'); } catch (e) { /* already gone with its frame */ } });
+      await page.setRequestInterception(false);
+      await sleep(300);
+      expectBlockedCdn = false;
+    }
     await click('qview-back');
     await el('paste-ok');
     await click('paste-use');
@@ -2653,6 +2683,89 @@ async function main() {
     await click('save');
     await waitSaved();
     check((await serverState()).model.settings['help.how_to_fill_video'] === '', 'and emptied again');
+  });
+
+  await step('the form\'s newer texts and a recovery copy kept by an older panel (30 Oct 2026): a copy that lacks only them is nothing to bring back; "Bring them back" adds them to the copy too, says so in one message, and Save sends them; the copy is kept while the panel asks', async () => {
+    const NEWER = ['ui.pick_several', 'help.button', 'help.how_to_fill', 'help.why_it_helps'];
+    const KEY = 'pp-unsaved:https://docs.google.com/spreadsheets/d/FAKE-BENCH-CONTROL/edit';   // recoveryKey() on the bench
+    await control('reset');
+    const older = (await serverState()).model;
+    NEWER.forEach((k) => { delete older.texts[k]; if (older.text_notes) delete older.text_notes[k]; });
+    const { revision } = await control('model', { model: older });
+    /* Puts a recovery copy in this browser as a panel from before 28 Oct 2026 kept it (same key, no newer
+       texts), from a page of the bench without the panel (so no panel timer can replace it), then opens the panel. */
+    const openWithCopy = async (model) => {
+      await page.goto(base + '/control/state', { waitUntil: 'load' });
+      await page.evaluate((key, value) => { localStorage.clear(); localStorage.setItem(key, value); }, KEY,
+        JSON.stringify({ revision, at: new Date().toISOString(), model }));
+      await openPanel();
+    };
+    const storedCopy = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || 'null'), KEY);
+    const toastTexts = () => page.$$eval(T('toast') + ' .toast-text', (els) => els.map((e) => e.textContent));
+
+    await openWithCopy(older);
+    check(!(await exists('recovery-modal')), 'a copy that differs from the saved draft only by the newer texts: nothing to bring back');
+    await sleep(1100);   // longer than the 800 ms before a recovery copy is written
+    check((await storedCopy()) === null, 'and that copy is forgotten: ' + JSON.stringify(await storedCopy()).slice(0, 120));
+
+    const copy = JSON.parse(JSON.stringify(older));
+    copy.settings.survey_id = 'valmo-partner-pulse-older-copy';
+    await openWithCopy(copy);
+    await el('recovery-modal');
+    check(/4 new texts of the form were added/.test(await toastText()), 'the newer texts were added to the saved draft: ' + (await toastText()));
+    await sleep(1100);
+    const kept = await storedCopy();
+    check(kept && kept.model.settings.survey_id === 'valmo-partner-pulse-older-copy' && !kept.model.texts['help.button'],
+      'while the panel asks, the older copy is kept (not replaced by the draft with the newer texts): ' + (kept ? kept.model.settings.survey_id : 'none'));
+    /* Ctrl+S while the panel asks (review of 30 Oct 2026): the saved draft has just been given the newer texts, an
+       unsaved change, so a save went through and forgot the very copy the question is about. While a pop-up is
+       open the shortcut saves nothing: the question stays, and so does the older copy. */
+    const beforeKey = await serverState();
+    await page.keyboard.down('Control');
+    await page.keyboard.press('s');
+    await page.keyboard.up('Control');
+    await sleep(1100);   // a save (and the forgetting after it) would be done by now
+    const afterKey = await serverState();
+    const newCalls = afterKey.calls.slice(beforeKey.calls.length);
+    check(afterKey.revision === beforeKey.revision && newCalls.indexOf('panelSave') === -1,
+      'Ctrl+S while the panel asks saves nothing: revision ' + beforeKey.revision + ' -> ' + afterKey.revision + ', calls ' + JSON.stringify(newCalls));
+    check(await exists('recovery-modal'), 'Ctrl+S while the panel asks: the question is still open');
+    const keptAfterKey = await storedCopy();
+    check(keptAfterKey && keptAfterKey.model.settings.survey_id === 'valmo-partner-pulse-older-copy' && !keptAfterKey.model.texts['help.button'],
+      'Ctrl+S while the panel asks: the older copy is still in this browser: ' + (keptAfterKey ? keptAfterKey.model.settings.survey_id : 'none'));
+    await shot('recovery-older-copy');
+    await click('recovery-restore');
+    const said = await toastTexts();
+    check(said.length === 1 && said[0] === 'Your changes are back. 4 new texts of the form were added to Texts & translations ' +
+      '(ui.pick_several, help.button, help.how_to_fill, help.why_it_helps). Press Save to keep them.', 'one message says what happened: ' + JSON.stringify(said));
+    check(/Unsaved/.test(await statusText()), 'unsaved changes: ' + (await statusText()));
+    await click('nav-settings');
+    check((await value('setting-survey_id')) === 'valmo-partner-pulse-older-copy', 'the change in the copy is back');
+    await click('nav-texts');
+    await typeInto('texts-search', 'help.');
+    check((await value('text-en-help.button')) === 'Help' && (await value('text-en-help.how_to_fill')) === 'How to fill this form' &&
+      (await value('text-en-help.why_it_helps')) === 'How your answers help', 'the newer texts are in Texts & translations');
+    await typeInto('texts-search', 'ui.pick_several');
+    check((await value('text-en-ui.pick_several')) === 'You can tick more than one.', 'the pick-several hint too');
+    await typeInto('texts-search', '');
+    await sleep(900);
+    const remembered = await storedCopy();
+    check(remembered && remembered.model.settings.survey_id === 'valmo-partner-pulse-older-copy' && NEWER.every((k) => remembered.model.texts[k]),
+      'the new recovery copy has the change and the newer texts: ' + JSON.stringify(remembered && NEWER.map((k) => !!remembered.model.texts[k])));
+    await click('save');
+    await waitSaved();
+    const after = (await serverState()).model;
+    check(NEWER.every((k) => after.texts[k] && after.texts[k].en), 'Save sends the newer texts: ' + JSON.stringify(NEWER.map((k) => after.texts[k])));
+    check(after.texts['help.how_to_fill'].hi === 'यह फ़ॉर्म कैसे भरें' && after.settings.survey_id === 'valmo-partner-pulse-older-copy',
+      'with their Hindi, and the change brought back: ' + JSON.stringify([after.texts['help.how_to_fill'], after.settings.survey_id]));
+    check((await storedCopy()) === null, 'saved: the recovery copy is gone');
+    await openPanel();
+    await sleep(200);
+    check(!(await exists('recovery-modal')) && !/new texts of the form/.test(await toastText()) && /All changes saved/.test(await statusText()),
+      'opened again: nothing to bring back and nothing to add');
+    await control('reset');
+    await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+    await openPanel();
   });
 
   await step('an empty draft (a Sheet nobody imported into): Questions says to import the questionnaire from GitHub first, and its button opens Settings there', async () => {

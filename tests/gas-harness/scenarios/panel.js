@@ -18,6 +18,11 @@
      round opens (B1, B2), the web app address is the recorded one (B1, B8),
      DC ids stored as numbers are skipped (B6). The fixes themselves have
      their own scenarios in scenarios/fixes.js (G1-G8).
+     Since 30 Oct 2026 B3 also checks that a save gives the Screens tab's
+     "type" column today's drop-down list of kinds (multi_choice, added on
+     28 Oct, included), exactly as Set up or repair does, so a Sheet set up
+     before needs no repair: on every row below the heading, the empty rows
+     under the screens too (review of 30 Oct 2026).
 
    HOW TO USE IT
      Loaded by run-tests.js (node run-tests.js --only B).
@@ -280,13 +285,36 @@ module.exports = function register(add) {
     H.contractClean(s, h);
   });
 
-  add('B3', 'panelSave: revisions, conflicts, translation helpers, exact round trip through the tabs', async (s) => {
+  add('B3', 'panelSave: revisions, conflicts, translation helpers, exact round trip through the tabs; the Screens tab\'s list of kinds given again', async (s) => {
     const h = H.setupPublished(s);
+    // A Sheet set up before 28 Oct 2026: set-up gave the Screens tab's "type" column the drop-down list of the
+    // kinds known then (no multi_choice), so Sheets marks a pick-several row with its red "invalid" corner. Every
+    // save gives the column today's list again, with set-up's own rule (Code.gs PP_listRule_ of PP_screenTypeNames_).
+    const screensTab = h.admin.findSheet(null, 'Screens');
+    const typeCol = h.admin.table(null, 'Screens').headers.indexOf('type') + 1;
+    const kinds = H.clone(h.get('PP_SCREEN_TYPES')).map((t) => t.type);
+    const setUpRule = typeCol > 0 ? screensTab.rules.get('2:' + typeCol) : null;
+    s.need(setUpRule && setUpRule.type === 'list' && K.deepEqual(setUpRule.list, kinds) && kinds.indexOf('multi_choice') >= 0,
+      'set-up gives the Screens tab\'s type column the drop-down list of every kind, multi_choice included', K.show(setUpRule));
+    const olderKinds = kinds.filter((k) => k !== 'multi_choice');
+    const olderRule = Object.assign({}, setUpRule, { list: olderKinds, helpText: 'Pick one of: ' + olderKinds.join(', ') });
+    for (let r = 2; r <= screensTab.maxRows; r += 1) screensTab.rules.set(r + ':' + typeCol, olderRule);
     const L = P(h, s, 'panelLoad', [], { need: true });
     const rev = L.revision;
     const same = P(h, s, 'panelSave', [rev, L.model], { need: true });
     s.ok(same && same.ok === true && same.revision === rev + 1, 'saving returns { ok: true, revision: +1 }', K.show(same));
     s.ok(same && same.draft_differs_from_live === false, 'saving the unchanged draft keeps "differs from live" false (the round trip is exact)', K.show(same));
+    // Every row below the heading, as set-up does (rows 2 to the tab's last row), not only the rows the save writes:
+    // the empty rows under the screens are where a new screen is typed (the review of 30 Oct 2026).
+    const typeRules = [];
+    for (let r = 2; r <= screensTab.maxRows; r += 1) typeRules.push({ row: r, rule: screensTab.rules.get(r + ':' + typeCol) });
+    const notToday = (x) => !(x.rule && x.rule.type === 'list' && K.deepEqual(x.rule.list, kinds) && x.rule.helpText === setUpRule.helpText &&
+      x.rule.allowInvalid === true && x.rule.showDropdown === true);
+    const behind = typeRules.filter(notToday);
+    s.ok(L.model.screens.length + 1 < screensTab.maxRows && typeRules.length === screensTab.maxRows - 1 && !behind.length,
+      'a save gives the type column of an older Sheet today\'s list of kinds again (multi_choice included) on every row below the heading, ' +
+      'the empty ones under the screens too, exactly as set-up does: no repair needed',
+      K.show({ screens: L.model.screens.length, maxRows: screensTab.maxRows, rowsBehind: behind.length, firstBehind: behind[0] }));
     const L2 = P(h, s, 'panelLoad', [], { need: true });
     for (const sec of C.MODEL_SECTIONS) s.eq(L2.model[sec], L.model[sec], `model.${sec} is unchanged by a save + load round trip`);
     const meta = H.metaMap(h);

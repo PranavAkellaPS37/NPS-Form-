@@ -46,7 +46,7 @@ A relationship-NPS survey for ~10,000 Valmo delivery-centre (DC) partners, plus 
 
 ## The survey (product spec)
 
-The flow branches and comes from config. Since 26 Oct 2026 it is a **graph** (`pp-flow/1`: screens with `next` arrows, jumps, `repeat_for` loops per area, several endings; contract [docs/flow-engine.md](docs/flow-engine.md)) in `survey.json` → `flow` and in each published version. Since 27 Oct the control panel changes it by **pasting a route table** (Questions > Paste a route: rows from Excel/Sheets, or a table Claude/ChatGPT writes from notes or a flowchart using the panel's instruction; format `pp-route-table/1`, [flow-engine.md §9.8](docs/flow-engine.md)), never JSON. One engine (`web/js/flow.js`) and one checker (`web/js/flow-check.js`) serve phones, the panel (through the generated `apps-script/Flow.gs`), the command line (`python3 scripts/flow.py …`) and GitHub's check. Since 28 Oct 2026 there is also a **pick several** kind of question (`multi_choice`: a rule's `=` means "is one of the ticked") and optional **help videos** (Settings > Help videos: an ⓘ button on every screen, YouTube played inside the form only after a tap). Pranav's live questionnaire is form v2 (one area question, reasons per area; spec §4, 28 Oct). The table below is the repo's default route.
+The flow branches and comes from config. Since 26 Oct 2026 it is a **graph** (`pp-flow/1`: screens with `next` arrows, jumps, `repeat_for` loops per area, several endings; contract [docs/flow-engine.md](docs/flow-engine.md)) in `survey.json` → `flow` and in each published version. Since 27 Oct the control panel changes it by **pasting a route table** (Questions > Paste a route: rows from Excel/Sheets, or a table Claude/ChatGPT writes from notes or a flowchart using the panel's instruction; format `pp-route-table/1`, [flow-engine.md §9.8](docs/flow-engine.md)), never JSON. One engine (`web/js/flow.js`) and one checker (`web/js/flow-check.js`) serve phones, the panel (through the generated `apps-script/Flow.gs`), the command line (`python3 scripts/flow.py …`) and GitHub's check. Since 28 Oct 2026 there is also a **pick several** kind of question (`multi_choice`: a rule's `=` means "is one of the ticked") and optional **help videos** (Settings > Help videos: an ⓘ button on every screen, YouTube played inside the form only after a tap). In Pranav's Sheet, version 1 is live; next is **v2.1** (spec §4, 28 Oct; a route table to paste, no code): language first, pick several areas (`score_areas`) with one reason screen per ticked area, support hidden. The table below is the repo's default route.
 
 | Step | Screen | Rule | `flow` id |
 |---|---|---|---|
@@ -72,7 +72,7 @@ The flow branches and comes from config. Since 26 Oct 2026 it is a **graph** (`p
   - Sent as base64 inside the submission JSON.
   - Falls back to typing when the mic is denied or unsupported.
 - **Read-aloud:**
-  - A speaker icon on every question: `speechSynthesis` with the language's BCP-47 code. (Open: the language screen has none; spec §6 item 11, [UNCONFIRMED].)
+  - A speaker icon on every question: `speechSynthesis` with the language's BCP-47 code. (The language screen has none, and in v2.1 it is every partner's first screen: accepted for now, Pranav's decision of 30 Oct; spec §6 item 11.)
   - The icon is hidden when no voice exists for that language.
   - A pre-recorded clip per text key (key → mp3) takes priority.
 - **Resilience:**
@@ -156,6 +156,15 @@ The flow branches and comes from config. Since 26 Oct 2026 it is a **graph** (`p
 4. `review/` lets Pranav hand-check a sample of classifications and save a gold set (CSV) for later fine-tuning, so each row keeps the text or transcript and `lang` next to the corrected labels. It reports the classifier's accuracy against it.
 5. `run_nightly.sh` chains 1–3, is idempotent, and logs to `/logs`.
 
+**Reading v2.1 data** (for Phases 3 and 4). While `fn_ratings`, `fn_deep_dives` and `support` are hidden, as in v2.1:
+- the `function_ratings` tab has no rows, and `support_contacted` is blank;
+- the areas are `answers_json.score_areas`: a **list** of codes (`load`, `payments`, `losses`, `ops`, `app`); count each ticked area;
+- the reason is `answers_json.<area>_low` (score 0–8) or `<area>_high` (9–10): option codes whose words are the texts `choice.<id>.<code>`;
+- the "Tell us more" answers, one per area (`load_other`, `payments_other`, `losses_other`, `ops_other`, `app_other`, each asked after that area's "Others" reason), and `one_fix` are `free_text` rows with `function` blank;
+- the classifier's taxonomy for v2.1 is the `score_areas` options plus the `<area>_low`/`_high` options, not `functions[].issues`;
+- `nps_area` exists only where partners answered v2 (it is hidden in v2.1);
+- a submission's `events` list every screen view, including screens left by going Back (an area later unticked): the questions on the final route are the keys of `answers` plus the `free_text` items.
+
 ## Dashboard (Phase 4, not started): Streamlit in /dashboard, run locally on the Mac
 
 Run it on the Mac only, as the brief says; never host it online, because it shows partner answers. It reads the Sheet, or the local JSONL in mock mode, with a round selector at the top. It shows:
@@ -164,6 +173,8 @@ Run it on the Mac only, as the brief says; never host it online, because it show
 - **RCA:** a Pareto of `issue_code` per function, the top themes, the unmapped bucket with its `new_theme_label`s, and a drill-down to the free text, transcript or audio link behind any bar.
 - **Round-over-round change:** issues that grew or shrank, functions that moved, new themes. This feeds the next "what changed" card.
 - **Export:** CSV of any view.
+
+For v2.1 answers (no function ratings; areas and reasons in `answers_json`), see **Reading v2.1 data** under Pipeline above.
 
 `/sample_data` gets ~300 obviously fake responses across all six languages, made by a seed-data script in `scripts/`.
 
@@ -196,7 +207,7 @@ CHANGELOG.md  what changed in each version
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Form + config + mock backend running locally | Done; commit `25c2bfd` (20 Oct; rewritten 21 Oct to remove personal details), pushed 21 Oct |
-| 2 | Apps Script + link generator, plus the control panel | Built, reviewed and pushed on 21 Oct (`1c99b5e`). Meesho-only mode committed locally (21 Oct, not pushed). **Flow-map refactor** (approved 23 Oct, stages 1–6) built, reviewed and fixed 23–26 Oct; uncommitted. Waiting for Pranav's release checklist (docs/STATE.md) |
+| 2 | Apps Script + link generator, plus the control panel | Built, reviewed and pushed on 21 Oct (`1c99b5e`). Since then committed and pushed: Meesho-only mode (`241e25d`), the flow map (`16c3d66`), Paste a route (`70b214c`) and Pick several/help videos (`3008be3`, pushed 29 Oct). **Fix round 0.3.3** (30 Oct) is uncommitted. Pranav's install steps are pending (apps-script/README.md, "This release"; docs/STATE.md) |
 | 3 | Pipeline | Not started |
 | 4 | Dashboard + ~300 fake sample responses | Not started |
 | 5 | README/docs polish | Not started |
@@ -214,18 +225,18 @@ CHANGELOG.md  what changed in each version
 
 ## Tests
 
-The developer suites live in [`tests/`](tests/README.md) (rebuilt there on 21 Oct, byte for byte, after a restart wiped the originals; docs/STATE.md). Run `cd tests && npm install` once (pinned `puppeteer-core` and `acorn`), then each command from the project folder, one browser suite at a time (`python3 local_data/tools/lockrun.py <command>` makes agents wait their turn). The last results are in docs/STATE.md.
+The developer suites live in [`tests/`](tests/README.md) (rebuilt there on 21 Oct, byte for byte, after a restart wiped the originals; docs/STATE.md). Run `cd tests && npm install` once (pinned `puppeteer-core` and `acorn`), then each command from the project folder, one browser suite at a time (`python3 local_data/tools/lockrun.py <command>` makes agents wait their turn). The last results are in [tests/README.md](tests/README.md), "Last full run".
 
 | Suite | Command | Checks |
 |---|---|---|
-| Form, end to end | `node tests/e2e/e2e.js` | 36 scenarios: the form in headless Chrome at phone size, against the mock server (incl. jumps, loops, endings, stale answers, language switch, broken published graphs) |
+| Form, end to end | `node tests/e2e/e2e.js` | 39 scenarios: the form in headless Chrome at phone size, against the mock server (incl. jumps, loops, endings, stale answers, language switch, broken published graphs, pick several, help videos with the referrer and the Back key, a language screen shown "always", answers sent as finished across questionnaires) |
 | Flow rules | `node tests/flow/flow_test.js` | the engine: 27 tests (the 8 original cases unchanged) |
 | Old vs new engine | `node tests/flow/legacy_diff.js` (`--full` for every combination) | the frozen old engine `tests/flow/legacy/flow_v1.js` vs the new one on 73 questionnaires: must say "No differences" |
-| Flow checker, tools, kinds, panel rows, route table | `node tests/flow/check_test.js`, `sim_test.js`, `types_test.js`, `panel_rows_test.js`, `route_table_test.js` | 100, 34, 11, 17 and 37 tests (the route table = "Paste a route": `fromTable`/`toTable`/template/AI instruction, round trips, nothing translated) |
-| Google imitation | `node tests/gas-harness/run-tests.js` | 46 scenarios: the real `.gs` (Flow.gs included)/`Panel.html` code in a strict fake Google (no global `MimeType.JSON`; the document lock, `requireAllScopes` and `setOwner` as Google documents them). Expected: 45 pass, 1 warns (S: Model.gs's `var` lists, open question 14). `python3 tools/plant-bugs.py` (in `tests/gas-harness`) must catch 85 of 85 planted mistakes |
+| Flow checker, tools, kinds, panel rows, route table | `node tests/flow/check_test.js`, `sim_test.js`, `types_test.js`, `panel_rows_test.js`, `route_table_test.js` | 101, 35, 11, 17 and 39 tests (the route table = "Paste a route": `fromTable`/`toTable`/template/AI instruction, round trips, nothing translated; since 30 Oct a pick-several rule reads "includes", "multi choice" and its spellings are refused as ambiguous, like "multiple choice" and "MCQ" since 28 Oct, `multi_choice` in backticks or with an invisible character is pick several, a kind that can't be read adds no "is not an answer of any row" problems to the rules that test it, and "all partners" works like "always") |
+| Google imitation | `node tests/gas-harness/run-tests.js` | 46 scenarios, 2,130 checks: the real `.gs` (Flow.gs included)/`Panel.html` code in a strict fake Google (no global `MimeType.JSON`; the document lock, `requireAllScopes` and `setOwner` as Google documents them). Expected: 45 pass, 1 warns (S: Model.gs's 46 `var` lists, open question 14). `python3 tools/plant-bugs.py` (in `tests/gas-harness`) must catch 89 of 89 planted mistakes |
 | Questionnaire logic | `node tests/model/test_model.js` | 239 tests of `Model.gs` (with Flow.gs), incl. a parity test against the frozen pre-checker `tests/model/legacy/Model_before_flowcheck.gs` |
-| Shrinking save | `node tests/model/strict/shrink_check.js` | a save that shrinks every tab, in the strict fake (the 20 Oct `clearContents` crash) |
+| Shrinking save | `node tests/model/strict/shrink_check.js` | a save that shrinks every tab, in the strict fake (the 20 Oct `clearContents` crash); since 30 Oct it loads Code.gs too and checks that every row of the Screens tab's `type` column has the list of kinds |
 | Fix checks | `node tests/fixes/verify.js`, `node tests/fixes/verify-locks.js` | 81 + 40 checks: the 20 and 21 Oct fixes, a second, independent check of the document lock, permission re-prompt, owner hand-over and code lock |
-| Panel bench | `node tests/panel/test.js` | 84 steps in `Panel.html` with a fake server (the real Model.gs, Flow.gs and, for the table tools' server fallback, PanelServer.gs via `real_server.js`; `narrow.js`: 30 window sizes) |
-| Settings check | `python3 scripts/check_config.py` | config, texts, the flow checker, the ES5 gate; page weight (89% of 300 KB on 26 Oct) |
+| Panel bench | `node tests/panel/test.js` | 85 steps in `Panel.html` with a fake server (the real Model.gs, Flow.gs and, for the table tools' server fallback, PanelServer.gs via `real_server.js`; incl. "Bring them back" keeping the form's newer texts, Ctrl+S saving nothing while the panel asks, and the Map's text list saying "includes" for a pick-several rule; `narrow.js`: 30 window sizes) |
+| Settings check | `python3 scripts/check_config.py` | config, texts, the flow checker, the ES5 gate; page weight (96% of 300 KB on 30 Oct) |
 | Smoke test | Mock: `python3 scripts/smoke_test.py` (add `--url http://localhost:<port>/api` for another port). Live: `python3 scripts/smoke_test.py --url <web app address ending in /exec> --secret "$(pbpaste)" --expect-strict`. Without Google: `node tests/gas-harness/server.js --setup --open-round SMOKE-R1 --port 8970`, then `--url http://127.0.0.1:8971/exec` with the secret it prints | 9 checks; safe to repeat (a new fake `DC-SMOKE-…` DC each run; optional `--dc`) |

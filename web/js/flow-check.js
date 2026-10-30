@@ -253,29 +253,110 @@
     return out;
   }
 
-  /* Rules as people read them: "nps >= 9", "support_gate == yes". */
+  /* Rules as people read them: "nps >= 9", "support_gate == yes".
+     m (optional): the model of the questionnaire the rule belongs to. With
+     it, a rule on the answer of a pick-several question (multi_choice: the
+     list of the codes ticked) is written the way the engine tests it
+     (flow.js evalCondition, 28 Oct 2026), not as if the answer were one code
+     (30 Oct 2026):
+       equals         "areas includes load"
+       not_equals     "areas does not include load"
+       in             "areas includes one of [load, app]"
+       answered true  "areas has at least one tick"; false: "areas has no tick"
+     Every other answer, a fact, a loop item, and any rule written without
+     the model keep ==, !=, <=, >=, in and exists, exactly as before. */
+  var TICK_WORDS = { equals: 'includes', not_equals: 'does not include', 'in': 'includes one of' };
   function valueText(v) {
     if (isVarRef(v)) return v['var'];
     if (Array.isArray(v)) return '[' + v.map(valueText).join(', ') + ']';
     return typeof v === 'string' ? v : String(v);
   }
-  function sentence(c) {
+  function sentence(c, m) {
     if (!isObj(c)) return '(no rule)';
-    if (Array.isArray(c.all)) return c.all.map(inner).join(' AND ');
-    if (Array.isArray(c.any)) return c.any.map(inner).join(' OR ');
-    if (isObj(c.not)) return 'NOT (' + sentence(c.not) + ')';
+    if (Array.isArray(c.all)) return c.all.map(function (x) { return inner(x, m); }).join(' AND ');
+    if (Array.isArray(c.any)) return c.any.map(function (x) { return inner(x, m); }).join(' OR ');
+    if (isObj(c.not)) return 'NOT (' + sentence(c.not, m) + ')';
     var n = names(c).length;
     if (c.fact === 'lang_in_url' && c.equals === false && n === 2) return 'the link has no ?lang=';
     if (c.fact === 'whats_changed_count' && c.at_least === 1 && n === 2) return 'the round has "what changed" items';
     var subject = has(c, 'answer') ? String(c.answer) : has(c, 'fact') ? (own(FACT_WORDS, c.fact) || String(c.fact)) :
       has(c, 'var') ? String(c['var']) : '?';
+    var ticks = has(c, 'answer') && ticked(m, c.answer);
     var tests = Object.keys(SYMBOLS);
-    for (var i = 0; i < tests.length; i++) if (has(c, tests[i])) return subject + ' ' + SYMBOLS[tests[i]] + ' ' + valueText(c[tests[i]]);
-    if (has(c, 'answered')) return subject + (c.answered === true ? ' exists' : ' not exists');
+    for (var i = 0; i < tests.length; i++) {
+      if (has(c, tests[i])) return subject + ' ' + (ticks && has(TICK_WORDS, tests[i]) ? TICK_WORDS[tests[i]] : SYMBOLS[tests[i]]) + ' ' + valueText(c[tests[i]]);
+    }
+    if (has(c, 'answered')) {
+      if (ticks) return subject + (c.answered === true ? ' has at least one tick' : ' has no tick');
+      return subject + (c.answered === true ? ' exists' : ' not exists');
+    }
     return subject + ' ?';
   }
-  function inner(x) { return isObj(x) && (Array.isArray(x.all) || Array.isArray(x.any)) ? '(' + sentence(x) + ')' : sentence(x); }
-  api.sentence = sentence;
+  function inner(x, m) { return isObj(x) && (Array.isArray(x.all) || Array.isArray(x.any)) ? '(' + sentence(x, m) + ')' : sentence(x, m); }
+  /* Is this answer (a key, or a template with loop items such as "reasons:{area}") the answer of a
+     pick-several question? The model knows which screen stores each answer key (m.producers) and
+     what its kind sends (answerKind: "multi"). The screens that store exactly this key or template
+     as their own answer (their "store_as", else their id) decide. Only when there are none: a
+     template counts when every key it can become is one (review of 30 Oct 2026: with a pick-several
+     "{area}_why" and a pick-one "other_why", the pattern alone also took "other_why" in). */
+  function ticked(m, tpl) {
+    if (!isObj(m) || !m.ok || !isObj(m.producers) || typeof tpl !== 'string') return false;
+    var mine = storersOf(m, tpl);
+    if (mine.length) return mine.every(function (inst) { return isMulti(inst, inst.id); });
+    var keys = has(m.producers, tpl) ? [tpl] : keysLike(m, tpl);
+    return keys.length > 0 && keys.every(function (key) {
+      var prods = own(m.producers, key) || [];
+      return prods.length > 0 && isMulti(prods[0], key);
+    });
+  }
+  function isMulti(inst, key) {
+    var kind = answerKind(inst, key);
+    return Boolean(kind && kind.multi);
+  }
+  /* The screens (each time the flow shows one) whose own answer is stored under exactly this key or
+     template: "{area}_why" -> the screen with store_as "{area}_why", once per area. Templates are
+     compared by their shape, whatever the item is called: "{fn}_why" and "{area.id}_why" both find
+     the screen that stores "{area}_why", since the engine fills each with the loop's item (second
+     review of 30 Oct 2026); a plain key like "other_why" has no {..} and never matches one. */
+  function shapeOf(t) { return String(t).replace(TPL_RE, '{}'); }
+  function storersOf(m, tpl) {
+    var want = shapeOf(tpl);
+    return arr(m.inst).filter(function (inst) {
+      var n = inst.entry.node;
+      return shapeOf(n.store_as || n.id) === want && inst.stored.indexOf(inst.id) !== -1;
+    });
+  }
+  /* The stored answer keys a template can become: "reasons:{area}" -> "reasons:payments", ... (each
+     {item} or {item.field} stands for any text). [] for a plain key. */
+  function keysLike(m, tpl) {
+    var parts = [], last = 0;
+    tpl.replace(TPL_RE, function (match, name, field, at) { parts.push(tpl.slice(last, at)); last = at + match.length; return match; });
+    if (!parts.length) return [];
+    parts.push(tpl.slice(last));
+    var re = new RegExp('^' + parts.map(function (p) { return p.replace(/[\\^$.*+?()[\]{}|\/]/g, '\\$&'); }).join('[\\s\\S]+') + '$');
+    return Object.keys(m.producers).filter(function (key) { return re.test(key); });
+  }
+  /* sentence(cond, survey?) -> the rule in words. survey (optional): the
+     questionnaire the rule belongs to, with its "flow"; then a rule on a
+     pick-several answer says "includes" (above). Without it, exactly as
+     before 30 Oct 2026. sentenceFor(survey) -> function (cond): the same,
+     reading the questionnaire once, for many rules (the control panel's
+     text outline of the Map). A questionnaire that cannot be read gives the
+     plain wording, never an error. */
+  api.sentence = function (cond, survey) { return sentence(cond, survey === undefined ? null : modelOrNull(survey)); };
+  api.sentenceFor = function (survey) {
+    var m = modelOrNull(survey);
+    return function (cond) { return sentence(cond, m); };
+  };
+  function modelOrNull(survey) {
+    if (!isObj(survey)) return null;
+    try {
+      var m = model(survey);
+      return m.ok ? m : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   /* ---------------------------------------------------------------------------
      The model: the flow loaded by the engine, indexed for the checks.
@@ -2093,12 +2174,12 @@
       var outerVars = {};
       e.outer.forEach(function (rf) { if (own(inst.vars, rf.each) !== undefined) outerVars[rf.each] = inst.vars[rf.each]; });
       if (e.node.show_if !== undefined && !F.evalCondition(e.node.show_if, scope, { facts: facts, vars: outerVars })) {
-        return (e === inst.entry ? 'only if ' : 'its group ' + q(e.id) + ' only if ') + sentence(e.node.show_if) + ': not true here' + testedValues(m, e.node.show_if, outerVars, scope);
+        return (e === inst.entry ? 'only if ' : 'its group ' + q(e.id) + ' only if ') + sentence(e.node.show_if, m) + ': not true here' + testedValues(m, e.node.show_if, outerVars, scope);
       }
       if (e.rf && e.rf.where !== undefined) {
         var v2 = extend(outerVars, e.rf.each, own(inst.vars, e.rf.each));
         if (!F.evalCondition(e.rf.where, scope, { facts: facts, vars: v2 })) {
-          return 'only for each ' + e.rf.each + ' where ' + sentence(e.rf.where) + ': not true for ' + q(idOf(own(inst.vars, e.rf.each))) + testedValues(m, e.rf.where, v2, scope);
+          return 'only for each ' + e.rf.each + ' where ' + sentence(e.rf.where, m) + ': not true for ' + q(idOf(own(inst.vars, e.rf.each))) + testedValues(m, e.rf.where, v2, scope);
         }
       }
     }
@@ -2112,7 +2193,7 @@
       steps.forEach(function (st, k) { if (st.node === from.node) pos = k; });
       var after = steps[pos + 1];
       var taken = from.targets.filter(function (t) { return !t.def && t.res.kind === 'entry' && after && t.res.entry.node === after.node; })[0];
-      return 'not on this route: after ' + q(from.id) + ' it went to ' + q(after ? after.id : 'the end') + (taken ? ' (jump: ' + sentence(taken.when) + ')' : '');
+      return 'not on this route: after ' + q(from.id) + ' it went to ' + q(after ? after.id : 'the end') + (taken ? ' (jump: ' + sentence(taken.when, m) + ')' : '');
     }
     if (last && F.isEnd(last.node)) return 'not on this route: it ended at ' + q(last.id) + ' first';
     return 'not on this route';
@@ -2124,13 +2205,13 @@
     chain.forEach(function (x) {
       var outerVars = {};
       x.outer.forEach(function (rf) { if (own(st.vars, rf.each) !== undefined) outerVars[rf.each] = st.vars[rf.each]; });
-      if (x.node.show_if !== undefined) out.push((x === e ? '' : 'its group ' + q(x.id) + ': ') + 'only if ' + sentence(x.node.show_if) + ': true' + testedValues(m, x.node.show_if, outerVars, scope));
-      if (x.rf && x.rf.where !== undefined) out.push('for each ' + x.rf.each + ' where ' + sentence(x.rf.where) + ': true for ' + q(idOf(own(st.vars, x.rf.each))) + testedValues(m, x.rf.where, st.vars, scope));
+      if (x.node.show_if !== undefined) out.push((x === e ? '' : 'its group ' + q(x.id) + ': ') + 'only if ' + sentence(x.node.show_if, m) + ': true' + testedValues(m, x.node.show_if, outerVars, scope));
+      if (x.rf && x.rf.where !== undefined) out.push('for each ' + x.rf.each + ' where ' + sentence(x.rf.where, m) + ': true for ' + q(idOf(own(st.vars, x.rf.each))) + testedValues(m, x.rf.where, st.vars, scope));
     });
     var from = prev ? m.entries.filter(function (x) { return x.node === prev.node; })[0] : null;
     if (from) {
       var jump = from.targets.filter(function (t) { return !t.def && t.res.kind === 'entry' && chain.indexOf(t.res.entry) !== -1; })[0];
-      if (jump && F.evalCondition(jump.when, scope, { facts: facts, vars: {} })) out.push('reached by the jump from ' + q(from.id) + ': ' + sentence(jump.when));
+      if (jump && F.evalCondition(jump.when, scope, { facts: facts, vars: {} })) out.push('reached by the jump from ' + q(from.id) + ': ' + sentence(jump.when, m));
     }
     return out;
   }
@@ -2323,13 +2404,13 @@
     function loopTitle(e) {
       var rf = e.rf, items = itemsOf(m, rf).map(idOf);
       return 'For each ' + rf.each + ' (' + items.length + (items.length ? ': ' + cut(items.join(', '), 60) : '') + ')' +
-        (rf.where !== undefined ? ' where ' + sentence(rf.where) : '');
+        (rf.where !== undefined ? ' where ' + sentence(rf.where, m) : '');
     }
     function arrowsOf(e, pad, from) {
       var hasJumps = e.targets.some(function (t) { return !t.def; });
       e.targets.forEach(function (t) {
         var to = dest(e, t);
-        if (!t.def) L.push(pad + from + ' -->|"' + mmText('if ' + sentence(t.when)) + '"| ' + to);
+        if (!t.def) L.push(pad + from + ' -->|"' + mmText('if ' + sentence(t.when, m)) + '"| ' + to);
         else L.push(pad + from + (hasJumps ? ' -->|otherwise| ' : ' --> ') + to);
       });
     }
@@ -2337,7 +2418,7 @@
       list.entries.forEach(function (e) {
         var n = e.node;
         if (n.show_if !== undefined) {
-          L.push(pad + nid(e) + '_if{"' + mmText('only if ' + sentence(n.show_if)) + '"}');
+          L.push(pad + nid(e) + '_if{"' + mmText('only if ' + sentence(n.show_if, m)) + '"}');
           L.push(pad + nid(e) + '_if -->|yes| ' + (e.group ? mmId('L_', e.id) + '_start' : nid(e)));
           var d = e.targets.filter(function (t) { return t.def; })[0];
           if (d) L.push(pad + nid(e) + '_if -.->|"no: skipped"| ' + dest(e, d));
@@ -2353,7 +2434,7 @@
           var hasJumps = e.targets.some(function (t) { return !t.def; });
           e.targets.forEach(function (t) {
             var to = dest(e, t);
-            var label = !t.def ? 'if ' + sentence(t.when) : (e.rf ? 'after the last ' + e.rf.each : (hasJumps ? 'otherwise' : ''));
+            var label = !t.def ? 'if ' + sentence(t.when, m) : (e.rf ? 'after the last ' + e.rf.each : (hasJumps ? 'otherwise' : ''));
             L.push(pad + mmId('L_', e.id) + '_pass ' + (label ? '-->|"' + mmText(label) + '"| ' : '--> ') + to);
           });
           return;
@@ -2451,11 +2532,11 @@
     m.entries.forEach(function (e) {
       var n = e.node, F = m.F;
       var shown = [];
-      if (n.show_if !== undefined) shown.push('only if ' + sentence(n.show_if));
-      if (e.rf) shown.push('for each ' + e.rf.each + ' (' + itemsOf(m, e.rf).length + ')' + (e.rf.where !== undefined ? ' where ' + sentence(e.rf.where) : ''));
+      if (n.show_if !== undefined) shown.push('only if ' + sentence(n.show_if, m));
+      if (e.rf) shown.push('for each ' + e.rf.each + ' (' + itemsOf(m, e.rf).length + ')' + (e.rf.where !== undefined ? ' where ' + sentence(e.rf.where, m) : ''));
       var then = e.targets.map(function (t) {
         var to = t.to === '@next_item' ? 'next ' + (e.parent && e.parent.rf ? e.parent.rf.each : 'pass') : String(t.to);
-        return (t.def ? (e.targets.length > 1 ? 'otherwise → ' : '') : 'if ' + sentence(t.when) + ' → ') + to;
+        return (t.def ? (e.targets.length > 1 ? 'otherwise → ' : '') : 'if ' + sentence(t.when, m) + ' → ') + to;
       }).join('; ');
       if (F.isEnd(n) && !then) then = 'the end: sends the answers';
       var stored = [];

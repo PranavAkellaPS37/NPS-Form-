@@ -25,7 +25,9 @@
        6. helps translators whenever texts are saved
           (PP_applyTranslationHelpers).
      The other files: Code.gs (menu, set-up, publishing, the public web
-     address), PanelServer.gs (what the control panel asks for), Panel.html (the
+     address; saving gives the Screens tab's "type" column its drop-down list
+     of kinds with Code.gs's own helpers, as set-up does), PanelServer.gs
+     (what the control panel asks for), Panel.html (the
      control panel's screens) and Flow.gs (the questionnaire's ROUTE: the same
      code partners' phones run, generated from web/js/flow.js,
      web/js/flow-panel.js and web/js/flow-check.js; this file calls it through
@@ -2005,10 +2007,17 @@ function PP_mdlSettingsMoved_(table, grid) {
 }
 
 /**
- * Tick boxes for on/off columns and a TRUE / FALSE list for "required". These
- * only make the tab easier to use (the values are already saved), so a
- * failure here is logged and never stops the save. Skipped when Google
- * Sheets is not available (local tests).
+ * Tick boxes for on/off columns, a TRUE / FALSE list for "required" and, in
+ * the Screens tab, the list of kinds of screen for "type": the same list Set
+ * up or repair gives that column (Code.gs PP_screenTypeNames_ and
+ * PP_listRule_), so a kind added since (multi_choice, 28 Oct 2026) is in it
+ * after the next save, without a repair. Like set-up, the list goes on every
+ * row below the heading, down to the tab's last row, not only on the rows
+ * written: a new screen is typed in the empty rows under them (review of
+ * 30 Oct 2026). These only make the tab easier to use (the values are
+ * already saved), so a failure here is logged and never stops the save.
+ * Skipped when Google Sheets is not available (local tests); the list of
+ * kinds also when Code.gs is not loaded (Model.gs's own tests).
  */
 function PP_mdlApplyChecks_(sheet, table, columnOf, count, settingsMoved) {
   if (!count || typeof SpreadsheetApp === 'undefined' || !SpreadsheetApp ||
@@ -2024,6 +2033,10 @@ function PP_mdlApplyChecks_(sheet, table, columnOf, count, settingsMoved) {
     if (PP_mdlHas_(columnOf, 'required')) {
       sheet.getRange(2, columnOf.required, count, 1).setDataValidation(PP_mdlListRule_(['TRUE', 'FALSE'],
         'TRUE = partners must answer. FALSE = they can skip. Empty = the usual for this kind of screen.'));
+    }
+    if (table.tab === 'Screens' && PP_mdlHas_(columnOf, 'type') && typeof PP_screenTypeNames_ === 'function') {
+      const below = Math.max(count, sheet.getMaxRows() - 1);   // rows 2 to the tab's last row
+      sheet.getRange(2, columnOf.type, below, 1).setDataValidation(PP_listRule_(PP_screenTypeNames_()));
     }
   } catch (err) {
     console.log('Partner Pulse: could not add tick boxes or lists to the ' + table.tab + ' tab: ' + err);

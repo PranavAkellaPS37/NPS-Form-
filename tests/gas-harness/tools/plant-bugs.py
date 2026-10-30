@@ -23,7 +23,7 @@ HOW TO RUN IT (Terminal, in the tests/gas-harness folder of the project)
   python3 tools/plant-bugs.py
 
   It takes about 30 seconds (no browser). The last line says how many
-  mistakes were caught (85 since 27 Oct 2026: 63 when the panel's route
+  mistakes were caught (89 since 30 Oct 2026: 63 when the panel's route
   checks became the one flow checker's, then 7 for config_version, the last
   column of the pings tab, then 8 for the reviewers' fixes: hidden and
   deleted endings, the codes lock per area and per question, Publish during
@@ -32,7 +32,12 @@ HOW TO RUN IT (Terminal, in the tests/gas-harness folder of the project)
   hash, its pinned version, its frame's sandbox, and no second library; then
   2 for review W8 of "Paste a route": Flow.gs's run-on note treated as a
   warning, and a live question's kind change not checked. The run-on
-  mistake itself moved to Flow.gs that day, where the rule now lives).
+  mistake itself moved to Flow.gs that day, where the rule now lives; then
+  3 for "pick several" on the Google side: a save that no longer gives the
+  Screens tab's type column today's list of kinds, and a list answer
+  refused or flattened into one text; then 1 for the review of 30 Oct: a
+  save that gives that list only to the rows it writes, not to the empty
+  rows below them as set-up does).
   Exit code 0 = every mistake was planted and caught and the baseline had no
   failure; 1 = anything else.
 
@@ -261,6 +266,20 @@ MUTANTS = [
    'Publish treats Flow.gs\'s run-on note (G5, marked "error") as a warning again, so the route is published'),
   ('live-kind-change-unchecked', 'Model.gs', "  PP_mdlCheckLiveKinds_(tidy, liveDoc, report);\n", "", 'G12',
    'a question partners answered can change its kind (voice/typing to faces) and Publish goes ahead'),
+  # ---- 30 Oct 2026: "pick several" (multi_choice, 28 Oct) on the Google side (scenarios B3 and D2) ----
+  ('type-list-not-reapplied', 'Model.gs',
+   "      sheet.getRange(2, columnOf.type, below, 1).setDataValidation(PP_listRule_(PP_screenTypeNames_()));\n", "", 'B3',
+   'a save no longer gives the Screens tab\'s type column today\'s list of kinds (a Sheet set up before 28 Oct marks a pick-several row as invalid)'),
+  ('type-list-only-written-rows', 'Model.gs', "const below = Math.max(count, sheet.getMaxRows() - 1);", "const below = count;", 'B3',
+   'a save gives today\'s list of kinds only to the rows it writes: the empty rows below keep an older Sheet\'s list (review of 30 Oct)'),
+  ('list-answer-refused', 'Code.gs',
+   "  if (Object.keys(message.answers).length > PP_SRV.MAX_ANSWER_KEYS) PP_refuse_('\"answers\" has too many entries.');",
+   "  if (Object.keys(message.answers).length > PP_SRV.MAX_ANSWER_KEYS) PP_refuse_('\"answers\" has too many entries.');\n" +
+   "  if (Object.keys(message.answers).some(key => Array.isArray(message.answers[key]))) PP_refuse_('\"answers\" must hold one value each.');",
+   'D2', 'a pick-several answer (a list of codes) is refused as bad_request'),
+  ('list-answer-flattened', 'Code.gs', "answers_json: JSON.stringify(answers),",
+   "answers_json: JSON.stringify(answers, (key, value) => (Array.isArray(value) ? value.join(', ') : value)),", 'D2',
+   'a pick-several answer is stored as one text ("load, payments") instead of the list'),
   # ---- 26 Oct 2026: Panel.html's one exception, the Map's drawing library (lib/static-checks.js mapException) ----
   ('map-without-sri', 'Panel.html',
    "'s.src = ' + scriptString(MERMAID_URL) + '; s.integrity = ' + scriptString(MERMAID_SRI) + '; s.crossOrigin = \"anonymous\";'",

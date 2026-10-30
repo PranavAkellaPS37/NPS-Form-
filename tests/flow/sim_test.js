@@ -23,6 +23,9 @@
      the old list it held until then is the frozen copy in
      tests/flow/legacy/variants/base.json.
      Also:
+       - simulate writes a rule on a pick-several answer the way the engine
+         tests it ("areas includes load"), in the skipped reasons and with
+         --explain (30 Oct 2026);
        - scripts/flow.py (the Python wrapper), including what it says when
          Node.js is missing;
        - the root package.json (npm run validate-flow, no packages);
@@ -225,6 +228,28 @@ try {
     has(r, '"kind": "submit"', 'submission');
     has(r, '"text": "no proof given"', 'typed detail sent');
     ok('simulate with --answers, a typed detail, facts, --explain and --submission (the whole message)');
+  }
+  {
+    // a rule on a pick-several answer in words (30 Oct 2026): "areas includes load", never "areas == load"
+    const s = JSON.parse(JSON.stringify(today));
+    const nodes = s.flow.nodes;
+    const at = nodes.findIndex((n) => n.id === 'nps');
+    const after = nodes[at].next;
+    nodes[at].next = 'areas';
+    nodes.splice(at + 1, 0,
+      { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'payments', 'app'], next: 'load_low' },
+      { id: 'load_low', type: 'single_choice', text: 'q.load_low', options: ['late', 'other'], next: after,
+        show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] } });
+    const file = path.join(TMP, 'pick-several.json');
+    fs.writeFileSync(file, JSON.stringify(s));
+    const r = run(['simulate', '--published', file, '--set', 'nps=4', '--set', 'areas=payments', '--explain']);
+    assert.strictEqual(r.code, 0, r.all);
+    has(r, 'load_low: only if nps <= 8 AND areas includes load: not true here (nps is 4, areas is ["payments"])', 'the skipped reason');
+    const r2 = run(['simulate', '--published', file, '--set', 'nps=4', '--set', 'areas=load', '--set', 'areas=app', '--set', 'load_low=late', '--explain']);
+    assert.strictEqual(r2.code, 0, r2.all);
+    has(r2, 'why: only if nps <= 8 AND areas includes load: true (nps is 4, areas is ["load","app"])', '--explain');
+    assert(!/areas ==/.test(r.all + r2.all), 'never "areas ==":\n' + r.all + r2.all);
+    ok('simulate on a pick-several question: "includes" in the skipped reasons and in --explain');
   }
   {
     const r = run(['simulate', '--set', 'nps']);

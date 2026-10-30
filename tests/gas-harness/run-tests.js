@@ -42,7 +42,7 @@
                   question's kind locked
        E1-E4      the real form in headless Chrome, end to end
        F          the control panel page in Chrome (smoke test)
-     tools/plant-bugs.py checks these tests themselves: it plants 85 known
+     tools/plant-bugs.py checks these tests themselves: it plants 88 known
      mistakes, one at a time, in copies of the code and expects each to be
      caught.
 

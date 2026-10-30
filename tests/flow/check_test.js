@@ -20,7 +20,15 @@
         checks on every node and answer of five questionnaires.
      3. The other tools on PP.flowCheck: the Mermaid map (its syntax is
         parsed here, line by line), docs/flow.md, simulate, paths, compare
-        and screens: their shape, and that they agree with the engine.
+        and screens: their shape, and that they agree with the engine. A
+        rule on a pick-several answer is written as the engine tests it
+        ("areas includes load", not "areas == load"; 30 Oct 2026) in the
+        map, docs/flow.md, the skipped reasons and --explain, and by
+        sentence(cond, survey) / sentenceFor(survey) for the control panel.
+        A template such as "{area}_why" is read by the screen that stores
+        that template (whatever its item is called: "{fn}_why" too), even
+        when an unrelated pick-one answer ("other_why") fits its pattern
+        (reviews of 30 Oct 2026).
      4. flow-check.js itself: ES5 only (acorn, when tests/node_modules has
         it), and web/index.html never loads it (phones get no extra bytes).
 
@@ -605,6 +613,148 @@ function parseMermaid(text) {
   const routes = C.paths(s).routes.map((r) => r.nodes.join(' '));
   assert.ok(routes.some((r) => / areas load_low /.test(' ' + r + ' ')) && routes.some((r) => / areas (?!load_low)/.test(' ' + r + ' ')), routes.join(' | '));
   ok('pick several: rules with =, !=, in and answered; <= and >= refused (R3); unknown codes refused; simulated as the list ticked');
+}
+
+// Pick several in words (30 Oct 2026): a rule on a pick-several answer is written the way the engine tests it
+// ("areas includes load", not "areas == load") by the map, docs/flow.md, simulate's skipped reasons and --explain;
+// a pick-one rule in the same questionnaire keeps "==". sentence(cond) without the questionnaire is unchanged.
+{
+  const s = {
+    survey_id: 'fake', config_version: 'fake-1', default_language: 'en', languages: [{ code: 'en' }],
+    functions: [{ id: 'load', issues: [] }, { id: 'app', issues: [] }],
+    flow: { format: 'pp-flow/1', start: 'nps', collections: { areas: { list: 'functions' } }, nodes: [
+      { id: 'nps', type: 'nps_0_10', text: 'q.nps', next: 'areas' },
+      { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'payments', 'app'], required: false,   // so "no tick" can happen
+        next: [{ when: { answer: 'areas', equals: 'app' }, goto: 'app_note' }, { default: 'load_low' }] },
+      { id: 'load_low', type: 'single_choice', text: 'q.load_low', options: ['late', 'other'],
+        show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] },
+        next: [{ when: { answer: 'load_low', equals: 'late' }, goto: 'late_note' }, { default: 'app_note' }] },
+      { id: 'late_note', type: 'free_text', text: 'q.late_note', next: 'app_note' },
+      { id: 'app_note', type: 'free_text', text: 'q.app_note', next: 'none_note',
+        show_if: { any: [{ answer: 'areas', in: ['app', 'payments'] }, { answer: 'areas', not_equals: 'load' }] } },
+      { id: 'none_note', type: 'info_card', text: 'q.none_note', show_if: { answer: 'areas', answered: false }, next: 'reasons' },
+      { id: 'reasons', type: 'multi_choice', text: 'q.reasons', store_as: 'reasons:{area}', options: ['slow', 'rude'],
+        repeat_for: { each: 'area', in: 'areas' }, next: 'why' },
+      { id: 'why', type: 'free_text', text: 'q.why', store_as: 'why:{area}', next: 'support_gate',
+        repeat_for: { each: 'area', in: 'areas', where: { answer: 'reasons:{area}', equals: 'slow' } } },
+      { id: 'support_gate', type: 'yes_no', text: 'q.support_gate', next: 'thanks' },
+      { id: 'thanks', type: 'thank_you' }] }
+  };
+  const nodeOf = (id) => s.flow.nodes.find((n) => n.id === id);
+  assert.deepStrictEqual(C.check(s, null).findings.filter((f) => f.level !== 'info').map((f) => f.code + ' ' + f.message), [], 'the small questionnaire is valid');
+  // the map: the diamonds, the jump labels and the loop title
+  const mm = C.toMermaid(s, null);
+  parseMermaid(mm);
+  ['only if nps #lt;= 8 AND areas includes load', '"if areas includes app"', 'only if areas includes one of [app, payments] OR areas does not include load',
+    'only if areas has no tick', 'where reasons:#123;area#125; includes slow', '"if load_low == late"'].forEach((t) => assert(mm.includes(t), 'the map says ' + t + ':\n' + mm));
+  assert(!/areas (==|!=|in|exists|not exists) |== load|area#125; ==/.test(mm), 'never "==", "!=", "in" or "exists" for the pick-several answers:\n' + mm);
+  // docs/flow.md's table of screens
+  const md = C.toMarkdown(s, null, { source: 'fake' });
+  ['| only if nps &lt;= 8 AND areas includes load |', 'if areas includes app → app_note', 'if load_low == late → late_note',
+    'for each area (2) where reasons:{area} includes slow'].forEach((t) => assert(md.includes(t), 'docs/flow.md says ' + t));
+  assert(!/areas ==|reasons:\{area\} ==/.test(md), 'docs/flow.md: no "==" for the pick-several answers');
+  // simulate: why a screen is skipped, and --explain (explain: true): why it is shown
+  const sim1 = C.simulate(s, { nps: 5, areas: ['load', 'app'] }, { lang: 'en' }, { explain: true });
+  const skip1 = Object.fromEntries(sim1.skipped.map((x) => [x.id, x.reason]));
+  assert.strictEqual(skip1.load_low, 'not on this route: after "areas" it went to "app_note" (jump: areas includes app)');
+  assert.strictEqual(skip1.none_note, 'only if areas has no tick: not true here (areas is ["load","app"])');
+  assert.deepStrictEqual(sim1.steps.find((x) => x.screen === 'app_note').why, [
+    'only if areas includes one of [app, payments] OR areas does not include load: true (areas is ["load","app"])',
+    'reached by the jump from "areas": areas includes app']);
+  const sim0 = C.simulate(s, { nps: 5 }, { lang: 'en' }, { explain: true });
+  assert.deepStrictEqual(sim0.steps.find((x) => x.screen === 'none_note').why, ['only if areas has no tick: true (areas is not answered on this route)']);
+  const sim2 = C.simulate(s, { nps: 5, areas: ['payments'] }, { lang: 'en' }, { explain: true });
+  assert.strictEqual(sim2.skipped.find((x) => x.id === 'load_low').reason,
+    'only if nps <= 8 AND areas includes load: not true here (nps is 5, areas is ["payments"])');
+  const sim3 = C.simulate(s, { nps: 5, areas: ['load'], load_low: 'late', 'reasons:load': ['slow'] }, { lang: 'en' }, { explain: true });
+  const why3 = Object.fromEntries(sim3.steps.map((x) => [x.screen, x.why]));
+  assert.deepStrictEqual(why3.load_low, ['only if nps <= 8 AND areas includes load: true (nps is 5, areas is ["load"])']);
+  assert.deepStrictEqual(why3.late_note, ['reached by the jump from "load_low": load_low == late'], 'a pick-one answer keeps "=="');
+  assert.deepStrictEqual(why3['why:load'], ['for each area where reasons:{area} includes slow: true for "load" (reasons:load is ["slow"])']);
+  assert.strictEqual(sim3.skipped.find((x) => x.id === 'why:app').reason,
+    'only for each area where reasons:{area} includes slow: not true for "app" (reasons:app is not answered on this route)');
+  // the API: sentence(cond) as before; sentence(cond, survey) and sentenceFor(survey) know the kinds
+  const rule = nodeOf('load_low').show_if;
+  assert.strictEqual(C.sentence(rule), 'nps <= 8 AND areas == load', 'without the questionnaire: exactly as before');
+  assert.deepStrictEqual([rule].map(C.sentence), ['nps <= 8 AND areas == load'], 'used with map(): the index is not a questionnaire');
+  assert.strictEqual(C.sentence(rule, s), 'nps <= 8 AND areas includes load');
+  const say = C.sentenceFor(s);
+  assert.strictEqual(say(rule), 'nps <= 8 AND areas includes load');
+  assert.strictEqual(say({ not: { answer: 'areas', answered: true } }), 'NOT (areas has at least one tick)');
+  assert.strictEqual(say({ answer: 'areas', in: ['load', { var: 'area' }] }), 'areas includes one of [load, area]');
+  assert.strictEqual(say({ answer: 'areas', at_least: 1 }), 'areas >= 1', 'a number test (refused by R3) keeps its symbol');
+  assert.strictEqual(say({ answer: 'reasons:{area}', not_equals: 'rude' }), 'reasons:{area} does not include rude', 'a template: through the keys it becomes');
+  assert.strictEqual(say({ answer: 'reasons:load', equals: 'rude' }), 'reasons:load includes rude');
+  ['nps', 'load_low', 'support_gate', 'why:load', 'nope'].forEach((key) => {
+    assert.strictEqual(say({ answer: key, equals: 'x' }), key + ' == x', key + ': not a pick-several answer');
+    assert.strictEqual(say({ answer: key, answered: true }), key + ' exists');
+  });
+  assert.strictEqual(say({ fact: 'lang', in: ['hi', 'ta'] }), 'language in [hi, ta]', 'a fact: unchanged');
+  assert.strictEqual(say({ fact: 'lang_in_url', equals: false }), 'the link has no ?lang=');
+  [null, 5, {}, { flow: 7 }, { flow: { format: 'pp-flow/9' } }].forEach((bad, i) => {
+    assert.strictEqual(C.sentence(rule, bad), 'nps <= 8 AND areas == load', 'a questionnaire that cannot be read (' + i + '): the plain words');
+    assert.strictEqual(C.sentenceFor(bad)(rule), 'nps <= 8 AND areas == load');
+  });
+  // a group whose way out jumps on a pick-several answer, and an AND inside an OR (the review of 30 Oct: these two
+  // places of the map were not tested)
+  const g2 = {
+    survey_id: 'fake2', config_version: 'fake-2', default_language: 'en', languages: [{ code: 'en' }],
+    functions: [{ id: 'load', issues: [] }, { id: 'app', issues: [] }],
+    flow: { format: 'pp-flow/1', start: 'nps', collections: { areas: { list: 'functions' } }, nodes: [
+      { id: 'nps', type: 'nps_0_10', text: 'q.nps', next: 'areas' },
+      { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'app'], required: true, next: 'per_area' },
+      { id: 'per_area', type: 'group', repeat_for: { each: 'area', in: 'areas' },
+        next: [{ when: { answer: 'areas', equals: 'app' }, goto: 'app_note' }, { default: 'mixed_note' }],
+        body: { start: 'reasons', nodes: [
+          { id: 'reasons', type: 'multi_choice', text: 'q.reasons', store_as: 'reasons:{area}', options: ['slow', 'rude'], next: '@next_item' }] } },
+      { id: 'app_note', type: 'free_text', text: 'q.app_note', next: 'mixed_note' },
+      { id: 'mixed_note', type: 'free_text', text: 'q.mixed_note', next: 'thanks',
+        show_if: { any: [{ answer: 'areas', equals: 'app' }, { all: [{ answer: 'nps', at_most: 6 }, { answer: 'areas', not_equals: 'load' }] }] } },
+      { id: 'thanks', type: 'thank_you' }] }
+  };
+  assert.deepStrictEqual(C.check(g2, null).findings.filter((f) => f.level === 'error').map((f) => f.code + ' ' + f.message), [], 'the second questionnaire is valid');
+  const mm2 = C.toMermaid(g2, null);
+  parseMermaid(mm2);
+  assert(mm2.includes('|"if areas includes app"|'), 'the jump out of a group says "includes":\n' + mm2);
+  assert(mm2.includes('nps #lt;= 6 AND areas does not include load'), 'an AND inside an OR says "does not include":\n' + mm2);
+  assert(!/areas (==|!=) /.test(mm2), 'never "==" or "!=" for the pick-several answer:\n' + mm2);
+  const nested = C.sentenceFor(g2)(g2.flow.nodes.find((n) => n.id === 'mixed_note').show_if);
+  assert(/areas includes app/.test(nested) && /nps <= 6 AND areas does not include load/.test(nested) && !/==|!=/.test(nested), nested);
+  // a template whose pattern also fits an unrelated answer (the review of 30 Oct 2026): "{area}_why" is the pick-several
+  // screen asked for each area, and "other_why" (it fits "{area}_why" too) a pick-one question. The screen that stores
+  // exactly "{area}_why" decides: "includes". Until then "other_why" made it "==".
+  const g3 = {
+    survey_id: 'fake3', config_version: 'fake-3', default_language: 'en', languages: [{ code: 'en' }],
+    functions: [{ id: 'load', issues: [] }, { id: 'app', issues: [] }],
+    flow: { format: 'pp-flow/1', start: 'nps', collections: { areas: { list: 'functions' } }, nodes: [
+      { id: 'nps', type: 'nps_0_10', text: 'q.nps', next: 'other_why' },
+      { id: 'other_why', type: 'single_choice', text: 'q.other_why', options: ['price', 'speed'], next: 'why' },
+      { id: 'why', type: 'multi_choice', text: 'q.why', store_as: '{area}_why', options: ['slow', 'rude'],
+        repeat_for: { each: 'area', in: 'areas' }, next: 'more' },
+      { id: 'more', type: 'free_text', text: 'q.more', store_as: 'more:{area}', next: 'thanks', show_if: { answer: 'other_why', equals: 'speed' },
+        repeat_for: { each: 'area', in: 'areas', where: { answer: '{area}_why', equals: 'slow' } } },
+      { id: 'thanks', type: 'thank_you' }] }
+  };
+  assert.deepStrictEqual(C.check(g3, null).findings.filter((f) => f.level === 'error').map((f) => f.code + ' ' + f.message), [], 'the third questionnaire is valid');
+  const say3 = C.sentenceFor(g3);
+  assert.strictEqual(say3({ answer: '{area}_why', equals: 'slow' }), '{area}_why includes slow', 'the screen that stores "{area}_why" decides, not "other_why"');
+  assert.strictEqual(say3({ answer: '{area}_why', answered: false }), '{area}_why has no tick');
+  assert.strictEqual(say3({ answer: 'load_why', not_equals: 'rude' }), 'load_why does not include rude', 'a key the template becomes');
+  assert.strictEqual(say3({ answer: 'other_why', equals: 'speed' }), 'other_why == speed', 'the pick-one answer keeps "=="');
+  assert.strictEqual(C.sentence({ answer: '{area}_why', in: ['slow', 'rude'] }, g3), '{area}_why includes one of [slow, rude]');
+  const mm3 = C.toMermaid(g3, null);
+  parseMermaid(mm3);
+  assert(mm3.includes('where #123;area#125;_why includes slow') && mm3.includes('only if other_why == speed') && !/_why ==/.test(mm3.replace('other_why ==', '')),
+    'the map: "includes" for the template, "==" for the pick-one answer:\n' + mm3);
+  // the same answer named with another item name ("{fn}_why", "{area.id}_why"): the engine fills it with the loop's
+  // item just the same, so it is still the pick-several screen's answer (second review of 30 Oct 2026)
+  assert.strictEqual(say3({ answer: '{fn}_why', equals: 'slow' }), '{fn}_why includes slow', 'another item name, same shape');
+  assert.strictEqual(say3({ answer: '{area.id}_why', equals: 'slow' }), '{area.id}_why includes slow', 'an item field, same shape');
+  assert.strictEqual(say3({ answer: '{fn}_note', equals: 'slow' }), '{fn}_note == slow', 'another shape: not a pick-several answer');
+  // the real questionnaire has no pick-several question: its map is word for word the same with or without the kinds
+  const plain = C.toMermaid(live, liveStrings).split('\n').filter((l) => /_if\{|-->\|"if /.test(l));
+  assert(plain.length && plain.every((l) => !/includes|tick/.test(l)), plain.join('\n'));
+  ok('pick several in words: the map, docs/flow.md, skipped reasons and --explain say "includes", "does not include", "includes one of", "has no tick"; pick one keeps "=="; sentence(cond) unchanged, sentence(cond, survey) and sentenceFor(survey) for the panel');
 }
 
 console.log(passed, 'tests passed');

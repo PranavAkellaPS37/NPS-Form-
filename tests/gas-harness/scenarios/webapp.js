@@ -9,7 +9,9 @@
        C   health, bootstrap (published / draft=1 / unknown round),
            whats_changed, the cache and its Drive fallback
        D1  pings (token, round status, rate limit)
-       D2  a full submission: every column of every data tab, the voice note
+       D2  a full submission: every column of every data tab, the voice note;
+           a pick-several answer (a list of codes, 28 Oct 2026) is accepted
+           and kept exactly in answers_json
        D3  duplicates, "seen before", already_submitted, round counts
        D4  refused submissions (bad token, draft / unknown round), late ones
        D5  malformed messages -> bad_request, nothing stored
@@ -202,7 +204,7 @@ module.exports = function register(add) {
     H.contractClean(s, h);
   });
 
-  add('D2', 'doPost submit: every column of responses, function_ratings, free_text, events; the voice note in Drive', async (s) => {
+  add('D2', 'doPost submit: every column of responses, function_ratings, free_text, events; the voice note in Drive; a pick-several answer (a list) kept exactly', async (s) => {
     const { h, bookId, tk, rows } = openRound(s);
     const body = K.makeSubmission({ dc: 'DC-DEMO-001', t: tk('DC-DEMO-001'), round: '2026-R1', submission_id: 'sub_harness_0001' });
     const res = K.webPost(h, body);
@@ -273,6 +275,19 @@ module.exports = function register(add) {
     s.ok(life('sub:sub_harness_0001') > 800 && life('sub:sub_harness_0001') <= 900, 'sub:<id> is kept for 15 minutes (900 s; contract sections 12 and 18)',
       K.show(life('sub:sub_harness_0001')));
     s.soft(life('round:2026-R1') !== null && life('round:2026-R1') <= 60, 'round:<id> is kept for at most 60 seconds (section 18)', K.show(life('round:2026-R1')));
+    // A "pick several" question (multi_choice, 28 Oct 2026) answers with the list of codes ticked: accepted as it
+    // is, and kept exactly in answers_json (Code.gs stores JSON.stringify(answers); the pipeline reads it back).
+    const pickBody = K.makeSubmission({ dc: 'DC-DEMO-002', t: tk('DC-DEMO-002'), round: '2026-R1', submission_id: 'sub_harness_pick', audioBytes: 0,
+      answers: { nps: 4, score_areas: ['load', 'payments'] } });
+    const pick = K.webJson(s, K.webPost(h, pickBody), 'submit with a pick-several answer');
+    s.ok(pick && pick.ok === true && pick.submission_id === 'sub_harness_pick' && pick.duplicate === false,
+      'a pick-several answer (a list of codes) is accepted', K.show(pick));
+    const pickRow = rows('responses').find((x) => x.submission_id === 'sub_harness_pick') || {};
+    s.eq(pickRow.answers_json, '{"nps":4,"score_areas":["load","payments"]}', 'responses.answers_json keeps the list exactly, in its order');
+    let pickAnswers = null;
+    try { pickAnswers = JSON.parse(pickRow.answers_json); } catch (e) { /* reported */ }
+    s.eq(pickAnswers, pickBody.answers, 'answers_json reads back as the answers sent, the list as a list');
+    s.eq([pickRow.nps, pickRow.support_contacted], [4, ''], 'the nps column still gets the score; support_contacted stays empty (no support_gate answer)');
     H.contractClean(s, h);
   });
 

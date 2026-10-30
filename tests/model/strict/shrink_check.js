@@ -6,20 +6,28 @@
      Model.gs inside the Google imitation (tests/gas-harness), where a Range
      has no clearContents() - exactly like real Google. That is the save which
      crashed before the 20 Oct fix (Range.clearContents -> clearContent). Then
-     it reads the tabs back and compares them with what was saved.
+     it reads the tabs back and compares them with what was saved. Since
+     30 Oct 2026 Code.gs is loaded too, as on Google, because a save gives
+     the Screens tab's "type" column Code.gs's drop-down list of kinds: that
+     list must be on every row below the heading after the shrinking save,
+     the emptied ones and the never-used ones too, as Set up or repair gives
+     it (review of 30 Oct 2026).
 
    HOW TO RUN IT (Terminal, in the project folder)
      node tests/model/strict/shrink_check.js                 (the project's Model.gs)
      node tests/model/strict/shrink_check.js <Model.gs path> (another copy)
      Expected: both saves "ok", "read back equals the saved model: true",
-     exit code 0. Exit code 1 means the shrinking save failed.
+     "the type column has the list of kinds: true", exit code 0. Exit code 1
+     means the shrinking save failed, or left the type column without its
+     list of kinds.
 
    WHAT IT READS / WRITES
      Reads apps-script/Model.gs (or the given copy), apps-script/Flow.gs (the
      route code Model.gs uses since 23 Oct 2026; needed once the repo's
-     survey.json holds the route as a graph), ZZ_check.gs next to this file,
-     and web/config + web/i18n. Writes a temporary run-* folder here and
-     deletes it at the end.
+     survey.json holds the route as a graph), apps-script/Code.gs (its list
+     of kinds for the type column), ZZ_check.gs next to this file, and
+     web/config + web/i18n. Writes a temporary run-* folder here and deletes
+     it at the end.
    ============================================================================= */
 'use strict';
 const fs = require('fs');
@@ -30,9 +38,11 @@ const REPO = path.resolve(__dirname, '..', '..', '..');            // the projec
 const { loadGas } = require(path.join(HARNESS, 'load-gas.js'));
 const modelFile = process.argv[2] || path.join(REPO, 'apps-script', 'Model.gs');
 const flowFile = path.join(REPO, 'apps-script', 'Flow.gs');
+const codeFile = path.join(REPO, 'apps-script', 'Code.gs');   // saving uses its PP_listRule_ and PP_screenTypeNames_
 const dir = fs.mkdtempSync(path.join(__dirname, 'run-'));
 fs.copyFileSync(modelFile, path.join(dir, 'Model.gs'));
 fs.copyFileSync(flowFile, path.join(dir, 'Flow.gs'));
+fs.copyFileSync(codeFile, path.join(dir, 'Code.gs'));
 fs.copyFileSync(path.join(__dirname, 'ZZ_check.gs'), path.join(dir, 'ZZ_check.gs'));
 // The models are built with the same Model.gs (and Flow.gs) in a plain Node space.
 const ctx = vm.createContext({ console });
@@ -70,5 +80,15 @@ const expected = JSON.parse(JSON.stringify(ctx.PP_normalizeModel(small)));
 delete expected.config_version;
 const same = back.ok && JSON.stringify(back.value) === JSON.stringify(expected);
 console.log('read back equals the saved model:', same);
+// Every row below the heading of the Screens tab (rows 2 to the tab's last row: the screens left, the rows the
+// shrinking save emptied and the rows never used) has the drop-down list of every kind, multi_choice included.
+const kinds = ctx.PP_SCREEN_TYPES.map(entry => entry.type);
+const screensTab = h.admin.findSheet(null, 'Screens');
+const typeCol = h.admin.table(null, 'Screens').headers.indexOf('type') + 1;
+const typeRules = [];
+for (let r = 2; r <= screensTab.maxRows; r += 1) typeRules.push(screensTab.rules.get(r + ':' + typeCol));
+const typeListed = kinds.indexOf('multi_choice') !== -1 && typeCol > 0 && typeRules.length === screensTab.maxRows - 1 &&
+  typeRules.length > small.screens.length && typeRules.every(rule => rule && rule.type === 'list' && JSON.stringify(rule.list) === JSON.stringify(kinds));
+console.log('the type column has the list of kinds:', typeListed, '(rows 2 to ' + screensTab.maxRows + ')');
 fs.rmSync(dir, { recursive: true, force: true });
-process.exit(w2.ok && same ? 0 : 1);
+process.exit(w2.ok && same && typeListed ? 0 : 1);

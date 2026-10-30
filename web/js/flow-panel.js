@@ -1023,7 +1023,19 @@
          quotes" (toTable quotes words with ";"); list marks, backticks and
          ** are removed; a shown "pick one" or "pick several" needs 2
          answers at least. "multiple choice" as a kind is a problem: it can
-         mean either (28 Oct 2026).
+         mean either (28 Oct 2026); so are "multi choice", "Multi-choice",
+         "multichoice" and "MCQ" (30 Oct 2026). Only the code multi_choice
+         itself is read as "pick several", also inside backticks, asterisks
+         or quotes, or next to an invisible character (review of 30 Oct).
+       - A row whose kind can't be read is left out with one problem, at its
+         kind; rules that test its answers are not told again that no row
+         answers them (review of 30 Oct 2026).
+       - "always" in "show only if" on the language row shows the language
+         buttons even when the link already says the language; on the "what
+         changed" row it shows the card even when the round has nothing new
+         (its title only). "always show", "show always", "everyone" and "all
+         partners" do the same (ALWAYS_RE). An empty cell or "-" keeps those
+         standard skips.
        - Only the first "thank you" row is the main thank-you screen (its
          words are thanks.title / .body); a later one with words is read as
          an ending. Endings go below it and have no "show only if".
@@ -1238,13 +1250,20 @@
     return found || w;
   }
 
-  /* parseRule(text, opts) -> { rule } (null for an empty cell or "always") or
-     { problem: plain English }. opts.languages: the language codes, so
-     "language = Hindi" can become "hi". */
+  /* The words in "show only if" that mean "every partner sees this row":
+     no rule, and on the language and "what changed" rows they also switch
+     off the usual skip (fromTable). One list for both (review of 30 Oct
+     2026: "all partners" was no rule but kept the skip). "-" and an empty
+     cell are an empty cell: no rule, and those two rows keep their skip. */
+  var ALWAYS_RE = /^(always|always\s+show|show\s+always|everyone|all\s+partners)$/i;
+
+  /* parseRule(text, opts) -> { rule } (null for an empty cell, "-" or one of
+     the words above) or { problem: plain English }. opts.languages: the
+     language codes, so "language = Hindi" can become "hi". */
   panel.parseRule = function (text, opts) {
     var s = trim(text);
     var langs = isObj(opts) ? arr(opts.languages) : [];
-    if (!s || /^(always|everyone|all partners|always show|show always|-)$/i.test(s)) return { rule: null };
+    if (!s || s === '-' || ALWAYS_RE.test(s)) return { rule: null };
     if (s.charAt(0) === '{') {
       var json;
       try { json = JSON.parse(s); } catch (e) { return { problem: 'it starts like a rule written in JSON, but it cannot be read as JSON.' }; }
@@ -1883,7 +1902,7 @@
     { name: 'faces', type: 'rating_1_5', also: ['faces 1 5', 'faces 1 to 5', 'faces question', '1 5', '1 to 5', 'rating 1 5', 'rating_1_5', 'rating', 'smileys', 'smiley'] },
     { name: 'yes/no', type: 'yes_no', also: ['yes or no', 'yes_no', 'yes no question', 'yesno'] },
     { name: 'pick one', type: 'single_choice', also: ['pick one answer', 'single choice', 'single_choice', 'choice', 'choose one', 'select one', 'one answer'] },
-    { name: 'pick several', type: 'multi_choice', also: ['pick several answers', 'multi choice', 'multi_choice', 'multiple answers',
+    { name: 'pick several', type: 'multi_choice', also: ['pick several answers', 'multi_choice', 'multiple answers',
       'multi select', 'multiselect', 'multi-select', 'select several', 'choose several', 'pick many', 'select all that apply',
       'pick all that apply', 'tick all that apply', 'checkboxes', 'checkbox', 'tick several'] },
     { name: 'voice/typing', type: 'free_text', also: ['voice or typing', 'voice note or typing', 'free text', 'free_text', 'text', 'open text', 'voice', 'typing', 'voice note', 'open question'] },
@@ -1912,9 +1931,27 @@
     });
     return found;
   }
+  /* "Multiple choice" as a kind can mean two things: some people mean pick
+     one, others pick several (28 Oct 2026). "Multi choice", "Multi-choice",
+     "multichoice" and "MCQ" too (30 Oct 2026): the table asks which one is
+     meant. Only the code multi_choice itself, written exactly so (any
+     capitals, spaces around it), is pick several. The cell is tested as a
+     code first, because words("multi_choice") is "multi choice" too. */
+  var AMBIGUOUS_KIND_RE = /^(multiple choice|multiple choices|multiple choice question|multi choice|multichoice|multi choice question|mcq|mcqs|mcq question)$/;
+  function ambiguousKind(text) {
+    return AMBIGUOUS_KIND_RE.test(words(text)) && bareCode(text) !== 'multi_choice';
+  }
+  /* A cell read as a code, without what a chat or a web page may add around
+     one (review of 30 Oct 2026): invisible characters (zero-width spaces
+     and joiners, a byte-order mark) anywhere, and the backticks, asterisks
+     and quotes around it. "`multi_choice`" -> "multi_choice". */
+  function bareCode(text) {
+    return str(text).replace(/[\u200b-\u200d\ufeff]/g, '')
+      .replace(/^[\s`*"'\u2018\u2019\u201c\u201d]+|[\s`*"'\u2018\u2019\u201c\u201d]+$/g, '').toLowerCase();
+  }
   function kindByWord(text) {
     var w = words(text);
-    if (!w) return null;
+    if (!w || ambiguousKind(text)) return null;
     for (var i = 0; i < KINDS.length; i++) {
       var k = KINDS[i];
       if (words(k.name) === w || k.also.some(function (a) { return words(a) === w; })) return k;
@@ -2301,7 +2338,8 @@
     /* Words under the table (an AI's "Let me know..."): lines after the last
        real row whose kind is not a kind and whose code is not a code. */
     function looksLikeRow(rec) {
-      return Boolean(kindByWord(cell(rec, 'kind'))) || CODE_RE.test(cell(rec, 'code').toLowerCase());
+      var kindWords = cell(rec, 'kind');
+      return Boolean(kindByWord(kindWords)) || ambiguousKind(kindWords) || CODE_RE.test(cell(rec, 'code').toLowerCase());
     }
     /* Tab- or comma-separated text has no end mark: a header row again inside it starts a second table (the same
        columns: its rows are read too; others: a problem, and its rows are left out until an empty line). */
@@ -2360,14 +2398,19 @@
         KINDS.forEach(function (x) { if (!k && x.code && x.code === low && !x.ending) k = x; });
         if (k) warn(rec.num, 'kind', low, 'the kind is empty, so the row is read as "' + k.name + '" (its code says so).');
         else problem(rec.num, 'kind', codeCell || null, 'the kind is empty. Write one of: ' + kindNames().join(', ') + '.');
-      } else if (!k && /^(multiple choice|multiple choice question|multi choice question|mcq)$/.test(words(kindCell))) {
+      } else if (!k && ambiguousKind(kindCell)) {
         problem(rec.num, 'kind', codeCell || null, '"' + kindCell + '" can mean two things: write "pick one" when partners choose ' +
           'one answer, or "pick several" when they may tick more than one.');
       } else if (!k) {
         var all = [];
         var nameOfWord = {};
         KINDS.forEach(function (x) {
-          [x.name].concat(x.also).forEach(function (a) { var w = words(a); all.push(w); if (!has(nameOfWord, w)) nameOfWord[w] = x.name; });
+          [x.name].concat(x.also).forEach(function (a) {
+            var w = words(a);
+            if (AMBIGUOUS_KIND_RE.test(w)) return;   // "multi_choice" is "multi choice": never offer a guess for one of those
+            all.push(w);
+            if (!has(nameOfWord, w)) nameOfWord[w] = x.name;
+          });
         });
         var sug = closest(words(kindCell), all);
         problem(rec.num, 'kind', codeCell || null, '"' + kindCell + '" is not a kind the panel knows.' +
@@ -2540,7 +2583,7 @@
       }
       if (has(col, 'show_if')) {
         var ruleCell = cell(rec, 'show_if');
-        var always = /^(always|always show|show always|everyone)$/i.test(ruleCell);
+        var always = ALWAYS_RE.test(ruleCell);
         if (has(SKIP_OF, type)) row.skip_if = always ? '' : SKIP_OF[type];
         var pr = placeholderIn(ruleCell) ? { problem: placeholderIn(ruleCell) } : panel.parseRule(always ? '' : ruleCell, { languages: langs });
         if (pr.problem) {
@@ -2805,6 +2848,19 @@
         else add(r.id);
       }
     });
+    /* A row whose kind could not be read (empty, ambiguous or unknown) is left out, and the problem at its kind
+       already says why (step 2). So a rule that tests one of its answers is not told again that no row answers it
+       (review of 30 Oct 2026). Its answers: its code, "<code>:<area>" when asked for each area, and, for the code
+       of a built-in row, that row's answers (fn_rating:<area>, fn_deep_dive:<area>, support:<code>,
+       support_comment). */
+    var unreadKind = {};
+    entries.forEach(function (x) { if (!x.kind && x.code) unreadKind['#' + x.code] = true; });
+    var BUILT_IN_OWNER = { fn_rating: 'fn_ratings', fn_deep_dive: 'fn_deep_dives', support_comment: 'support' };
+    function answerOfUnreadRow(key) {
+      var base = str(key).split(':')[0];
+      return has(unreadKind, '#' + key) || has(unreadKind, '#' + base) ||
+        (has(BUILT_IN_OWNER, base) && has(unreadKind, '#' + BUILT_IN_OWNER[base]));
+    }
     var example = areas[0] || 'payments';
     function unknownAnswer(key) {
       var head = '"' + key + '" is not an answer of any row in this table.';
@@ -2847,7 +2903,7 @@
       var say = r.active === false ? warn : problem;
       testsOf(rule).forEach(function (c) {
         if (typeof c.answer === 'string') {
-          if (!has(keys, '#' + c.answer)) say(nums[i], column, r.id, unknownAnswer(c.answer));
+          if (!has(keys, '#' + c.answer) && !answerOfUnreadRow(c.answer)) say(nums[i], column, r.id, unknownAnswer(c.answer));
         } else if (c.fact === 'lang') {
           var vals = has(c, 'in') ? arr(c['in']) : [has(c, 'equals') ? c.equals : c.not_equals];
           vals.forEach(function (v) {
@@ -3204,7 +3260,8 @@
      "copy only the Hindi I give you, never translate", "output only one
      table, then a 'Left out:' line", "leave empty cells empty", "exactly one
      thank-you row; every route below it ends", "answers with ';' in double
-     quotes", a short example and today's route (opts.rows, else the
+     quotes", what "always" does on the language and what-changed rows (30
+     Oct 2026), a short example and today's route (opts.rows, else the
      survey's). opts.rounds: the round ids (the example rule uses the first).
      =========================================================================== */
   panel.EXAMPLE_TABLE = [
@@ -3280,7 +3337,8 @@
     if (hi) L.push('- answers (Hindi): the same answers in Hindi, only if I gave the Hindi (for example: phone: <my Hindi>; app: <my Hindi>).');
     L.push('- message (English)' + (hi ? ', message (Hindi)' : '') + ': the longer text of an "info card" or an "ending".');
     L.push('- required: yes (partners must answer) or no (they may skip); empty = the usual for that kind.');
-    L.push('- show only if: a rule (see THE RULES): the row is shown only when it is true. Empty = everyone sees it.');
+    L.push('- show only if: a rule (see THE RULES): the row is shown only when it is true. Empty = everyone sees it, except ' +
+      'that the language and what changed rows keep their usual skip (see THE KINDS).');
     L.push('- then go to: the code of the row to go to after this one: a later row, or an ending. Empty = the next row.');
     L.push('- jumps: exceptions, checked first, in order: if <rule> go to <code>. Separate several with ; (for example: if ' +
       'nps >= 9 go to support_gate; if nps <= 3 go to why_low). They may go to a later row or to an ending.');
@@ -3294,8 +3352,11 @@
     L.push('THE KINDS');
     L.push('Built in (at most one of each; keep these codes):');
     L.push('- language (code language): the language buttons; when there is one, it is the first row. Skipped when the ' +
-      'link already says the language.');
-    L.push('- what changed (code whats_changed): a card about what Valmo changed since the last round. Skipped when there is nothing new.');
+      'link already says the language. Write always in its "show only if" to show the buttons even then; left empty, it ' +
+      'keeps that skip.');
+    L.push('- what changed (code whats_changed): a card about what Valmo changed since the last round. Skipped when there is ' +
+      'nothing new. Write always in its "show only if" to show the card even then (partners see only its title); left ' +
+      'empty, it keeps that skip.');
     L.push('- nps (code nps): the headline question from 0 to 10 ("How likely are you to recommend Valmo to another DC owner?").');
     L.push('- area ratings (code fn_ratings): one screen of five faces for each area (the areas are listed below).');
     L.push('- problem screens (code fn_deep_dives): "What is the main problem?" for each area rated low, with that area\'s ' +
@@ -3311,8 +3372,8 @@
     L.push('- faces: five faces, from 1 (very bad) to 5 (very good).');
     L.push('- yes/no: two buttons, Yes and No.');
     L.push('- pick one: a list of answers; the partner taps one (fill "answers").');
-    L.push('- pick several: a list of answers; the partner ticks one or more (fill "answers"). Never write "multiple choice": ' +
-      'write "pick one" or "pick several".');
+    L.push('- pick several: a list of answers; the partner ticks one or more (fill "answers"). Never write "multiple choice", ' +
+      '"multi choice" or "MCQ": write "pick one" or "pick several".');
     L.push('- voice/typing: the partner records a voice note or types an answer.');
     L.push('- info card: a title (question column) and an optional message, with nothing to answer.');
     var added = kindNames().filter(function (n) { var k = kindByWord(n); return k && k.added; });

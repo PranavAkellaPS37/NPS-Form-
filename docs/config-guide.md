@@ -387,6 +387,8 @@ If a phone cannot record, or the partner blocks the microphone, the form quietly
 
 The settings check (`scripts/check_config.py`) refuses a value that is neither empty nor a full `https://` link. A questionnaire published before 28 Oct 2026 has no help texts: the form then shows no button, never a text's name.
 
+**The video plays inside the form, and YouTube never sees the partner's link** (since 30 Oct 2026). On GitHub Pages, YouTube receives only the site's address, `https://pranavakellaps37.github.io/`, never the rest of the page's address with the link's `dc` and token: the form's page sends its address to no other site, and only the video's frame sends the site's address, because YouTube refuses to play without one ("Error 153"). In Meesho-only mode, where Google serves the page, this is untested **[UNCONFIRMED]**: whether the video plays there, and which address YouTube gets ([control-panel-design.md, section 19](control-panel-design.md#19-security)).
+
 ### flow: the screens, in order
 
 `flow` is the **route** through the questionnaire: every screen, and which one comes after which. Since 26 Oct 2026 it is written as a small map (a "graph", format `pp-flow/1`): each screen says where to go next. So a question can send some partners elsewhere (a **jump**), a screen can be asked once for each area (a **loop**), and there can be several thank-you screens (**endings**).
@@ -1269,11 +1271,11 @@ Keep the quotes. Then run `check_config.py`.
 ## How to add a question type (for a developer)
 
 > [!NOTE]
-> This section needs code. Everything above changes the survey with settings only; a **new kind of question** (a new `type`, for example ten stars, a slider or a pick-several list) also needs a small JavaScript file. Hand it to a developer.
+> This section needs code. Everything above changes the survey with settings only; a **new kind of question** (a new `type`, for example ten stars or a slider; pick several is built in since 28 Oct 2026) also needs a small JavaScript file. Hand it to a developer.
 
 **First, check you need one.** The 13 kinds the form already knows cover most questions: `nps_0_10`, `rating_1_5` (faces), `yes_no`, `single_choice`, `multi_choice` (pick several, since 28 Oct 2026), `free_text` (voice or typing) and `info_card`, plus the built-in ones (language buttons, "What changed", area ratings, problem screens, support ratings, thank-you). A new wording, a new answer option or a new rule is a setting, not a new kind.
 
-**What a kind is.** Every kind is described **once**, with `PP.types.register({...})`, and everything else reads that description: the phones, the flow checker (`python3 scripts/flow.py check`), `python3 scripts/check_config.py`, GitHub's deployment check and the control panel. The 12 built-in kinds are described in `web/js/flow.js` and drawn in `web/js/types.js`. A new kind is:
+**What a kind is.** Every kind is described **once**, with `PP.types.register({...})`, and everything else reads that description: the phones, the flow checker (`python3 scripts/flow.py check`), `python3 scripts/check_config.py`, GitHub's deployment check and the control panel. The 13 built-in kinds are described in `web/js/flow.js` and drawn in `web/js/types.js`. A new kind is:
 
 1. **one file**, `web/js/types/<code>.js`, holding its whole description, drawing included;
 2. **one line** in `web/index.html`;
@@ -1291,7 +1293,7 @@ Name the file after the kind's code: `web/js/types/stars_1_10.js` for the type `
 | `type` | The code, written in the flow as `"type"`. Lowercase letters, digits and `_`, starting with a letter. **Permanent** once partners have answered a screen of this kind. | `"stars_1_10"` |
 | `label`, `description` | Its name, and one plain sentence about it. The map, the checks' messages and the control panel use them. | `"Stars (1 to 10)"` |
 | `fields` | The settings a screen of this kind may have, each `{ kind, required, default, values }`. Kinds: `text_key` (the name of a text in `strings.json`), `bool` (true or false, with its `default`), `choice` (one of `values`), `number`, `answer_key` (another screen's answer code), `options`, `rows`, `comment`. With `required: true` the checker refuses a screen without it. Every node may also have `id`, `type`, `store_as`, `show_if`, `repeat_for`, `next`, `required`, `text`, `help` and `label`. | `text` (required), `low_label`, `required` (default true) |
-| `answer` | What a rule (`show_if`, a jump) can test about its answer, or `null` when there is nothing to answer. `kind`: `number` (with `min` and `max`), `choice` (with `values`, or `values_from: "options"`), or `text` (typed or spoken: only `answered` can test it). `what`: how messages name it. `required_by`: the true/false setting that makes an answer required (default `"required"`; `null` = always required). `na_by`: the setting that allows `"na"`. | `{ "kind": "number", "min": 1, "max": 10, "what": "the star rating" }` |
+| `answer` | What a rule (`show_if`, a jump) can test about its answer, or `null` when there is nothing to answer. `kind`: `number` (with `min` and `max`), `choice` (one code, with `values`, or `values_from: "options"`), `choices` (pick several: the list of codes ticked, with `values` or `values_from: "options"`; a rule's `=` is true when that code is one of those ticked; since 28 Oct 2026), or `text` (typed or spoken: only `answered` can test it). `what`: how messages name it. `required_by`: the true/false setting that makes an answer required (default `"required"`; `null` = always required). `na_by`: the setting that allows `"na"`. | `{ "kind": "number", "min": 1, "max": 10, "what": "the star rating" }` |
 | `records` | What one screen adds to the data sent at the end: `answers` (the answer, under the screen's code), `ratings` (one ratings row with the answer as its rating: **only for an answer that is a number from 1 to 5**, because the ratings in the data are 1 to 5 and the dashboard averages them with the area and support ratings; `node scripts/flow.js types` refuses anything else), `free_text` (the typed text or voice note). These are also the limits the checker adds up (the server accepts 100, 64 and 64). | `{ "answers": 1 }`: a 1 to 10 answer is sent as an answer only, like the 0–10 question |
 | `flags` | `auto`: one tap answers it, so the form moves on by itself. `end`: an ending, which sends the answers. (`first`, `once` and `early` belong to the language buttons and the "What changed" card.) | `{ "auto": true }` |
 | `texts` | The text keys it shows when a screen sets none (templates such as `fn.{area}.name` are filled in). The checker then makes sure they exist in every language. | none |
@@ -1332,7 +1334,7 @@ node scripts/flow.js types --write
 
 What it does: runs the form's type files (without a page), checks each description, and writes the catalogue `web/config/types.json`. It also refreshes the GENERATED part of `apps-script/Model.gs`: the control panel's list of kinds (`PP_SCREEN_TYPES`) and the whole description of each added kind (`PP_ADDED_TYPES_`), from which Publish's checks and the panel learn it.
 
-**You should see** `Wrote: web/config/types.json (13 kinds of screen: 12 built in, 1 added (stars_1_10)).` and `Wrote: apps-script/Model.gs (its list of kinds, PP_SCREEN_TYPES). Paste Model.gs into the Apps Script project.` If it lists mistakes instead, nothing was written: fix them and run it again. `node scripts/flow.js types --check` only checks; `python3 scripts/check_config.py` runs it too, and stops a GitHub deployment while `web/config/types.json` is out of date.
+**You should see** `Wrote: web/config/types.json (14 kinds of screen: 13 built in, 1 added (stars_1_10)).` and `Wrote: apps-script/Model.gs (its list of kinds, PP_SCREEN_TYPES). Paste Model.gs into the Apps Script project.` If it lists mistakes instead, nothing was written: fix them and run it again. `node scripts/flow.js types --check` only checks; `python3 scripts/check_config.py` runs it too, and stops a GitHub deployment while `web/config/types.json` is out of date.
 
 ### Step 5: use it, and test it
 
@@ -1341,12 +1343,12 @@ What it does: runs the form's type files (without a page), checks each descripti
 - **See it:** `python3 scripts/mock_server.py`, then open a printed link and go through the survey on a phone-sized window.
 - **Tests:** `node tests/flow/types_test.js` and `node tests/e2e/e2e.js`. A new kind should get its own test: copy what `types_test.js` does with `stars_1_10.js`.
 - **ES5:** `node scripts/flow.js es5` should end with `All ES5`, counting one file more than before.
-- **The control panel:** after the change is on GitHub, paste the new `apps-script/Model.gs` into the Apps Script project and deploy a new version ([setup guide, Update the code later](../apps-script/README.md#update-the-code-later-same-address)). `Flow.gs` does not change: it holds only the built-in kinds. The new kind then appears in **Questions > Add a question**, and Publish's checks, the rule and jump builders, the Map and **Try a path** all know it. With `"repeatable": true` it can be asked for each area.
+- **The control panel:** after the change is on GitHub, paste the new `apps-script/Model.gs` into the Apps Script project and deploy a new version ([setup guide, Update the code later](../apps-script/README.md#update-the-code-later-same-address)). `Flow.gs` does not change: it holds only the built-in kinds. The route table of **Questions > Paste a route** then takes it in its **kind** column (its code or its `label`), and Publish's checks, the Map and **Try a path** all know it. With `"repeatable": true` it can be asked for each area (the table's **ask for** column).
 
 > [!NOTE]
 > The command line and the control panel know a new kind from its description (`web/config/types.json`, and `PP_ADDED_TYPES_` in Model.gs), so they use the **standard** rules for it. A kind with its own `isComplete` or `collect` behaves exactly like that only on phones; `simulate` and **Try a path** show the standard data for it.
 
-**What still needs more than this.** Some changes are bigger than a new kind: new data columns in the Google Sheet, a new kind of rule test (for example "contains", for a pick-several question), facts from the DC list (region, state), or repeating a question over a list that is not in `survey.json`. Those need changes to the form's engine and to Apps Script.
+**What still needs more than this.** Some changes are bigger than a new kind: new data columns in the Google Sheet, a new kind of rule test (for example "how many were ticked", for a pick-several question: today a rule asks only whether given answers were ticked, or whether anything was), facts from the DC list (region, state), or repeating a question over a list that is not in `survey.json`. Those need changes to the form's engine and to Apps Script.
 
 ---
 

@@ -798,7 +798,8 @@ details.group > .group-body { padding: 0 16px 14px; }
     section: 'home',
     revision: null,            // draft revision the panel's copy is based on
     model: null,               // the whole questionnaire (design doc section 4)
-    catalog: { settings_schema: [], screen_types: [], form_text_keys: [] },
+    catalog: { settings_schema: [], screen_types: [], form_text_keys: [], newer_texts: {} },
+    newerTextsToast: null,     // closes the message "... new texts of the form were added" (addNewerTexts)
     live: null,                // { version, config_version, published_at, published_by, note } or null
     liveIds: { screens: [], areas: [], chips: {}, support: [], options: {}, kinds: {} },
     codesLocked: true,         // false until the first real round opens: then nothing is locked yet
@@ -1472,12 +1473,14 @@ details.group > .group-body { padding: 0 16px 14px; }
   }
 
   /* Adds a text, placed after the last text with the same beginning, so the
-     Texts tab in the Sheet stays tidy. */
-  function addTextKey(key, values, nearPrefix) {
-    var texts = M().texts;
+     Texts tab in the Sheet stays tidy. model (optional) is another model
+     than the draft: a recovery copy (offerRecovery). */
+  function addTextKey(key, values, nearPrefix, model) {
+    var m = model || M();
+    var texts = m.texts;
     if (texts[key]) { Object.assign(texts[key], values || {}); return; }
     var row = {};
-    M().languages.forEach(function (l) { row[l.code] = ''; });
+    m.languages.forEach(function (l) { row[l.code] = ''; });
     Object.assign(row, values || {});
     var keys = Object.keys(texts);
     var after = -1;
@@ -1488,33 +1491,45 @@ details.group > .group-body { padding: 0 16px 14px; }
     } else {
       var rebuilt = {};
       keys.forEach(function (k, i) { rebuilt[k] = texts[k]; if (i === after) rebuilt[key] = row; });
-      M().texts = rebuilt;
+      m.texts = rebuilt;
     }
-    if (M().text_notes[key] === undefined) M().text_notes[key] = '';
+    if (m.text_notes[key] === undefined) m.text_notes[key] = '';
   }
 
   /* The form's texts added after its first release (28 Oct 2026: the
-     pick-several hint, the help videos), as the server sends them (Model.gs
-     PP_MDL_NEWER_FORM_TEXTS_: English and Hindi): a Sheet made before has
-     none, so they are added here, the other languages waiting for a
-     translator, and saved with the next Save (Publish saves first). Until
-     then the form leaves out what needs them. */
-  function addNewerTexts(newer) {
-    var added = [];
-    Object.keys(newer).forEach(function (key) {
-      var v = obj(newer[key]);
-      if (M().texts[key] || !str(v.en)) return;
-      var values = { en: str(v.en) };
-      if (str(v.hi) && M().languages.some(function (l) { return l.code === 'hi'; })) values.hi = str(v.hi);
-      addTextKey(key, values);
-      added.push(key);
-    });
+     pick-several hint, the help videos), as the server sends them
+     (S.catalog.newer_texts, from Model.gs PP_MDL_NEWER_FORM_TEXTS_: English
+     and Hindi): a Sheet made before has none, so they are added here, the
+     other languages waiting for a translator, and saved with the next Save
+     (Publish saves first). Until then the form leaves out what needs them.
+     A recovery copy kept by an older panel gets them too, when it is
+     brought back (offerRecovery). */
+  function addNewerTexts() {
+    var added = addNewerTextsTo(M());
     if (!added.length) return;
     changed();
     setTimeout(function () {
-      toast(plural(added.length, 'new text') + ' of the form ' + (added.length === 1 ? 'was' : 'were') + ' added to Texts & translations (' +
-        added.join(', ') + '). Save to keep ' + (added.length === 1 ? 'it' : 'them') + '.', { kind: 'info', timeout: 9000 });
+      S.newerTextsToast = toast(newerTextsMessage(added) + ' Save to keep ' + (added.length === 1 ? 'it' : 'them') + '.', { kind: 'info', timeout: 9000 });
     }, 0);
+  }
+  /* Adds the newer texts a model lacks (the draft, or a recovery copy);
+     returns their keys. */
+  function addNewerTextsTo(model) {
+    var newer = obj(S.catalog.newer_texts), added = [];
+    Object.keys(newer).forEach(function (key) {
+      var v = obj(newer[key]);
+      if (model.texts[key] || !str(v.en)) return;
+      var values = { en: str(v.en) };
+      if (str(v.hi) && model.languages.some(function (l) { return l.code === 'hi'; })) values.hi = str(v.hi);
+      addTextKey(key, values, null, model);
+      added.push(key);
+    });
+    return added;
+  }
+  /* "4 new texts of the form were added to Texts & translations (ui.pick_several, ...)." */
+  function newerTextsMessage(keys) {
+    return plural(keys.length, 'new text') + ' of the form ' + (keys.length === 1 ? 'was' : 'were') + ' added to Texts & translations (' +
+      keys.join(', ') + ').';
   }
 
   function removeTextKey(key) {
@@ -1760,12 +1775,21 @@ details.group > .group-body { padding: 0 16px 14px; }
     var copy = readUnsaved();
     if (!copy) return;
     var model = normaliseModel(copy.model);
+    /* A copy kept by a panel from before 28 Oct 2026 lacks the form's newer
+       texts, which the saved draft has just been given (adoptLoad): the copy
+       gets them too, so bringing it back keeps them, and a copy that differs
+       only by them is nothing to bring back. */
+    var added = addNewerTextsTo(model);
     if (JSON.stringify(model) === JSON.stringify(M())) { forgetUnsaved(); return; }   // nothing different
     if (copy.revision !== S.revision) {
       forgetUnsaved();
       toast('Your unsaved changes from last time were dropped, because someone saved the draft since.', { kind: 'info', timeout: 9000 });
       return;
     }
+    /* Adding those texts to the saved draft was a change, whose own recovery
+       copy would replace this one in a moment (rememberUnsaved): this one is
+       kept until a button is pressed, also if the window is closed first. */
+    clearTimeout(recoveryTimer);
     openModal({
       title: 'Bring back your unsaved changes?', test: 'recovery-modal', dismissible: false,
       body: [h('p', { text: 'Last time (' + fmtDate(copy.at, true) + ') the control panel was closed before your changes were saved. They are still on this computer.' }),
@@ -1777,7 +1801,11 @@ details.group > .group-body { padding: 0 16px 14px; }
           S.model = model;
           changed({ rerender: true });
           renderTopbar();
-          toast('Your changes are back. Press Save to keep them.', { kind: 'ok', timeout: 7000 });
+          /* One message says it all: the one about the newer texts (if still
+             shown) spoke of the draft just replaced. */
+          if (S.newerTextsToast) { S.newerTextsToast(); S.newerTextsToast = null; }
+          toast('Your changes are back.' + (added.length ? ' ' + newerTextsMessage(added) : '') + ' Press Save to keep them.',
+            { kind: 'ok', timeout: added.length ? 9000 : 7000 });
         } }
       ]
     });
@@ -2634,10 +2662,13 @@ details.group > .group-body { padding: 0 16px 14px; }
 
   /* The route as a numbered list (the Map's fallback), from the graph: each
      screen, when it is shown, and where it goes. The rules are written by
-     the checker's own PP.flowCheck.sentence. */
+     the checker's own words: PP.flowCheck.sentenceFor(survey) knows each
+     answer's kind, so a pick-several rule reads "areas includes load", as on
+     the Map (30 Oct 2026); an older Flow.gs without it keeps "==". */
   function routeOutline(survey, strings) {
     var lib = S.flow.lib, F = lib.flow, C = lib.flowCheck;
     var g = F.load(survey);
+    var say = typeof C.sentenceFor === 'function' ? C.sentenceFor(survey) : function (rule) { return C.sentence(rule); };
     var DEFAULT_TEXT = { language_picker: 'lang.title', whats_changed: 'wc.title', function_rating: 'q.fn_rating', function_deep_dive: 'q.deep_dive', thank_you: 'thanks.title' };
     var KIND = { function_rating: 'function_ratings', function_deep_dive: 'function_deep_dives' };
     function english(key) {
@@ -2645,7 +2676,7 @@ details.group > .group-body { padding: 0 16px 14px; }
       return v && typeof v === 'object' && v.en ? String(v.en) : '';
     }
     function title(n) {
-      if (n.type === 'group') return 'For each area' + (n.repeat_for && n.repeat_for.where ? ' where ' + C.sentence(n.repeat_for.where) : '') + ':';
+      if (n.type === 'group') return 'For each area' + (n.repeat_for && n.repeat_for.where ? ' where ' + say(n.repeat_for.where) : '') + ':';
       var kind = n.type === 'thank_you' ? 'Ending' : typeInfo(KIND[n.type] || n.type).label;
       var key = typeof n.text === 'string' ? n.text : DEFAULT_TEXT[n.type];
       var words = key && key.indexOf('{') === -1 ? english(key) : '';
@@ -2660,15 +2691,15 @@ details.group > .group-body { padding: 0 16px 14px; }
     }
     function lines(n, list) {
       var out = [];
-      if (n.show_if !== undefined) out.push('Only if ' + C.sentence(n.show_if) + '.');
-      if (n.repeat_for && n.type !== 'group') out.push('Asked for each ' + n.repeat_for.each + (n.repeat_for.where ? ' where ' + C.sentence(n.repeat_for.where) : '') + '.');
+      if (n.show_if !== undefined) out.push('Only if ' + say(n.show_if) + '.');
+      if (n.repeat_for && n.type !== 'group') out.push('Asked for each ' + n.repeat_for.each + (n.repeat_for.where ? ' where ' + say(n.repeat_for.where) : '') + '.');
       if (n.type === 'thank_you' && n.show_if === undefined) out.push('Ends the survey: the answers are sent.');
       else if (typeof n.next === 'string') out.push('Then: ' + name(n.next, list) + '.');
       else if (Array.isArray(n.next)) {
         n.next.forEach(function (x) {
           if (!x || typeof x !== 'object') return;
           if (Object.prototype.hasOwnProperty.call(x, 'default')) out.push('Otherwise: ' + name(x['default'], list) + '.');
-          else out.push('If ' + C.sentence(x.when) + ': ' + name(x['goto'], list) + '.');
+          else out.push('If ' + say(x.when) + ': ' + name(x['goto'], list) + '.');
         });
       }
       return out;
@@ -5847,7 +5878,8 @@ details.group > .group-body { padding: 0 16px 14px; }
     S.revision = res.revision;
     S.model = normaliseModel(res.model);
     var cat = obj(res.catalog);
-    S.catalog = { settings_schema: arr(cat.settings_schema), screen_types: arr(cat.screen_types), form_text_keys: arr(cat.form_text_keys) };
+    S.catalog = { settings_schema: arr(cat.settings_schema), screen_types: arr(cat.screen_types), form_text_keys: arr(cat.form_text_keys),
+      newer_texts: obj(cat.newer_texts) };
     S.live = res.live && typeof res.live === 'object' ? res.live : null;
     /* codes_locked is false until the first real round opens: nothing is
        locked yet. (A server without codes_locked locks whatever is live.) */
@@ -5870,7 +5902,7 @@ details.group > .group-body { padding: 0 16px 14px; }
     S.dirty = false;
     if (S.undo && S.undo.remove) S.undo.remove();
     S.undo = null;
-    addNewerTexts(obj(cat.newer_texts));
+    addNewerTexts();
     if (!keepSection && res.open_section) {
       var hint = String(res.open_section).toLowerCase().replace(/[^a-z]/g, '');
       SECTIONS.forEach(function (sec) { if (hint === sec.id || hint.indexOf(sec.id) === 0) S.section = sec.id; });
@@ -6206,6 +6238,13 @@ details.group > .group-body { padding: 0 16px 14px; }
     return { close: close, box: box };
   }
 
+  /* Is a pop-up open? openModal puts each one (its backdrop) in #modal-root
+     and takes it out when it closes. */
+  function dialogOpen() {
+    var root = $('#modal-root');
+    return Boolean(root && root.firstElementChild);
+  }
+
   function trapTab(e, box) {
     var items = Array.prototype.filter.call(box.querySelectorAll('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'), function (el) { return !el.disabled && el.offsetParent !== null; });
     if (!items.length) return;
@@ -6368,11 +6407,17 @@ details.group > .group-body { padding: 0 16px 14px; }
     });
   }).observe(document.body, { childList: true, subtree: true });
 
-  /* Ctrl+S / Cmd+S saves; a warning if the window is closed with unsaved changes. */
+  /* Ctrl+S / Cmd+S saves; a warning if the window is closed with unsaved changes.
+     Not while a pop-up is open (review of 30 Oct 2026): it asks something
+     first, and a save then could answer for the person. For example, under
+     "Bring back your unsaved changes?" a save went through (the saved draft
+     had just been given the form's newer texts) and threw away the very
+     copy the question was about. The key still never opens the browser's
+     own "Save page as". */
   document.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) {
       e.preventDefault();
-      if (S.loaded) save();
+      if (S.loaded && !dialogOpen()) save();
     }
   });
   window.addEventListener('beforeunload', function (e) {

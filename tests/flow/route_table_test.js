@@ -53,6 +53,17 @@
      8. A kind of question added as a plug-in (the guide's example
         tests/flow/fixtures/types/stars_1_10.js) works in the table too.
      9. flow-panel.js is still ES5 (Chrome 61, Apps Script).
+     10. Pick several (28 Oct 2026) and the audit of 30 Oct 2026: "multiple
+        choice", "multi choice", "Multi-choice", "multichoice" and "MCQ" (also
+        "MCQ question", "MCQs", "multiple choices") are refused as ambiguous (only the code multi_choice is pick several);
+        the AI instruction says what "always" does on the language and
+        what-changed rows, and the engine agrees. The review of 30 Oct 2026:
+        the code multi_choice in backticks, asterisks or quotes, or next to an
+        invisible character, is pick several (TSV and CSV); a row whose kind
+        can't be read gives one problem, at its kind, and none more for the
+        rules on its answers (a v2.1-like route, a row asked for each area, a
+        built-in row); "all partners", "everyone", "always show" ... switch
+        off the language and what-changed skips, "-" and an empty cell keep them.
 
    HOW TO RUN IT (Terminal, in the project folder)
      node tests/flow/route_table_test.js
@@ -1446,6 +1457,224 @@ const shortText = (t, n) => { const x = String(t).trim().replace(/\s+/g, ' '); r
   assert.ok(/Never write "multiple choice"/.test(ins));
   assert.ok(/"= x" means x is one of the answers ticked/.test(ins));
   ok('pick several: read and written as "pick several", answers like pick one, "= x" means x is ticked, round trip, "multiple choice" refused');
+}
+
+// The audit of 30 Oct 2026. (1) "multi choice" can mean either, like "multiple choice": until then "multi choice"
+// and "Multi-choice" were silently read as pick several (words("multi_choice") is "multi choice" too). Only the
+// code multi_choice itself is pick several. (2) The AI instruction says what "always" does on the language and
+// what-changed rows (an empty cell keeps their skip), and the engine agrees.
+{
+  const lines = todayLines('tsv');
+  const H = lines[0].split('\t');
+  const col = (name) => H.indexOf(name);
+  const mk = (f) => { const b = H.map(() => ''); Object.keys(f).forEach((k) => { b[col(k)] = f[k]; }); return b.join('\t'); };
+  const table = (kind, extra) => {
+    const rows = lines.slice(1).filter(Boolean);
+    const at = rows.findIndex((l) => l.split('\t')[0] === 'nps');
+    rows.splice(at + 1, 0, mk({ code: 'areas', kind: kind, 'question (English)': 'Which areas? You can pick more than one.',
+      answers: 'load: Load; payments: Payments; app: App' }));
+    return [H.join('\t')].concat(rows, extra || []).join('\n');
+  };
+  // (1) the code itself (any capitals, spaces around it) and "pick several": pick several
+  ['multi_choice', ' MULTI_CHOICE ', 'Multi_Choice', 'pick several'].forEach((k) => {
+    const x = fromTable(table(k), survey(), STRINGS, { rows: todayRows() });
+    assert.ok(x.ok, JSON.stringify(k) + ': ' + JSON.stringify(x.problems));
+    assert.strictEqual(x.rows.find((y) => y.id === 'areas').type, 'multi_choice', k);
+  });
+  // every other way of writing "multi(ple) choice": one problem at its kind, never a guess
+  ['multi choice', 'Multi-choice', 'multichoice', 'Multi choice question', 'MCQ', 'MCQ question', 'MCQs', 'Multiple Choice', 'Multiple choices',
+    'multiple_choice'].forEach((k) => {
+    const x = fromTable(table(k), survey(), STRINGS, { rows: todayRows() });
+    assert.ok(!x.ok && !x.rows.some((y) => y.id === 'areas'), k + ': refused');
+    const p = x.problems.filter((y) => y.column === 'kind');
+    deep(p.map((y) => [y.row, y.code]), [[5, 'areas']], k + ': one problem, at its kind');
+    assert.ok(p[0].message.indexOf('"' + k + '" can mean two things: write "pick one" when partners choose one answer, or "pick several" when ' +
+      'they may tick more than one.') !== -1, p[0].message);
+  });
+  const near = fromTable(table('multi choices'), survey(), STRINGS, { rows: todayRows() }).problems.find((y) => y.column === 'kind');
+  assert.ok(near && /"multi choices" is not a kind the panel knows\./.test(near.message) && !/Did you mean/.test(near.message),
+    'a near miss of an ambiguous word gets no guess: ' + (near && near.message));
+  // an ambiguous kind on a last row without a code is still a row (not words under the table)
+  const lastRow = fromTable(table('pick several', [mk({ kind: 'Multi-choice', 'question (English)': 'Anything else?' })]), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(lastRow.problems.some((y) => y.column === 'kind' && /"Multi-choice" can mean two things/.test(y.message)), JSON.stringify(lastRow.problems));
+  // a table written by toTable (kind "pick several") reads back the same, in all three formats
+  const res = fromTable(table('multi_choice'), survey(), STRINGS, { rows: todayRows() });
+  const strings2 = withTexts(STRINGS, res.texts);
+  ['tsv', 'csv', 'markdown'].forEach((format) => {
+    const text = panel.toTable(res.rows, strings2, survey(), { format: format });
+    assert.ok(/pick several/.test(text) && !/multi_choice|multi choice/i.test(text), format + ': written as "pick several"');
+    const back = fromTable(text, survey(), strings2, { rows: res.rows });
+    assert.ok(back.ok, format + ': ' + JSON.stringify(back.problems));
+    deep(back.rows, res.rows, format + ': the same rows');
+    deep(back.texts, {}, format + ': no text changes');
+  });
+  // (2) the instruction for Claude/ChatGPT
+  const ins = panel.aiInstruction(survey(), STRINGS, { rows: todayRows() });
+  assert.ok(/- language \(code language\): .*Skipped when the link already says the language\. Write always in its "show only if" to show the buttons even then; left empty, it keeps that skip\./
+    .test(ins), 'the language row: what "always" does');
+  assert.ok(/- what changed \(code whats_changed\): .*Skipped when there is nothing new\. Write always in its "show only if" to show the card even then \(partners see only its title\); left empty, it keeps that skip\./
+    .test(ins), 'the what-changed row: what "always" does');
+  assert.ok(/- show only if: .*Empty = everyone sees it, except that the language and what changed rows keep their usual skip \(see THE KINDS\)\./.test(ins),
+    'the column: an empty cell keeps those two skips');
+  assert.ok(/Never write "multiple choice", "multi choice" or "MCQ": write "pick one" or "pick several"\./.test(ins));
+  // ... and what it says is what happens (walk: a link with ?lang=, a round with nothing new, unless facts say otherwise)
+  const ruleOn = (code, rule) => [H.join('\t')].concat(lines.slice(1).filter(Boolean).map((l) => {
+    const c = l.split('\t');
+    if (c[0] === code) c[col('show only if')] = rule;
+    return c.join('\t');
+  })).join('\n');
+  const first = (text, facts) => {
+    const x = fromTable(text, survey(), STRINGS, { rows: todayRows() });
+    assert.ok(x.ok, JSON.stringify(x.problems));
+    return walk(x.survey, {}, facts)[0];
+  };
+  assert.strictEqual(first(ruleOn('language', 'always')), 'language', '"always": the language buttons even when the link says the language');
+  assert.strictEqual(first(ruleOn('language', '')), 'nps', 'empty: skipped when the link says the language');
+  assert.strictEqual(first(ruleOn('language', ''), { lang_in_url: false }), 'language', 'empty: shown when the link does not say it');
+  assert.strictEqual(first(ruleOn('whats_changed', 'always')), 'whats_changed', '"always": the card even when the round has nothing new');
+  assert.strictEqual(first(ruleOn('whats_changed', '')), 'nps', 'empty: skipped when the round has nothing new');
+  assert.strictEqual(first(ruleOn('whats_changed', ''), { whats_changed_count: 2 }), 'whats_changed', 'empty: shown when the round has news');
+  ok('audit 30 Oct: "multi choice", "Multi-choice", "multichoice", "MCQ" ... are refused as ambiguous (only the code multi_choice is pick several), ' +
+    'the table still round-trips; the AI instruction says what "always" does on the language and what-changed rows, and it is true');
+}
+
+// The review of 30 Oct 2026, after the audit's fixes. (1) The code multi_choice inside backticks, asterisks or quotes,
+// or next to an invisible character (a table copied from a chat or a web page), is pick several: only those marks are
+// taken off before the exact test, so "multi choice" and the other ambiguous spellings stay refused, marks or not.
+// (2) A row whose kind can't be read (ambiguous or unknown) is left out with ONE problem, at its kind: the rules that
+// test its answers are not also told '"<code>" is not an answer of any row in this table'. (3) "all partners" in
+// "show only if" switches off the language and what-changed rows' usual skip, like "always" and "everyone" (one list);
+// "-" and an empty cell keep it. Each part failed on the code before.
+{
+  const lines = todayLines('tsv');
+  const H = lines[0].split('\t');
+  const col = (name) => H.indexOf(name);
+  const mk = (f) => { const b = H.map(() => ''); Object.keys(f).forEach((k) => { b[col(k)] = f[k]; }); return b.join('\t'); };
+  const AREAS = 'load: Load & volume; payments: Payments & COD; app: App & tech';
+  const table = (kind) => {
+    const rows = lines.slice(1).filter(Boolean);
+    const at = rows.findIndex((l) => l.split('\t')[0] === 'nps');
+    rows.splice(at + 1, 0, mk({ code: 'areas', kind: kind, 'question (English)': 'Which areas? You can pick more than one.', answers: AREAS }));
+    return [H.join('\t')].concat(rows).join('\n');
+  };
+  const ZWSP = '\u200b';
+  // (1) the code with marks or invisible characters around it, in a tab-separated table: pick several
+  ['`multi_choice`', 'multi_choice' + ZWSP, ZWSP + 'multi_choice', '"multi_choice"', '\u201cmulti_choice\u201d', '\'multi_choice\'', '**multi_choice**',
+    '*`multi_choice`*', '\ufeffmulti_choice', 'multi_choice\u200c\u200d', '` MULTI_CHOICE `'].forEach((k) => {
+    const x = fromTable(table(k), survey(), STRINGS, { rows: todayRows() });
+    assert.ok(x.ok, JSON.stringify(k) + ': ' + JSON.stringify(x.problems));
+    assert.strictEqual(x.rows.find((y) => y.id === 'areas').type, 'multi_choice', JSON.stringify(k));
+  });
+  // ... and in a CSV file (the same rows as "pick several")
+  const viaTsv = fromTable(table('pick several'), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(viaTsv.ok, JSON.stringify(viaTsv.problems));
+  const strings2 = withTexts(STRINGS, viaTsv.texts);
+  const csv = panel.toTable(viaTsv.rows, strings2, survey(), { format: 'csv' }).split('\n')
+    .map((l) => (/^areas,/.test(l) ? l.replace(',pick several,', ',`multi_choice`' + ZWSP + ',') : l)).join('\n');
+  assert.ok(csv.indexOf(',`multi_choice`' + ZWSP + ',') !== -1, 'the CSV table has the code in backticks');
+  const fromCsv = fromTable(csv, survey(), strings2, { rows: viaTsv.rows });
+  assert.ok(fromCsv.ok, 'CSV: ' + JSON.stringify(fromCsv.problems));
+  deep(fromCsv.rows, viaTsv.rows, 'CSV: the same rows as with "pick several"');
+  // the ambiguous spellings stay refused, with or without marks
+  ['multi choice', '`multi choice`', '"Multi-choice"', 'multichoice' + ZWSP, '**MCQ**', '\u201cmultiple choice\u201d', '`multiple_choice`'].forEach((k) => {
+    const x = fromTable(table(k), survey(), STRINGS, { rows: todayRows() });
+    assert.ok(!x.ok && !x.rows.some((y) => y.id === 'areas'), JSON.stringify(k) + ': refused');
+    const p = x.problems.filter((y) => y.column === 'kind');
+    deep(p.map((y) => [y.row, y.code]), [[5, 'areas']], JSON.stringify(k) + ': one problem, at its kind');
+    assert.ok(/can mean two things: write "pick one" when partners choose one answer, or "pick several"/.test(p[0].message), p[0].message);
+  });
+
+  // (2) a route like v2.1 (language always; the areas ticked in one question; a reason for each area ticked; the
+  //     area ratings and support hidden) with a kind that can't be read on its area question
+  const v21 = (kind) => {
+    const rows = lines.slice(1).filter(Boolean).map((l) => {
+      const c = l.split('\t');
+      if (c[0] === 'language') c[col('show only if')] = 'always';
+      if (['fn_ratings', 'fn_deep_dives', 'support_gate', 'support'].indexOf(c[0]) !== -1) c[col('show')] = 'no';
+      return c.join('\t');
+    });
+    const at = rows.findIndex((l) => l.split('\t')[0] === 'nps');
+    rows.splice(at + 1, 0,
+      mk({ code: 'score_areas', kind: kind, 'question (English)': 'Which areas is your score mostly about?', answers: AREAS, required: 'yes', show: 'yes' }),
+      mk({ code: 'load_low', kind: 'pick one', 'question (English)': 'What went wrong with Load & volume?', answers: 'late: Load came late; other: Others',
+        required: 'yes', 'show only if': 'nps <= 8 and score_areas = load', show: 'yes' }),
+      mk({ code: 'load_high', kind: 'pick one', 'question (English)': 'What went well with Load & volume?', answers: 'steady: Load was steady; other: Others',
+        required: 'yes', 'show only if': 'nps >= 9 and score_areas = load', show: 'yes' }),
+      mk({ code: 'app_low', kind: 'pick one', 'question (English)': 'What went wrong with App & tech?', answers: 'slow: The app is slow; other: Others',
+        required: 'yes', 'show only if': 'nps <= 8 and score_areas in (app, payments)', show: 'yes' }),
+      mk({ code: 'other_detail', kind: 'voice/typing', 'question (English)': 'Tell us more', 'show only if': 'load_low = other or app_low = other', show: 'yes' }));
+    return [H.join('\t')].concat(rows).join('\n');
+  };
+  const good = fromTable(v21('pick several'), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(good.ok, 'the v2.1-like route reads: ' + JSON.stringify(good.problems));
+  assert.strictEqual(good.rows.find((y) => y.id === 'score_areas').type, 'multi_choice');
+  [['Multi-choice', /kind: "Multi-choice" can mean two things/], ['pick sevral', /kind: "pick sevral" is not a kind the panel knows\. Did you mean "pick several"\?/]]
+    .forEach(([kind, said]) => {
+      const x = fromTable(v21(kind), survey(), STRINGS, { rows: todayRows() });
+      deep(where(x.problems), [[5, 'kind', 'score_areas']], kind + ': exactly one problem, at the kind: ' + JSON.stringify(x.problems.map((y) => y.message)));
+      assert.ok(said.test(x.problems[0].message), x.problems[0].message);
+      assert.ok(!x.problems.concat(x.warnings).some((y) => /is not an answer of any row/.test(y.message)),
+        kind + ': no rule is told that score_areas is no answer: ' + JSON.stringify(x.warnings.map((y) => y.message)));
+    });
+  // ... also when that row is asked for each area (its answers are reasons:<area>), and for a built-in row (the area
+  //     ratings, whose answers are fn_rating:<area>); the problem screens are hidden, so they need no ratings
+  const perArea = (reasonsKind, ratingsKind) => {
+    const rows = lines.slice(1).filter(Boolean).map((l) => {
+      const c = l.split('\t');
+      if (c[0] === 'fn_ratings') c[col('kind')] = ratingsKind;
+      if (c[0] === 'fn_deep_dives') c[col('show')] = 'no';
+      return c.join('\t');
+    });
+    const at = rows.findIndex((l) => l.split('\t')[0] === 'fn_deep_dives');
+    rows.splice(at + 1, 0,
+      mk({ code: 'reasons', kind: reasonsKind, 'question (English)': 'What went wrong?', answers: 'slow: Too slow; rude: Rude', 'ask for': 'each area', show: 'yes' }),
+      mk({ code: 'why_slow', kind: 'voice/typing', 'question (English)': 'Tell us more', 'show only if': 'reasons:payments = slow or fn_rating:payments <= 2', show: 'yes' }));
+    return [H.join('\t')].concat(rows).join('\n');
+  };
+  const fine = fromTable(perArea('pick several', 'area ratings'), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(fine.ok, 'per area: ' + JSON.stringify(fine.problems));
+  const reasonsRow = fine.rows.findIndex((y) => y.id === 'reasons') + 2;
+  const both = fromTable(perArea('MCQ', 'area ratingz'), survey(), STRINGS, { rows: todayRows() });
+  deep(where(both.problems), [[5, 'kind', 'fn_ratings'], [reasonsRow, 'kind', 'reasons']],
+    'per area and built in: one problem for each row, at its kind: ' + JSON.stringify(both.problems.map((y) => y.message)));
+  // a rule on a row that is really missing is still told
+  const missing = fromTable(perArea('pick several', 'area ratings').replace('reasons:payments = slow', 'reason:payments = slow'), survey(), STRINGS, { rows: todayRows() });
+  assert.ok(missing.problems.some((y) => y.column === 'show only if' && /show only if: "reason:payments" is not an answer of any row in this table\./.test(y.message)),
+    JSON.stringify(missing.problems.map((y) => y.message)));
+
+  // (3) the words that switch off the language and what-changed rows' usual skip: always, always show, show always,
+  //     everyone, all partners (any capitals); "-" and an empty cell keep it. On any other row each is "no rule".
+  const ruleOn = (code, rule) => [H.join('\t')].concat(lines.slice(1).filter(Boolean).map((l) => {
+    const c = l.split('\t');
+    if (c[0] === code) c[col('show only if')] = rule;
+    return c.join('\t');
+  })).join('\n');
+  const read = (text) => {
+    const x = fromTable(text, survey(), STRINGS, { rows: todayRows() });
+    assert.ok(x.ok, JSON.stringify(x.problems));
+    return x;
+  };
+  const rowOf = (x, id) => x.rows.find((y) => y.id === id);
+  ['always', 'Always show', 'show always', 'everyone', 'all partners', 'All Partners'].forEach((w) => {
+    const lang = read(ruleOn('language', w));
+    deep([rowOf(lang, 'language').show_if, rowOf(lang, 'language').skip_if], [null, ''], w + ': no rule, and the language row\'s skip is off');
+    assert.strictEqual(walk(lang.survey, {})[0], 'language', w + ': the language buttons even when the link says the language');
+    const wc = read(ruleOn('whats_changed', w));
+    deep([rowOf(wc, 'whats_changed').show_if, rowOf(wc, 'whats_changed').skip_if], [null, ''], w + ': the what-changed row\'s skip is off');
+    assert.strictEqual(walk(wc.survey, {})[0], 'whats_changed', w + ': the card even when the round has nothing new');
+    assert.strictEqual(rowOf(read(ruleOn('one_fix', w)), 'one_fix').show_if, null, w + ': on another row, no rule');
+    deep(panel.parseRule(w), { rule: null }, w + ': parseRule reads no rule');
+  });
+  ['', '-'].forEach((w) => {
+    const lang = read(ruleOn('language', w));
+    deep([rowOf(lang, 'language').show_if, rowOf(lang, 'language').skip_if], [null, 'lang_in_url'], JSON.stringify(w) + ': the language row keeps its skip');
+    assert.strictEqual(walk(lang.survey, {})[0], 'nps', JSON.stringify(w) + ': skipped when the link says the language');
+    const wc = read(ruleOn('whats_changed', w));
+    deep([rowOf(wc, 'whats_changed').show_if, rowOf(wc, 'whats_changed').skip_if], [null, 'empty'], JSON.stringify(w) + ': the what-changed row keeps its skip');
+    deep(panel.parseRule(w), { rule: null });
+  });
+  ok('review 30 Oct: multi_choice in backticks, quotes or next to an invisible character is pick several (the ambiguous spellings stay refused); ' +
+    'a kind that can\'t be read gives one problem, not one more per rule on its answers; "all partners" switches the language and what-changed skips off like "always"');
 }
 
 console.log(count, 'tests passed');

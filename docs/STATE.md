@@ -1,6 +1,6 @@
 # STATE: where the build is
 
-**Updated:** 29 Oct 2026, 09:34 IST, by Claude.
+**Updated:** 30 Oct 2026, 15:35 IST, by Claude.
 
 **APPROVED (21 Oct ~08:45 IST):** Pranav replied "ok" to the remaining Phase 2 list (items 1–11 below) and to all 8 recommended decisions (see Decisions). Work started after a context compaction, as he preferred.
 
@@ -20,20 +20,20 @@
 
 ## Where we are (two lines)
 
-**v2 feedback round DONE and fully tested (29 Oct 09:34 IST), uncommitted on top of `70b214c`:** a new "pick several" kind (each ticked area gets its reason screen), help videos (ⓘ button, YouTube, Settings > Help videos), the form's new texts added to older Sheets by the panel, and the v2.1 route table (language first, several areas, support hidden); every suite passes. Slack update + Gemini video prompts: https://claude.ai/artifact/54E37gf15CiUU7uyN7yURE (private).
-Now: **STOPPED for Pranav** (his steps in Exact next action). Open from before: the 2026-R2 codes lock decision; Hindi for the v2 texts; the GM's (BU head) approval for "Anyone".
+**Fix round 0.3.3 DONE (30 Oct 15:35 IST), committed locally at Pranav's "commit" on top of `3008be3` (not pushed yet):** a read-only audit of the v2 work found that the help videos would never play (YouTube's Error 153: fixed, YouTube gets only the site's address), plus a Back-key bug, a rare silent loss of answers on resends, and small panel/tool/doc issues; all fixed, reviewed twice, every suite passes (e2e 39/39, bench 85, planted 89/89; Flow.gs `3d495cc75d82…`). Pranav decided: one "Tell us more" per area (table updated), unlock 2026-R2 (a test), drop the "[TRANSLATE]" copies from the phone's files (next task), no speaker on the language screen for now.
+Now: **STOPPED for Pranav**: push, paste Flow + Model + PanelServer + Panel, New version, unlock 2026-R2, Save, paste the per-area v2.1 table, Publish (Exact next action). Open: Hindi for the new texts; the GM's (BU head) approval for "Anyone"; then the placeholder change before go-live.
 
 ## Current phase
 
-**Phase 2: Apps Script + link generator + control panel**, with two approved additions since: the flow graph (`16c3d66`, pushed 27 Oct) and **"Paste a route"** (27–28 Oct, built, reviewed, fixed, fully tested, uncommitted). Waiting for Pranav: commit, push, paste four Apps Script files, New version, Import from GitHub (his draft is empty), try it, Publish version 1.
+**Phase 2: Apps Script + link generator + control panel**, with approved additions since, all committed and pushed: the Meesho-only mode (`241e25d`), the flow graph (`16c3d66`, 27 Oct), **"Paste a route"** (`70b214c`, 28 Oct) and **pick several + help videos** (`3008be3`, pushed 29 Oct). **Fix round 0.3.3** (30 Oct, from a read-only audit of `3008be3`) is uncommitted. Version 1 is live in Pranav's Sheet. Waiting for Pranav: the 0.3.3 commit and push, pasting four Apps Script files, a New version, then publishing v2.1 (steps in Exact next action).
 - The scope grew at Pranav's request on 20 Oct: a no-code control panel inside the Google Sheet, with instant publish through Google.
-- Phase 1 is done and committed. Phases 3–5 haven't started.
+- Phase 1 is done and pushed. Phases 3–5 haven't started.
 
 ## Done
 
 ### Phase 1: form, config, mock backend
 
-Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewritten on 21 Oct, before the first push, so it no longer holds this Mac's folder path or Pranav's work email). Not pushed.
+Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewritten on 21 Oct, before the first push, so it no longer holds this Mac's folder path or Pranav's work email). Pushed on 21 Oct.
 - [x] **Survey form `web/`:** S0–S7 as specified, with the approved changes (spec §2). Every part is configured in `web/config/survey.json`, with 6 areas × 5 placeholder chips + Other.
 - [x] **Six languages:** 132 text keys. English and Hindi are real text. ta/te/kn/ml are `[TRANSLATE] ` + English for all 132 keys.
 - [x] **Voice notes:** webm/opus, mono, ~16 kbps, 60 s cap, with consent, sent as base64 inside the submission. Typing is the fallback.
@@ -47,7 +47,7 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
   - `scripts/smoke_test.py`.
 - [x] **Docs:** `README.md`, `docs/config-guide.md`, `docs/submission-format.md`, `CHANGELOG.md`.
 
-### Phase 2: built, reviewed, fixed (all uncommitted)
+### Phase 2: built, reviewed, fixed (committed and pushed on 21 Oct as `1c99b5e`; the additions since are listed in Current phase)
 
 - [x] **`apps-script/Code.gs` (public web app):**
   - `doPost`: `submit` and `ping`, with the HMAC token check, round status, size limits, duplicates and a per-DC cap of 10.
@@ -59,7 +59,7 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
 - [x] **`apps-script/Model.gs`:** the Sheet tabs ↔ questionnaire, checks in plain English, compile, import/export, and restore that keeps hidden items. Saving is safe and checks everything first.
 - [x] **`apps-script/PanelServer.gs`:** the 15 functions the panel calls. Links CSV with a formula guard. Recording and checking the web app address.
 - [x] **`apps-script/Panel.html`:** the control panel, with 10 sections:
-  - Home, Questions (with a rule builder), Areas & problems, Support questions, Texts & translations;
+  - Home, Questions (with a rule builder; since 27 Oct the route is changed by pasting a table instead), Areas & problems, Support questions, Texts & translations;
   - Look & feel, Rounds (with "What changed"), Links (CSV), Publish (checks, Preview, Publish, history, Restore, GitHub copy), Settings.
 - [x] **Form, live mode:** loads the published questionnaire in one request and falls back to its own copy. Preview links (`&pk=`); "closed" and "not open yet" screens.
 - [x] **`scripts/generate_links.py`:** tokens identical to Code.gs (checked against an imitation of Google's functions; the live smoke test in item 11 will confirm it on Google). It adds `&mock=1` only for local test links.
@@ -196,7 +196,7 @@ Committed on 20 Oct 14:41 IST and reviewed by Pranav; now commit `25c2bfd` (rewr
 
 **Not done yet (expected):**
 - **Pushed:** Phase 1 (`25c2bfd`) and Phase 2 (`1c99b5e`) are on GitHub (both rewritten at ~17:35 to remove the folder path and the work email, open question 13).
-- **Committed locally, not pushed:** the Meesho-only mode, one commit on top of `1c99b5e`.
+- **Pushed since:** the Meesho-only mode (`241e25d`), the flow graph (`16c3d66`), Paste a route (`70b214c`) and pick several + help videos (`3008be3`, 29 Oct). Uncommitted: fix round 0.3.3 (30 Oct).
 - **GitHub Pages is on** (Pranav, ~18:00). The Sheet and the web app: Pranav was setting them up when he found "Anyone" missing. The form's `survey.json` stays in `mock` mode until "Anyone" is allowed.
 
 ## Next: Phase 2 remaining work (approved by Pranav, 21 Oct ~08:45 IST; do in this order)
@@ -278,10 +278,10 @@ Four new questions came out of the critics' check on 21 Oct; they're under "Wait
 
 ## Waiting for Pranav (inputs and manual steps)
 
-**Flow-graph refactor (22 Oct):** approve or not, the scope (stages), and the 13 decisions in [flow-graph-proposal.md §16](flow-graph-proposal.md#16-open-decisions-for-pranav-recommendation-first). Includes whether to do the ½-day quick fixes now (nps/support_gate type lock, immediate-mode warning, language buttons first).
+**Flow-graph refactor (22 Oct): approved on 23 Oct ~10:05 IST, built and pushed (`16c3d66`); kept here for the record.** It asked: approve or not, the scope (stages), and the 13 decisions in [flow-graph-proposal.md §16](flow-graph-proposal.md#16-open-decisions-for-pranav-recommendation-first). Includes whether to do the ½-day quick fixes now (nps/support_gate type lock, immediate-mode warning, language buttons first).
 
 **Questions [UNCONFIRMED]** (details in [spec.md §6](spec.md#6-open-questions), items 11–14; Claude's recommendation after each). Claude will raise them at the Phase 2 hand-off; none blocks the remaining work.
-- **11. No speaker on the language screen.** Recommended: accept it as the one exception, since links normally carry the partner's language and most partners never see that screen.
+- **11. No speaker on the language screen.** Recommended (21 Oct): accept it as the one exception, since links normally carry the partner's language and most partners never see that screen. **The premise changed on 28 Oct:** v2.1 shows the language screen to every partner first (its row says `always`), so this needs Pranav's fresh decision: accept, or add a speaker that reads "Choose your language" in each language (a small change).
 - **12. Restore deletes the "What changed" text of rounds the old version didn't have.** Recommended: keep that text (a small change in Model.gs).
 - **13. Decided and done (21 Oct ~17:35):** both local commits were cleaned before the first push (the folder path became `~/NPSF`; the author email became GitHub's no-reply address). See spec §6 item 13.
 - **14. An old style warning in the Google imitation (Model.gs's `var` lists).** Recommended: relax the rule for those lists, a small change in the imitation's static checks (developer-only; nothing changes for partners). The design contract already allows them since 21 Oct; the imitation's scenario S still warns until Pranav decides.
@@ -301,7 +301,7 @@ Four new questions came out of the critics' check on 21 Oct; they're under "Wait
 
 ## Tests: where they live and the last results
 
-All developer suites are in [`tests/`](../tests/README.md): run `cd tests && npm install` once, then each command from the project folder. Results of 21 Oct, after the Meesho-only review fixes (the code that is committed):
+All developer suites are in [`tests/`](../tests/README.md): run `cd tests && npm install` once, then each command from the project folder. **The latest results are in [tests/README.md](../tests/README.md), "Last full run", and in Exact next action below** (30 Oct: every suite on fix round 0.3.3). The table below is the record of 21 Oct, after the Meesho-only review fixes:
 
 | Suite | Command | Last run (21 Oct, IST) | Result |
 |---|---|---|---|
@@ -335,7 +335,7 @@ The summary's file sizes were also out of date: Code.gs is 117 KB, Model.gs 183 
 
 ## Environment notes
 
-- **Git:** on branch `main`: `25c2bfd` (Phase 1) and `1c99b5e` (Phase 2), both pushed; then the Meesho-only commit, local only. Their author email is `PranavAkellaPS37@users.noreply.github.com`, also this project's git email. The remote `origin` is `https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git` (the username is in the address because this Mac's Keychain holds a login for another GitHub account). A backup bundle of the commits before the clean-up is in the session scratchpad (`before-cleanup.bundle`).
+- **Git:** on branch `main`: `25c2bfd` (Phase 1), `1c99b5e` (Phase 2), `241e25d` (Meesho-only), `16c3d66` (flow graph), `70b214c` (Paste a route) and `3008be3` (pick several + help videos), all pushed (`origin/main` = `3008be3` on 30 Oct); fix round 0.3.3 is uncommitted. Their author email is `PranavAkellaPS37@users.noreply.github.com`, also this project's git email. The remote `origin` is `https://PranavAkellaPS37@github.com/PranavAkellaPS37/NPS-Form-.git` (the username is in the address because this Mac's Keychain holds a login for another GitHub account). A backup bundle of the commits before the clean-up is in the session scratchpad (`before-cleanup.bundle`).
 - **Tests:** `tests/node_modules/` comes from `npm install` (git-ignored). The suites start their own local servers: run the browser suites one at a time. Claude's agents use a lock for that (scratchpad `lockrun.py`).
 - **Agent runs today:** items 5–6 = workflow `wf_fb839446-008` (done 12:01 IST; every report and verdict is in its journal). The stopped 20 Oct fix run (`wf_c94fdce0-475`) is fully replaced by items 5–6.
 - **Old test server:** gone since the 21 Oct restart. Start a fresh one with `python3 scripts/mock_server.py` when needed.
@@ -344,7 +344,193 @@ The summary's file sizes were also out of date: Code.gs is 117 KB, Model.gs 183 
 
 ## Exact next action
 
-**29 Oct 09:34 IST: v2 feedback round DONE; STOPPED for Pranav.** Final regression (`local_data/regress-28oct-b.log` + reruns): flow 27, legacy_diff no differences, check 100, sim 34, types 11, panel_rows 17, route_table 37, model 239, shrink OK, fixes 81 + 40, Flow.gs fresh (d8b72ec2fa1d…, 782,503 bytes), check_config 0 errors (page 93%), ES5 OK, harness 45 + 1 known warning (after adding help.* and multi_choice to tests/gas-harness/lib/contract.js), planted 85/85, bench 84, narrow OK, panel smoke clean, e2e 36/36. Docs: control-panel.md (kinds, rules, "multiple choice", Recipe 21 help videos, newer-texts message), flow-engine.md, config-guide.md (help section, kinds), submission-format.md (answers as a list), CHANGELOG 0.3.2, apps-script/README.md (this release), tests/README.md, CLAUDE.md, spec §4/§5. Launch kit page (Slack update for the director + 3 Gemini prompts): https://claude.ai/artifact/54E37gf15CiUU7uyN7yURE.
+**30 Oct 15:35 IST: FIX ROUND 0.3.3 DONE; STOPPED for Pranav (rule 3).** Final regression `local_data/regress-30oct-final.log` (15:20–15:35): every suite exit 0. flow 27, legacy_diff no differences, check 101, sim 35, types 11, panel_rows 17, route_table 39, model 239/239, shrink OK (type list rows 2-1000), fixes 81 + 40, Flow.gs fresh (3d495cc75d82, 800,439 bytes), config 0 errors + 1 known warning (page 96%), ES5 OK, harness 45 + 1 known warning, planted 89/89, bench 85/85, narrow OK, panel smoke clean, e2e 39/39. tests/README.md "Last full run" filled in.
+- **COMMITTED LOCALLY at Pranav's "commit" (30 Oct ~15:50 IST):** one commit "Fix round 0.3.3: help videos play, Back closes sheets, answers sent as finished" on top of `3008be3`, not pushed. The diff was scanned first: no personal paths, emails, private links or the GM's name.
+- **Pranav's checklist (sent 30 Oct ~15:40):**
+  1. ~~Say "commit".~~ Done (30 Oct ~15:50).
+  2. `git push`, then the green tick.
+  3. Paste Flow (about 800 KB, check its last 3 lines), Model, PanelServer and Panel; Save.
+  4. New version; health check in a Meesho-signed-in Chrome window: `flow_fingerprint` starts `3d495cc75d82`.
+  5. Unlock: Script Properties, delete `ROUNDS_EVER_OPENED`, `ROUND:2026-R2` and `CODES_EVER_LIVE` (if there).
+  6. Open the panel: the 4-new-texts message, Save.
+  7. Questions > Paste a route: the per-area v2.1 table (`local_data/routes/v2.1-captain-route.tsv`; Claude offered to put it on his clipboard). Check, Use this route, Save, Preview, Publish.
+  8. Videos (launch kit), then Settings > Help videos, Save, Preview, Publish.
+  9. Hindi for the new texts.
+- **Next for Claude, after his install:** the placeholder change (decision 3): repo-only, then refresh the GitHub backup copy (Recipe 12) and re-measure the weight.
+
+**30 Oct 15:19 IST: ALL FIXES DONE; FINAL REGRESSION RUNNING** (`bash local_data/tools/regress.sh local_data/regress-30oct-final.log`, background).
+- **Polish workflow `wf_cb90882c-cde` done** (result saved in the scratchpad as `polish-result.json`).
+  - **Fixer:**
+    - Ctrl+S is ignored while any panel window is open (`dialogOpen()`);
+    - `storersOf`/`isMulti` for template rules;
+    - `bareCode` accepts a backticked or invisible-char `multi_choice`;
+    - `unreadKind` skips the "not an answer of any row" knock-ons;
+    - one `ALWAYS_RE` (all partners = always);
+    - Save applies the type list to rows 2..getMaxRows().
+    - route_table 39; planted 89/89 (new `type-list-only-written-rows`); bench 85; harness 45 + 1.
+  - **Code review:** sound; 1 leftover, fixed by Claude: `storersOf` compares template shapes (`shapeOf`), so "{fn}_why" and "{area.id}_why" read "includes"; the check_test case fails on the old line.
+  - **Fact-check:** 11 doc points, all fixed by Claude (39 exact edits): planted 89; the page-weight decision recorded as made; `<area>_other` instead of `other_detail`; question 11 decided; about 320 KB / 107% with the 83-text table; the "newly refused" wording; Ctrl+S for any window; "can't be read" wording; the video tested on a local page; the language screen skipped only with &lang=. Left as is: the owner's name and the github.io address, as already throughout the docs.
+  - spec §4 has the four decisions (row "30 Oct ~13:40"); spec §5/§6 item 11 marked decided.
+- **Final Flow.gs: 800,439 bytes, fingerprint `3d495cc75d82…`.** Fast suites: flow 27, legacy no differences, check 101, sim 35, types 11, panel_rows 17, route_table 39, model 239, map fresh.
+- **Then:**
+  - fill in tests/README.md's "Last full run" from `regress-30oct-final.log`;
+  - the status page;
+  - hand Pranav his checklist: commit at his OK; push; paste Flow, Model, PanelServer and Panel; New version (fingerprint 3d495cc75d82); unlock 2026-R2; open the panel and Save; paste the per-area v2.1 table (offer to copy it to his clipboard, after asking); Preview; Publish; videos; Hindi.
+
+**PRANAV'S DECISIONS, 30 Oct ~13:40 IST** (AskUserQuestion):
+1. **One "Tell us more" per area.**
+   - `local_data/routes/v2.1-captain-route.tsv` is now the per-area table, 26 rows: `load_other`, `payments_other`, `losses_other`, `ops_other`, `app_other`, each after its area's two reason rows, shown when that area's reason is `other`. The shared `other_detail` row is gone (it was never published). The old table is kept as `v2.1-shared-tell-us-more.tsv`.
+   - Checked: ok, 1 expected warning.
+   - `capture_slide_screens.js` now waits for `payments_other`. The screenshots in ~/Downloads/partner-pulse-slides were retaken; 06 reads "Please tell us more about Payments & COD: what was it?".
+2. **2026-R2 was only a test:** unlock before publishing v2.1. Apps Script › Project Settings › Script Properties: delete `ROUNDS_EVER_OPENED`, `ROUND:2026-R2` and `CODES_EVER_LIVE` (if present), and nothing else. From now on, test rounds start with DEMO- or TEST-.
+3. **Page weight: drop the "[TRANSLATE]" placeholder copies** from the phone's files. NEXT TASK, after his install. It is repo-only, so no Apps Script paste:
+   - web/i18n/strings.json loses its placeholders;
+   - the repo surface of check_config/flow-check accepts a missing language as "to translate";
+   - Claude strips placeholders when placing a GitHub copy;
+   - strings_csv.py round-trips empty cells;
+   - update the tests and the CLAUDE.md hard-constraint text, plus spec §4/§5.
+   - Measured: v2.1 copy 268.2 KB (89%) instead of 316.5 KB (105%).
+4. **Open question 11: accept no speaker on the language screen for now**; revisit after the first round.
+- The decisions go into spec §4/§6 once the docs workflow is done (its writer is editing spec.md).
+
+**30 Oct ~14:00 IST: POLISH ROUND RUNNING (fix round 0.3.3)** after the second review (`wf_8e2abd24-35c`; result saved in the scratchpad as `fix-docs-review.json`).
+- **Phone, by Claude (done, tested, proven by mutation):**
+  - the form counts its own history.back() steps (`ownSteps`/`stepBack`), so a sheet closed a moment ago never closes a new one;
+  - a reload on a sheet's entry steps off it, so no Back press is lost;
+  - the copy is kept by any send, the page-closing one included, when no voice note is busy;
+  - e2e Z11 checks the drawn screen and the reload; Z13 aborts the first visit's sends, checks nothing is stored, and adds a voice note;
+  - ONLY=Z11,Z13 pass, and both fail on the matching mutations.
+- **Running: workflow `wf_cb90882c-cde`.**
+  - **Fixer:** Ctrl+S ignored while a dialog asks; a template pick-several rule says "includes"; a backticked `multi_choice` is accepted; a refused kind gives no "not an answer of any row" noise; "all partners" switches the language/what-changed skip off like "everyone"; Save applies the list of kinds to every row.
+  - **Docs writer:** the fact-check's 11 points plus D2's (a)-(d).
+  - **Then:** a code reviewer and a docs fact-checker.
+- **Measured (scratchpad `weight.js`, `wcopy/`):**
+  - the v2.1 backup copy is **316.5 KB, 105% of the 300 KB budget**, so check_config errors and GitHub would refuse;
+  - without the "[TRANSLATE]" placeholder copies it is 268.2 KB (89%), but then the "six values per key" rule fails;
+  - so the refresh of the GitHub copy waits for Pranav's decision (before going "Anyone").
+- **After the workflow:** the final regression; tests/README "Last full run"; the status page; Pranav's decisions and checklist.
+
+**30 Oct 12:30 IST, CODE DONE; DOCS, REVIEW AND REGRESSION RUNNING (fix round 0.3.3).**
+- **Done and tested:**
+  - the phone part (below);
+  - agents A and B (`wf_20daae87-8ac`, both reviewed sound);
+  - Claude's extras: Panel.html `routeOutline` uses `sentenceFor`; `AMBIGUOUS_KIND_RE` also has "mcq question", "mcqs" and "multiple choices"; check_test covers the nested AND/OR and the group jump label (shown to fail without them); the bench's pick-several step checks the Map's text list.
+  - Flow.gs: 793,173 bytes, fingerprint `bb852bee72be…`.
+  - Results: flow 27, legacy no differences, check 101, sim 35, types 11, panel_rows 17, route_table 38, model 239, shrink OK, fixes 81 + 40, harness 45 + 1 (2,130 checks), planted 88/88, bench 85 (agent B's run, before Claude's extra check), narrow OK, e2e 39/39.
+- **Full regression DONE at 12:42 IST: all 20 suites exit 0** (`local_data/regress-30oct-b.log`):
+
+  | Suite | Result |
+  |---|---|
+  | flow | 27 |
+  | legacy_diff | no differences |
+  | check | 101 |
+  | sim | 35 |
+  | types | 11 |
+  | panel_rows | 17 |
+  | route_table | 38 |
+  | model | 239/239 |
+  | shrink | OK |
+  | fixes | 81 + 40 |
+  | flow_gs | fresh (bb852bee72be) |
+  | config | 0 errors, 1 known warning, page 95% |
+  | ES5 | OK |
+  | harness | 45 + 1 known warning |
+  | planted | 88/88 |
+  | bench | 85/85 |
+  | narrow | OK |
+  | panel smoke | clean |
+  | e2e | 39/39 |
+
+- **Running:**
+  - workflow `wf_8e2abd24-35c`: D1 (apps-script/README.md, CHANGELOG, CLAUDE.md, tests/README.md, tests/gas-harness/README.md), D2 (control-panel.md, control-panel-design.md, submission-format.md, spec.md, config-guide.md, flow-engine.md), R1 (phone code review), R2 (panel/tools review), then a docs fact-check.
+- **STATE.md cleaned by Claude:**
+  - the launch-kit link was removed (now in Claude's memory: `reference-launch-kit`);
+  - the stale "not pushed" and "uncommitted" lines were fixed;
+  - question 11's premise was updated.
+- **Then:**
+  - fix what the reviews and the fact-check confirm;
+  - fill in tests/README.md's "Last full run";
+  - update the status page;
+  - ask Pranav: one "Tell us more" per area? The option is ready: `local_data/routes/v2.1-per-area-tell-us-more.tsv`, checked ok (1 expected warning). Walks: two Others give load_low > load_other > app_low > app_other; one or none, the same count as today.
+  - hand Pranav his checklist: commit at his OK, push, paste Flow + Model + PanelServer + Panel, New version, Save, v2.1, Publish, videos, refresh the GitHub backup copy.
+
+**30 Oct ~11:05 IST, IN PROGRESS: fix round 0.3.3, from the audit `wf_77ec1271-13d`** (result saved in the scratchpad as `audit-result.json`; 35 findings survived the skeptics). Pranav was told: not quite done; don't paste the Google files yet.
+- **Proven in Chrome:** the help videos never play. The form's `<meta name="referrer" content="no-referrer">` (web/index.html:43) makes YouTube show "Video player configuration error, Error 153". With `referrerpolicy="strict-origin-when-cross-origin"` on the iframe, the video loads and YouTube gets only the origin (no `?dc=&t=`). Test files: the scratchpad's `yt-test/` (run.js, both screenshots).
+- **Phone part DONE (11:20 IST).** web/js/app.js:
+  - `showSheet`/`sheetClosed`, plus the start of `onPopState`;
+  - the iframe's `referrerpolicy`;
+  - `finish()` sets `finished_version`;
+  - `buildPayload(keep)` and `finishedCopy`;
+  - APP_VERSION 0.3.3.
+
+  web/js/voice.js gained `isBusy`. tests/e2e/e2e.js: Z11 extended, Z12-Z14 new (39 scenarios). ONLY=Z10-Z14 all pass. Proven to catch the bugs: with the old app.js, Z11 and Z13 fail; with no sheet history entry, Z11 fails at "Back closes the help sheet". The full e2e is running → `local_data/e2e-30oct-phone-fixes.log`.
+- **Phone (Claude, web/js/app.js + tests/e2e/e2e.js), the plan:**
+  1. `openHelpSheet`: add `referrerpolicy: 'strict-origin-when-cross-origin'` to the iframe; e2e Z11 asserts it.
+  2. The Back key closes the help and language sheets: they push a history entry while open; `onPopState` closes the sheet first (before its `state.finished` early return); a close by button calls `history.back()` with a flag.
+  3. Finished-answers copy: `finish()` records `state.finished_version`, and the first send stores `state.sent_copy` (answers, ratings, free_text without base64). `buildPayload` sends that copy (recordings re-attached by item_id) when it exists, so a later visit with another questionnaire can't drop answers or restamp `config_version` (audit DATAPATH-2).
+  4. `APP_VERSION` 0.2.0 → 0.3.3.
+  5. New e2e: language `always` with ?lang=; help button on the language and thank-you screens; untick-then-send; resume with ticks; the finished copy across versions.
+- **Agent A (flow tools):**
+  - pick-several rules read "includes" on the Map, in Try a path and in --explain: `sentence(c, m)` in web/js/flow-check.js;
+  - "multi choice" is refused as ambiguous like "multiple choice": web/js/flow-panel.js;
+  - the AI instruction explains `always` for the language row;
+  - Flow.gs rebuilt; check_test and route_table tests; docs/flow-engine.md.
+  - Then Claude passes the kinds to Panel.html's routeOutline text.
+- **Agent B (panel/Google):**
+  - after "Bring them back" the 4 newer texts are re-added: Panel.html `offerRecovery`, plus a bench step;
+  - Save re-applies the Screens tab's type list (with multi_choice) in Model.gs, plus a test;
+  - the Google imitation stores a list answer in answers_json.
+- **Then:** docs (README "This release" incl. the GitHub backup-copy step after Publish, CHANGELOG [0.3.3], CLAUDE.md, tests/README, control-panel(-design).md, submission-format.md, spec), an adversarial review of the diff, the full regression, the status page, and the question to Pranav about one "Tell us more" per area (audit FEEDBACK-3).
+
+**30 Oct 10:16 IST, RUNNING (now DONE, see above):** Pranav asked "and the changes in the code are all done??". The quick answer was yes: done, committed, and pushed (GitHub's main = `3008be3`); the Apps Script paste is still his step. Two checks are verifying that answer:
+- **Full regression on the committed code: DONE at 10:29 IST, all 20 suites exit 0** (`local_data/regress-30oct.log`). The numbers match 29 Oct:
+
+  | Suite | Result |
+  |---|---|
+  | flow | 27 |
+  | legacy_diff | no differences |
+  | check | 100 |
+  | sim | 34 |
+  | types | 11 |
+  | panel_rows | 17 |
+  | route_table | 37 |
+  | model | 239/239 |
+  | shrink | OK |
+  | fixes | 81 + 40 |
+  | Flow.gs | fresh (d8b72ec2fa1d) |
+  | config | 0 errors, 1 known warning (the fake DEMO-R1 round in whats_changed.json), page 93% |
+  | ES5 | 9 files |
+  | harness | 45 + 1 known warning |
+  | planted | 85/85 |
+  | bench | 84/84 |
+  | narrow | OK |
+  | panel smoke | clean |
+  | e2e | 36/36 (incl. Z10 pick several, Z11 help videos) |
+
+  Status page tests updated.
+- **Read-only audit** `v2-done-audit`, run id `wf_77ec1271-13d` (9 agents):
+  - 4 angles: the feedback items vs the code; the data path for a list answer (the phone, Code.gs `PP_checkSubmit_`/`answers_json`, mock server, Meesho-only mode, Phase 3 notes); install readiness (the README's paste list, an older Sheet, the GitHub Pages checksums); loose ends and docs;
+  - a skeptic per angle, then a critic.
+  - If the session restarts, resume with `Workflow({scriptPath: <session>/workflows/scripts/v2-done-audit-wf_77ec1271-13d.js, resumeFromRunId: "wf_77ec1271-13d"})`.
+- **Already confirmed by hand:** Code.gs accepts a list answer. `PP_checkSubmit_` only requires `answers` to be an object, and `PP_responseRow_` stores everything in `answers_json`.
+- **Then:** fix whatever the checks confirm (ask Pranav first if it changes behaviour), update the status page (tests, run, log), and answer Pranav with the real results.
+
+**30 Oct 09:30 IST: the launch-kit videos now come from slides. DONE; STOPPED for Pranav.** (Pranav, 30 Oct: Gemini's videos were poor, and he can't click through the whole thing himself.)
+- **Screenshots:** a new local tool, `local_data/tools/capture_slide_screens.js` (git-ignored), with a plain-English header.
+  - **What it does:** runs the mock server and the panel bench with fake data only, under lockrun's browser lock. It saves 10 phone screens of the v2.1 form and 12 panel screens into `~/Downloads/partner-pulse-slides/` (`for-partners/`, `for-the-team/`).
+  - **Checked by eye:** no test banner, no "Start again (test mode)" button, no hover marks, and no "Skipped DCs" box (from the bench's deliberately broken fake DCs). The Settings shot is cut above "Import from GitHub", whose address names the GitHub account.
+  - **Neutral:** no score is shown picked, and both a "went well" and a "went wrong" screen are included.
+  - **Run it again** (about a minute): `python3 local_data/tools/lockrun.py node local_data/tools/capture_slide_screens.js`. A second run from its new home gave identical content.
+- **Launch-kit page** (same address, version 2):
+  - the Slack update, unchanged;
+  - "From screenshots to video, in four steps": Claude makes the .pptx; a person writes the Hindi lines; Keynote › Export To › Movie (Self-Playing, 8 s or 6 s per slide, 1080p); YouTube Unlisted, then Settings › Help videos;
+  - three prompts with exact captions and the screenshots to attach: the team deck (15 slides), how to fill (10) and how answers help (7, neutral);
+  - all three at 16:9, because the form's `.video-frame` is 16:9 (the old Gemini prompts said 9:16 for the partner videos).
+- **Status page:** decision, two log entries, task `p2-230`, need `videos`, `status/now`.
+- **Noticed, not changed (idea for later):** the Map's diamonds and Try a path's "skipped" reasons write a pick-several rule as `score_areas == load`, while the Questions cards already say "include". Saying "includes" there too would read better.
+- **Pranav's steps:** as in the 29 Oct block below (push `3008be3` … Publish v2.1), then the three videos as the launch-kit page describes, then the Slack update.
+
+**29 Oct 09:34 IST: v2 feedback round DONE; STOPPED for Pranav.** Final regression (`local_data/regress-28oct-b.log` + reruns): flow 27, legacy_diff no differences, check 100, sim 34, types 11, panel_rows 17, route_table 37, model 239, shrink OK, fixes 81 + 40, Flow.gs fresh (d8b72ec2fa1d…, 782,503 bytes), check_config 0 errors (page 93%), ES5 OK, harness 45 + 1 known warning (after adding help.* and multi_choice to tests/gas-harness/lib/contract.js), planted 85/85, bench 84, narrow OK, panel smoke clean, e2e 36/36. Docs: control-panel.md (kinds, rules, "multiple choice", Recipe 21 help videos, newer-texts message), flow-engine.md, config-guide.md (help section, kinds), submission-format.md (answers as a list), CHANGELOG 0.3.2, apps-script/README.md (this release), tests/README.md, CLAUDE.md, spec §4/§5. Launch kit page (Slack update for the director + 3 Gemini prompts; private, its link is in Claude's memory).
 - **COMMITTED LOCALLY at Pranav's "commit" (29 Oct 09:48 IST):** one commit "Pick several and help videos (form v2 feedback)" on top of `70b214c`, not pushed. The GM's name was removed from the repo docs first (the repo is public; the private launch-kit page keeps it).
 - **Pranav's steps:** (1) done: "commit"; (2) push, green tick; (3) paste Flow, Model, PanelServer, Panel; New version; (4) open the panel: the "4 new texts" message, Save; (5) if 2026-R2 was only a test: delete Script Properties ROUNDS_EVER_OPENED, ROUND:2026-R2, CODES_EVER_LIVE (before publishing v2.1); (6) Questions > paste `local_data/routes/v2.1-captain-route.tsv` > Check > Use this route > Save > Preview > Publish; (7) videos: make them with the launch-kit prompts, YouTube unlisted, Settings > Help videos; (8) Hindi for the new texts; (9) send the Slack update (fill the ₹ saving and the links).
 

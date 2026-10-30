@@ -1,7 +1,7 @@
 /* =============================================================================
    tests/e2e/e2e.js: end-to-end test of the survey form in a real Chrome.
 
-   WHAT IT CHECKS (36 scenarios: A to Y, there is no O, I2 after I, then Z1 to Z11)
+   WHAT IT CHECKS (39 scenarios: A to Y, there is no O, I2 after I, then Z1 to Z14)
      It starts the project's local test server (scripts/mock_server.py) on
      ports 8791-8796, opens the form in headless Chrome at phone size (360 x 740,
      an Android user agent) and goes through it like a partner: every screen,
@@ -26,13 +26,18 @@
      screen, straight to an ending) falls back to the form's own copy. Z9: a
      screen coded "constructor" is an ordinary screen. Z10 (28 Oct 2026): a
      pick-several question (several ticks, one follow-up per ticked area).
-     Z11 (28 Oct 2026): the help videos (the i button, YouTube on a tap).
+     Z11 (28 Oct 2026): the help videos (the i button, YouTube on a tap; since
+     30 Oct also: YouTube gets the site's address, the phone's Back key
+     closes a sheet, the button on the first and last screens). Z12 (30 Oct
+     2026): a language screen shown "always". Z13: a send retried on a later
+     visit sends the answers exactly as finished, whatever questionnaire that
+     visit loaded. Z14: ticks survive a reload; an unticked area sends no answer.
 
    HOW TO RUN IT (Terminal, in the project folder)
      First time only: cd tests && npm install && cd ..
      node tests/e2e/e2e.js            (about 8 minutes)
      ONLY=S node tests/e2e/e2e.js     (just one scenario, here S; ONLY=Z1,Z3 for several)
-     The last line says how many scenarios passed (34 of 34 expected).
+     The last line says how many scenarios passed (39 of 39 expected).
 
    WHAT IT READS / WRITES
      Reads web/, scripts/mock_server.py and tests/flow/legacy/variants/base.json
@@ -2273,19 +2278,20 @@ const consoleErrors = (page) => page.consoleMessages.filter((m) => /^(error|page
   if (want('Z11')) try {
     const cfg = SURVEY_JSON();
     cfg.help = { how_to_fill_video: 'https://youtu.be/AbCdEfGhIjK', why_it_helps_video: 'https://example.com/why.mp4' };
-    const open = async (config, texts) => {
+    const open = async (config, texts, lang = 'en', dc = 'DC-E2E-Z11') => {
       const { page, context } = await newPage(browser);
       const seen = [];
+      const referers = [];
       await page.evaluateOnNewDocument(() => { window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null; }; });
       await page.setRequestInterception(true);
       page.on('request', (req) => {
-        if (/youtube/.test(req.url())) { seen.push(req.url()); req.respond({ status: 200, contentType: 'text/html', body: '<html><body>video</body></html>' }); }
+        if (/youtube/.test(req.url())) { seen.push(req.url()); referers.push(req.headers()['referer'] || ''); req.respond({ status: 200, contentType: 'text/html', body: '<html><body>video</body></html>' }); }
         else if (isBootstrap(req)) respondJSON(req, bootstrapFrom(config, texts, { round: '2026-R1' }));
         else req.continue();
       });
-      await page.goto(linkFor(main, 'DC-E2E-Z11', '2026-R1', 'en'), { waitUntil: 'networkidle0' });
-      await waitScreen(page, 'nps');
-      return { page, context, seen };
+      await page.goto(linkFor(main, dc, '2026-R1', lang), { waitUntil: 'networkidle0' });
+      await waitScreen(page, lang ? 'nps' : 'language');
+      return { page, context, seen, referers };
     };
     const strings = STRINGS_JSON();
     const a = await open(cfg, strings);
@@ -2304,6 +2310,11 @@ const consoleErrors = (page) => page.consoleMessages.filter((m) => /^(error|page
     const src = await page.$eval('.video-frame iframe', (f) => f.getAttribute('src'));
     assert(/^https:\/\/www\.youtube-nocookie\.com\/embed\/AbCdEfGhIjK\?/.test(src), 'the YouTube video plays inside the form: ' + src);
     await sleep(300);
+    // YouTube refuses to play for a page that sends no address ("Error 153", seen in Chrome on 30 Oct 2026),
+    // and the page sends none (the link carries the token): the frame alone sends the site's address.
+    assert.strictEqual(await page.$eval('.video-frame iframe', (f) => f.getAttribute('referrerpolicy')), 'strict-origin-when-cross-origin',
+      'the video frame sends YouTube the site address');
+    assert.deepStrictEqual(a.referers, [base(main)], 'YouTube gets the site address only, never the link\'s dc and token');
     await shot(page, 'Z11-02-video');
     await page.click('.sheet .icon-btn');
     await sleep(200);
@@ -2317,8 +2328,63 @@ const consoleErrors = (page) => page.consoleMessages.filter((m) => /^(error|page
     await sleep(200);
     assert.strictEqual(await page.$('.sheet'), null, 'Escape closes the sheet');
     assert.strictEqual(await screenId(page), 'nps', 'the partner is still on the same question');
+    // The phone's Back key closes an open sheet, and the survey stays on its screen (30 Oct 2026)
+    await clickNth(page, '.nps-chip', 4);
+    await waitScreen(page, 'fn_rating:losses');
+    await page.click('#help-btn');
+    await page.waitForSelector('.sheet .help-video');
+    // What is drawn, not only the history entry (a sheet's entry names its screen too)
+    const ratingDrawn = async (label) => {
+      assert(await page.$('#screen .faces .face'), label + ': the area rating is drawn');
+      assert.strictEqual(await page.$('#screen .nps-chip'), null, label + ': not the score question');
+    };
+    await page.evaluate(() => history.back());   // what the phone's Back key does
+    await sleep(500);
+    assert.strictEqual(await page.$('.sheet'), null, 'Back closes the help sheet');
+    assert.strictEqual(await screenId(page), 'fn_rating:losses', 'Back with a sheet open does not move the survey');
+    await ratingDrawn('after Back on the help sheet');
+    // A sheet closed with its button (or the language list) leaves nothing behind: one Back is one screen back
+    await page.click('#help-btn');
+    await page.waitForSelector('.sheet .help-video');
+    await page.click('.sheet .icon-btn');
+    await sleep(400);
+    await ratingDrawn('after the help sheet\'s close button');
+    await page.click('#lang-btn');
+    await page.waitForSelector('.sheet .lang-choice');
+    await page.evaluate(() => history.back());
+    await sleep(500);
+    assert.strictEqual(await page.$('.sheet'), null, 'Back closes the language list too');
+    assert.strictEqual(await screenId(page), 'fn_rating:losses', 'still the same screen');
+    await ratingDrawn('after Back on the language list');
+    // A reload while a sheet is open (or Android bringing a discarded tab back) costs no Back press
+    await page.click('#help-btn');
+    await page.waitForSelector('.sheet .help-video');
+    await page.reload({ waitUntil: 'networkidle0' });
+    await waitScreen(page, 'fn_rating:losses');
+    assert.strictEqual(await page.$('.sheet'), null, 'after a reload no sheet is open');
+    await ratingDrawn('after the reload');
+    await page.evaluate(() => history.back());   // one press: the previous screen
+    await waitScreen(page, 'nps');
+    assert(await page.$('#screen .nps-chip'), 'the score question is drawn');
     assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
     await a.context.close();
+    // On the first screen (the language list, for a link without &lang=), Back closes the sheet instead of
+    // leaving the form; the button is on the thank-you screen too
+    const d = await open(cfg, strings, '', 'DC-E2E-Z11D');
+    assert.strictEqual(await d.page.$eval('#help-btn', (x) => x.hidden), false, 'the help button shows on the language screen');
+    await d.page.click('#help-btn');
+    await d.page.waitForSelector('.sheet .help-video');
+    await d.page.evaluate(() => history.back());
+    await sleep(500);
+    assert.strictEqual(await d.page.$('.sheet'), null, 'Back closes the sheet on the first screen');
+    assert.strictEqual(await screenId(d.page), 'language', 'and the form stays open');
+    assert(await d.page.$('#screen .lang-choice'), 'the language buttons are still drawn');
+    await clickNth(d.page, '.lang-choice', 0);
+    await quickFinish(d.page);
+    await waitFinal(d.page, /Your feedback goes straight/, 10000);
+    assert.strictEqual(await d.page.$eval('#help-btn', (x) => x.hidden), false, 'the help button shows on the thank-you screen');
+    assert.deepStrictEqual(consoleErrors(d.page), [], 'no console errors');
+    await d.context.close();
     // no video set: no button
     const b = await open(SURVEY_JSON(), strings);
     assert.strictEqual(await b.page.$eval('#help-btn', (x) => x.hidden), true, 'no video: no button');
@@ -2329,8 +2395,168 @@ const consoleErrors = (page) => page.consoleMessages.filter((m) => /^(error|page
     const c = await open(cfg, older);
     assert.strictEqual(await c.page.$eval('#help-btn', (x) => x.hidden), true, 'without its texts: no button');
     await c.context.close();
-    pass('Z11: help videos: an i button opens one button per video; YouTube plays inside the form only after a tap, other links open in a new tab');
+    pass('Z11: help videos: an i button on every screen opens one button per video; YouTube plays inside the form only after a tap and gets the site address only; other links open in a new tab; Back closes a sheet');
   } catch (e) { fail('Z11: help videos', e); }
+
+  /* The pick-several questionnaire of Z10 (Z13 and Z14 use it too). */
+  const pickSeveral = () => {
+    const strings = STRINGS_JSON();
+    Object.assign(strings, {
+      'q.areas': six('Which areas is your score mostly about?'),
+      'choice.areas.load': six('Load & volume'), 'choice.areas.payments': six('Payments & COD'), 'choice.areas.app': six('App & tech'),
+      'q.load_low': six('What went wrong with Load & volume?'), 'choice.load_low.late': six('My load keeps changing'), 'choice.load_low.other': six('Others'),
+      'q.pay_low': six('What went wrong with Payments & COD?'), 'choice.pay_low.delayed': six('My payment was delayed'), 'choice.pay_low.other': six('Others')
+    });
+    const cfg = graphSurvey((g) => {
+      const after = nodeOf(g, 'support_gate');
+      nodeOf(g, 'nps').next = 'areas';
+      g.nodes.splice(g.nodes.indexOf(after), 0,
+        { id: 'areas', type: 'multi_choice', text: 'q.areas', options: ['load', 'payments', 'app'], required: true, next: 'load_low' },
+        { id: 'load_low', type: 'single_choice', text: 'q.load_low', options: ['late', 'other'], required: true, next: 'pay_low',
+          show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'load' }] } },
+        { id: 'pay_low', type: 'single_choice', text: 'q.pay_low', options: ['delayed', 'other'], required: true, next: 'support_gate',
+          show_if: { all: [{ answer: 'nps', at_most: 8 }, { answer: 'areas', equals: 'payments' }] } });
+      g.nodes = g.nodes.filter((n) => n.id !== 'fn_ratings' && n.id !== 'fn_deep_dives');
+    });
+    return { cfg, strings };
+  };
+
+  /* ---------------- Z12: the language screen "always" (30 Oct 2026) ----------------
+     Form v2.1 writes "always" in the language row of the route table (no show_if): the language buttons
+     show even when the link names the language, with that language already picked, so Next goes on. */
+  if (want('Z12')) try {
+    const cfg = graphSurvey((g) => { delete nodeOf(g, 'language').show_if; });
+    const strings = STRINGS_JSON();
+    assert.deepStrictEqual(flowErrors(cfg, strings), [], 'passes the flow check');
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    page.on('request', (req) => { if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' })); else req.continue(); });
+    await page.goto(linkFor(main, 'DC-E2E-Z12', '2026-R1', 'hi'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'language');
+    assert.deepStrictEqual(await page.$$eval('.lang-choice.is-selected', (bs) => bs.map((b) => b.getAttribute('lang'))), ['hi-IN'],
+      'the link\'s language is already picked');
+    assert.strictEqual(await page.$eval('#nav-next', (b) => b.hidden), false, 'Next shows at once');
+    await shot(page, 'Z12-01-language-always');
+    await page.click('#nav-next');
+    await waitScreen(page, 'nps');
+    assert.strictEqual(await page.evaluate(() => document.documentElement.lang), 'hi-IN', 'the survey goes on in Hindi');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('Z12: language "always": the language screen shows even when the link names the language, already picked, and Next goes on');
+  } catch (e) { fail('Z12: language always', e); }
+
+  /* ---------------- Z13: answers sent exactly as finished (30 Oct 2026) ----------------
+     A partner finishes, the send fails, and the link is opened again while another questionnaire is in
+     use (a newer published version, or the form's own copy when Google is slow). What is sent is still
+     what they answered, stamped with the version they answered: nothing is dropped. */
+  if (want('Z13')) try {
+    const { cfg: cfgA, strings } = pickSeveral();
+    cfgA.config_version = 'p9-2026-10-30';
+    const cfgB = SURVEY_JSON();   // another questionnaire: no area question at all
+    let serve = cfgA;
+    let block = true;
+    const setup = async (pg) => {
+      await pg.setRequestInterception(true);
+      pg.on('request', (req) => {
+        const body = req.postData() || '';
+        if (isBootstrap(req)) return respondJSON(req, bootstrapFrom(serve, strings, { round: '2026-R1' }));
+        if (block && req.method() === 'POST' && body.includes('"kind":"submit"')) return req.abort('failed');
+        req.continue();
+      });
+    };
+    const dc = 'DC-E2E-Z13';
+    const { page, context } = await newPage(browser);
+    await setup(page);
+    await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 4);
+    await waitScreen(page, 'areas'); await clickNth(page, '.chip', 0); await clickNth(page, '.chip', 1);
+    await sleep(600); await page.click('#nav-next');
+    await waitScreen(page, 'load_low'); await clickNth(page, '.chip', 0);
+    await waitScreen(page, 'pay_low'); await clickNth(page, '.chip', 1);
+    await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+    await waitScreen(page, 'one_fix');
+    // a voice note and a typed answer: the kept copy holds the note's details, its sound stays stored apart
+    await tap(page, '.mic-btn');
+    await page.waitForSelector('.consent:not([hidden])');
+    await tap(page, '.consent .btn-primary');
+    await holdMic(page, 2600);
+    await page.waitForSelector('.clip-row:not([hidden])', { timeout: 6000 });
+    await tap(page, '.type-row .link-btn');
+    await page.type('.text-input', 'Fix the COD settlement');
+    await page.click('#nav-next');
+    await waitFinal(page, /Could not send/, 15000);
+    const kept = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.indexOf('state:') !== -1);
+      return JSON.parse(localStorage.getItem(key));
+    });
+    assert(kept.sent_copy && kept.sent_copy.config_version === 'p9-2026-10-30', 'the finished answers are kept with their version');
+    const keptNote = kept.sent_copy.free_text.find((x) => x.item_id === 'one_fix');
+    assert(keptNote && keptNote.audio && keptNote.audio.mime && !('base64' in keptNote.audio), 'the kept copy names the voice note, without its sound');
+    // Leave while sends still fail (the page-closing send fails too: the interception stays), so nothing arrives yet
+    await page.goto('about:blank');
+    await sleep(500);
+    assert.strictEqual(storedFor(main, dc).length, 0, 'nothing arrived during the first visit');
+    // Later: another questionnaire is in use, and the connection works again
+    serve = cfgB;
+    block = false;
+    const page2 = page;
+    await page2.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitFinal(page2, /Your feedback goes straight/, 15000);
+    await sleep(300);
+    const stored = storedFor(main, dc);
+    assert.strictEqual(stored.length, 1, 'stored once');
+    assert.deepStrictEqual(stored[0].answers, { nps: 4, areas: ['load', 'payments'], load_low: 'late', pay_low: 'other', support_gate: 'no' },
+      'what was answered, not what the other questionnaire asks');
+    assert.strictEqual(stored[0].config_version, 'p9-2026-10-30', 'stamped with the questionnaire they answered');
+    assert.deepStrictEqual(stored[0].free_text.map((x) => [x.item_id, x.text]), [['one_fix', 'Fix the COD settlement']], 'the typed answer too');
+    const storedNote = stored[0].free_text[0].audio;
+    assert(storedNote && storedNote.file && fs.existsSync(path.join(main.dataDir, storedNote.file)) && storedNote.bytes > 0,
+      'the voice note\'s sound was added back on the later visit and stored: ' + JSON.stringify(storedNote));
+    const after = await page2.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.indexOf('state:') !== -1);
+      return JSON.parse(localStorage.getItem(key));
+    });
+    assert(after.submitted && !after.sent_copy, 'once sent, the answers leave the phone (only the "sent" marker stays)');
+    await context.close();
+    pass('Z13: a send retried on a later visit sends the answers as finished, with their version, whatever questionnaire that visit loaded');
+  } catch (e) { fail('Z13: answers sent as finished', e); }
+
+  /* ---------------- Z14: changing the ticks (30 Oct 2026) ----------------
+     Ticks are kept on the phone (a reload keeps them). A partner who ticks two areas, answers the first
+     one's question, goes back and unticks that area: its answer is not sent. */
+  if (want('Z14')) try {
+    const { cfg, strings } = pickSeveral();
+    const dc = 'DC-E2E-Z14';
+    const { page, context } = await newPage(browser);
+    await page.setRequestInterception(true);
+    page.on('request', (req) => { if (isBootstrap(req)) respondJSON(req, bootstrapFrom(cfg, strings, { round: '2026-R1' })); else req.continue(); });
+    await page.goto(linkFor(main, dc, '2026-R1', 'en'), { waitUntil: 'networkidle0' });
+    await waitScreen(page, 'nps'); await clickNth(page, '.nps-chip', 4);
+    await waitScreen(page, 'areas'); await clickNth(page, '.chip', 0); await clickNth(page, '.chip', 1);
+    await sleep(600); await page.click('#nav-next');
+    await waitScreen(page, 'load_low'); await clickNth(page, '.chip', 0);
+    await waitScreen(page, 'pay_low');
+    await page.reload({ waitUntil: 'networkidle0' });
+    await waitScreen(page, 'pay_low');
+    await page.click('#nav-back'); await waitScreen(page, 'load_low');
+    await page.click('#nav-back'); await waitScreen(page, 'areas');
+    assert.deepStrictEqual(await page.$$eval('.chip', (bs) => bs.map((b) => b.getAttribute('aria-pressed'))), ['true', 'true', 'false'],
+      'the ticks are still there after a reload');
+    await clickNth(page, '.chip', 0);   // untick Load & volume
+    await sleep(600); await page.click('#nav-next');
+    await waitScreen(page, 'pay_low'); await clickNth(page, '.chip', 0);
+    await waitScreen(page, 'support_gate'); await clickNth(page, '.yesno .choice', 1);
+    await waitScreen(page, 'one_fix'); await page.click('#nav-next');
+    await waitFinal(page, /Your feedback goes straight/, 10000);
+    await sleep(300);
+    const s = storedFor(main, dc)[0];
+    assert(s, 'stored');
+    assert.deepStrictEqual(s.answers, { nps: 4, areas: ['payments'], pay_low: 'delayed', support_gate: 'no' },
+      'the unticked area\'s answer is not sent');
+    assert.deepStrictEqual(consoleErrors(page), [], 'no console errors');
+    await context.close();
+    pass('Z14: ticks survive a reload; an area unticked after its question was answered sends no answer for it');
+  } catch (e) { fail('Z14: changing the ticks', e); }
 
   await browser.close();
   await browserNoMic.close();
